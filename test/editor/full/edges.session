@@ -1,0 +1,21 @@
+# The protocol's edges: a request before `initialize`; a byte order mark,
+# a lone `\r` and a `\r\n`, after which every position keeps its place
+# (the byte order mark is not Tally, so the parse fails there); and the
+# diagnostics of a file the program reads but no editor opened, published
+# and then cleared.
+hover main.tally 1:1
+initialize
+open odd.tally
+tokens odd.tally
+close odd.tally
+open app.tally
+change app.tally
+| let n = 1
+save app.tally
+# A rename to a name that is not one token, or not a name.
+open main.tally
+rename main.tally 8:9 9x
+rename main.tally 8:9 fn
+close main.tally
+# `exit` before `shutdown`.
+exit

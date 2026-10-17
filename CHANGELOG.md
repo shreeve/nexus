@@ -17,6 +17,26 @@
   alternative whose `[...]` groups and choices make the most rules when
   it makes 32 or more (`Expanded: rule 'x' (line N): one alternative
   makes M rules, ...`).
+- `nexus --editor [--lang <file>] <grammar> <dir>`: a language's VS Code
+  extension and language server, from a grammar with `@highlight`
+  ([LSP.md](docs/LSP.md)). `<dir>` gets the files of `--highlight all`,
+  the extension's `vscode/package.json` and `vscode/extension.js`, and
+  `server/`, a Zig project that builds `LANG-lsp`: the grammar's parser
+  with spans, the server (`lsp.zig`), the grammar's table for it
+  (`language.zig`), with `--lang` the lang module and the files it
+  imports, and `hooks.zig`, written only when missing. From the grammar
+  alone the server gives syntax errors, semantic tokens, folding,
+  selection ranges and keyword completion. Each function of `hooks.zig`
+  a language fills in turns on the features it serves: over one file's
+  parse (`parseDiagnostics`, `tokens`, `symbols`, `folds`, `format`), its
+  own diagnostics and tokens, the outline, folds and formatting; over an
+  analysis of the program (`analyze`, `symbolAt`, `typeAt`, `describe`,
+  `members`, `modules`, `visible`, `signatures`, `references`,
+  `renamable`), diagnostics across files, hover, definition, type
+  definition, references, highlights, rename, member, module and scope
+  completion, and signature help. A function left as written
+  (`lsp.todo`) is not advertised. The suite builds every grammar's server and drives two
+  through sessions (`test/lib/lsp`, `test/editor/`).
 
 - `@highlight` (preamble or @parser section): how editors colour the
   language. Metadata lines (`language "Rig"`, `scope-name source.rig`,
@@ -94,6 +114,9 @@ Additive: no migration required. Downstream:
   string styles), and write `editors/` with `nexus --highlight all
   rig.grammar editors`.
 - em, nexis: optional; the same when wanted.
+- Rig, em, nexis: optional; `nexus --editor` writes a VS Code extension
+  and a language server (Rig: `--lang rig.zig`, em: `--lang mumps.zig`).
+  A project that keeps one checks in `hooks.zig` and regenerates the rest.
 
 ## 2.3.0 — 2026-10-15
 

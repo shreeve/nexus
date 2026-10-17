@@ -1,0 +1,15 @@
+use util
+
+# The running total.
+let total = util.add(1, 2)
+let name = util.greeting + " world"
+
+fn scale(x, factor) {
+    let y = x * factor
+    return util.double(y)
+}
+
+scale(total, 3)
+util.add(total)
+util.missing(1)
+nothing + 1

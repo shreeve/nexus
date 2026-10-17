@@ -1,0 +1,25 @@
+# pal.grammar: a grammar with @lang and @highlight, for the `--editor
+# --lang` checks of tools/cli. pal.zig is its lang module; clash.zig and
+# escape.zig are lang modules the server cannot take.
+
+@lang = "pal"
+
+@lexer
+
+tokens
+    ident, newline, eof, err
+
+'\n'                → newline
+[a-z]+              → ident
+.                   → err
+
+@parser
+
+@highlight
+    language        "Pal"
+    scope-name      source.pal
+    extensions      pal
+    type            IDENT
+    invalid         ERR
+
+program! = IDENT    → (program 1)

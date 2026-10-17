@@ -15,8 +15,10 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   CHANGELOG.md has each release and the migration steps for every
   downstream repository.
 - **Unreleased on main:** `@highlight` (editor support from the grammar:
-  `nexus --highlight <target|all>`) and `nexus --describe` (the grammar as
-  JSON); CHANGELOG.md, "Unreleased".
+  `nexus --highlight <target|all>`), `nexus --describe` (the grammar as
+  JSON), clause rules, and `nexus --editor` (a VS Code extension and a
+  language server whose features a language turns on in `hooks.zig`,
+  [docs/LSP.md](docs/LSP.md)); CHANGELOG.md, "Unreleased".
 - **The suite is green on macOS (arm64):** `./test/run` → 957 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
@@ -58,10 +60,23 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    schemaless tree rules for a leading `role:N` head (named only in
    unexpanded alternatives) and for `!X` in a rule's default action. em's
    grammar uses `@schema`, so these rules no longer shape em's trees.
-4. **Untested messages:** `test/lib/messages.allow` lists the generator
+4. **Editors and language servers** ([docs/LSP.md](docs/LSP.md)):
+   - The suite drives the server through sessions, but not the VS Code
+     client in VS Code, nor `vsce package`; the extension's files are
+     pinned by goldens.
+   - No session covers an analysis that fails after one that succeeded,
+     an untitled document, or a request before the first analysis.
+   - A generated lexer reads a byte order mark as text; the server keeps
+     positions right after it, but the parse fails there.
+   - Next: `@lsp`, names and scopes declared in the grammar, so that
+     definition, references and scope completion need no `analyze`;
+     hooks in TypeScript or JavaScript over JSON lines; `rig lsp` onto
+     the generated server, then servers for em and nexis; a formatter
+     from the grammar.
+5. **Untested messages:** `test/lib/messages.allow` lists the generator
    messages no test prints, each with its reason; an adverse test that
    prints one deletes its line.
-5. **Smaller items:**
+6. **Smaller items:**
    - `./test/run --update` does not write `.tree` files for
      `test/regress` suites; write them with the suite's built driver.
    - A lang `Parser` wrapper that returns `error.ParseError` on its own

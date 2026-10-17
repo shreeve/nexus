@@ -1,0 +1,9 @@
+# A Tally program: every statement and expression form.
+use util
+let total = util.add(1, 2) * (3 - 4)
+fn greet(name, punct) {
+    let s = "hello " + name + punct
+    return s
+}
+
+greet("world", "!")

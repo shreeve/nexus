@@ -1,0 +1,7 @@
+# Positions in bytes, which a client that offers UTF-8 gets.
+initialize utf-8
+open text.tally
+tokens text.tally
+hover text.tally 3:9
+hover text.tally 2:10
+symbols text.tally

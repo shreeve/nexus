@@ -1,0 +1,82 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally none
+> tokens main.tally
+  1:1 3 keyword
+  3:1 20 comment
+  4:1 3 keyword
+  4:11 1 operator
+  4:17 1 punctuation
+  4:21 1 punctuation
+  4:22 1 constantNumeric
+  4:23 1 punctuation
+  4:25 1 constantNumeric
+  4:26 1 punctuation
+  5:1 3 keyword
+  5:10 1 operator
+  5:16 1 punctuation
+  5:26 1 operator
+  5:28 8 string
+  7:1 2 keyword
+  7:9 1 punctuation
+  7:11 1 punctuation
+  7:19 1 punctuation
+  7:21 1 punctuation
+  8:5 3 keyword
+  8:11 1 operator
+  8:15 1 operator
+  9:5 6 keywordControl
+  9:16 1 punctuation
+  9:23 1 punctuation
+  9:25 1 punctuation
+  10:1 1 punctuation
+  12:6 1 punctuation
+  12:12 1 punctuation
+  12:14 1 constantNumeric
+  12:15 1 punctuation
+  13:5 1 punctuation
+  13:9 1 punctuation
+  13:15 1 punctuation
+  14:5 1 punctuation
+  14:13 1 punctuation
+  14:14 1 constantNumeric
+  14:15 1 punctuation
+  15:9 1 operator
+  15:11 1 constantNumeric
+> folds main.tally
+  {"endLine":9,"startLine":6}
+> selection main.tally 8:13
+  {"parent":{"parent":{"parent":{"parent":{"parent":{"range":"1:1-16:1"},"range":"7:1-10:2"},"range":"7:21-10:2"},"range":"8:5-8:23"},"range":"8:13-8:23"},"range":"8:13-8:14"}
+> completion main.tally 6:1
+  {"kind":14,"label":"fn"}
+  {"kind":14,"label":"let"}
+  {"kind":14,"label":"return"}
+  {"kind":14,"label":"use"}
+> completion main.tally 8:5
+  {"kind":14,"label":"fn"}
+  {"kind":14,"label":"let"}
+  {"kind":14,"label":"return"}
+  {"kind":14,"label":"use"}
+> completion main.tally 4:13
+[]
+> hover main.tally 4:5
+error -32601 textDocument/hover
+> request textDocument/definition main.tally
+error -32601 textDocument/definition
+> request textDocument/documentSymbol main.tally
+error -32601 textDocument/documentSymbol
+> request textDocument/formatting main.tally
+error -32601 textDocument/formatting
+> change main.tally
+diagnostics main.tally
+  {"message":"expected an expression, got end of line","range":"1:13-2:1","severity":1,"source":"tally"}
+> completion main.tally 2:1
+[]
+> folds main.tally
+[]
+> change main.tally
+diagnostics main.tally
+  {"message":"expected an expression, got end of line","range":"2:16-3:1","severity":1,"source":"tally"}
+> folds main.tally
+  {"endLine":3,"startLine":0}

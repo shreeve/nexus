@@ -1488,7 +1488,8 @@ editors/highlightjs/tasks.js
 
 A language keeps them in `editors/` beside its grammar, written by
 `nexus --highlight all x.grammar editors`. `--highlight` on a grammar
-without `@highlight` is an error.
+without `@highlight` is an error. `nexus --editor` writes the same files
+with a VS Code extension and a language server ([LSP.md](LSP.md)).
 
 - The TextMate grammar lists the items in order under `patterns`; a
   pattern with captures is one regex with `captures`, a region a

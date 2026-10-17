@@ -112,14 +112,54 @@ build_suite() {
     mv "$WORK/build/$key.tmp" "$WORK/build/$key"
 }
 
-# ensure_built <dir>: build the suite once per run. The first worker to ask
-# builds it; the others wait for its result (at most the build's timeout).
+# lang_args: after suite_conf, sets LANG_ARGS to `--lang <file>` when the
+# grammar has @lang = "<name>": the suite's lang file <name>.zig, and
+# LANG_MODULE to <name>.zig.
+lang_args() {
+    local lang f
+    lang=$(sed -n 's/^@lang[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' "$GRAMMAR")
+    LANG_ARGS=() LANG_MODULE=""
+    [[ -n $lang ]] || return 0
+    LANG_MODULE=$lang.zig
+    for f in ${LANG_FILES[@]+"${LANG_FILES[@]}"}; do
+        [[ $(basename "$f") == "$LANG_MODULE" ]] && LANG_ARGS=(--lang "$f")
+    done
+    [[ ${#LANG_ARGS[@]} -gt 0 ]] || LANG_ARGS=(--lang "$LANG_MODULE")
+}
+
+# build_server <variant dir>: `nexus --editor` the grammar of the suite
+# that holds the variant into $OUTROOT/build/<key>, with the variant's
+# hooks.zig (or the stub, if it has none), and `zig build` its server;
+# writes $WORK/build/<key> like build_suite.
+build_server() {
+    local vdir=$1 key out rc reason=""
+    key=$(key_of "$vdir")
+    out="$OUTROOT/build/$key"
+    suite_conf "$(dirname "$vdir")"
+    lang_args
+    mkdir -p "$out/server/src"
+    rm -f "$out/server/src/hooks.zig"
+    [[ -f $vdir/hooks.zig ]] && cp "$vdir/hooks.zig" "$out/server/src/hooks.zig"
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$(basename "$GRAMMAR")" "$out") >"$out/gen.log" 2>&1
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        rc=10 reason="--editor failed: $(first_error "$out/gen.log")"
+    elif ! (cd "$out/server" && with_timeout 600 zig build --cache-dir "$OUTROOT/zig") >"$out/compile.log" 2>&1; then
+        rc=11 reason="the server does not build: $(first_error "$out/compile.log")"
+    fi
+    printf '%s\t%s\n' "$rc" "$reason" >"$WORK/build/$key.tmp"
+    mv "$WORK/build/$key.tmp" "$WORK/build/$key"
+}
+
+# ensure_built <dir> [builder]: build the suite (or, with build_server,
+# the variant's server) once per run. The first worker to ask builds it;
+# the others wait for its result (at most the build's timeout).
 ensure_built() {
     local key ticks=0
     key=$(key_of "$1")
     [[ -f "$WORK/build/$key" ]] && return 0
     if mkdir "$WORK/lock/$key" 2>/dev/null; then
-        (build_suite "$1")
+        ("${2:-build_suite}" "$1")
         return 0
     fi
     while [[ ! -f "$WORK/build/$key" ]]; do
@@ -144,10 +184,10 @@ check_wasm32() { # check_wasm32 <suite dir>: the parser and driver build for 32-
     return 0
 }
 
-check_built() { # check_built <suite dir>
+check_built() { # check_built <suite dir> [builder]
     local key st why
     key=$(key_of "$1")
-    ensure_built "$1"
+    ensure_built "$1" "${2:-}"
     IFS=$'\t' read -r st why <"$WORK/build/$key" || { REASON="suite was not built"; return 1; }
     if [[ $st -ne 0 ]]; then
         REASON=$why
@@ -390,6 +430,107 @@ check_highlight_all() {
     return 0
 }
 
+# check_editor_files <suite dir> <name>: `--editor` writes the files of
+# `--highlight all`, the extension and the server, and nothing else but the
+# lang module and its imports, copied verbatim. The highlight files are
+# those of `--highlight all`, parser.zig the module `--spans` generates,
+# lsp.zig src/lsp/server_template.zig under a header; language.zig and
+# package.json equal their goldens, and so (for the editor suite) do
+# extension.js, build.zig, main.zig and the stub hooks.zig. A second run
+# writes the same bytes and keeps a hooks.zig that was changed.
+check_editor_files() {
+    local dir=$1 name=$2 out="$WORK/out/editor_$2" id gd gn
+    suite_conf "$dir"
+    lang_args
+    gd=$(dirname "$GRAMMAR") gn=$(basename "$GRAMMAR")
+    id=$(sed -n 's/^[[:space:]]*scope-name[[:space:]]*[a-z]*\.\([a-z0-9_.]*\).*/\1/p' "$GRAMMAR" | sed 's/.*\.//')
+    in_gd() { (cd "$gd" && with_timeout "$TIMEOUT" "$NEXUS" "$@") >>"$LOG" 2>&1; }
+    in_gd --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$gn" "$out/a" || { REASON="--editor failed"; return 1; }
+    local want got f extra=""
+    want=$(printf '%s\n' "highlightjs/$id.js" server/.gitignore server/build.zig server/src/hooks.zig server/src/language.zig \
+        server/src/lsp.zig server/src/main.zig server/src/parser.zig "vim/syntax/$id.vim" vscode/.gitignore vscode/extension.js \
+        vscode/language-configuration.json vscode/package.json "vscode/syntaxes/$id.tmLanguage.json")
+    got=$(cd "$out/a" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+    while IFS= read -r f; do
+        grep -qxF "$f" <<<"$got" || { REASON="--editor did not write $f"; return 1; }
+    done <<<"$want"
+    while IFS= read -r f; do
+        grep -qxF "$f" <<<"$want" && continue
+        [[ $f == server/src/* ]] || { REASON="--editor wrote $f"; return 1; }
+        extra="$extra ${f#server/src/}"
+    done <<<"$got"
+    local mdir
+    for f in $extra; do
+        if [[ $f == "$LANG_MODULE" ]]; then
+            (cd "$gd" && cmp -s "${LANG_ARGS[1]}" "$out/a/server/src/$f") || { REASON="server/src/$f is not the lang module"; return 1; }
+            continue
+        fi
+        mdir=$(cd "$gd" && cd "$(dirname "${LANG_ARGS[1]:-.}")" && pwd)
+        cmp -s "$mdir/$f" "$out/a/server/src/$f" || { REASON="server/src/$f is not $mdir/$f"; return 1; }
+    done
+    [[ -z $LANG_MODULE || " $extra " == *" $LANG_MODULE "* ]] || { REASON="--editor did not write server/src/$LANG_MODULE"; return 1; }
+    in_gd --highlight all "$gn" "$out/hl" || { REASON="--highlight all failed"; return 1; }
+    for f in $(cd "$out/hl" && find . -type f | sed 's|^\./||'); do
+        cmp -s "$out/hl/$f" "$out/a/$f" || { REASON="$f differs from that of --highlight all"; return 1; }
+    done
+    in_gd --spans "$gn" "$out/parser.zig" || { REASON="generation failed"; return 1; }
+    cmp -s "$out/parser.zig" "$out/a/server/src/parser.zig" || { REASON="server/src/parser.zig is not the module --spans generates"; return 1; }
+    local header
+    header="//! Generated by nexus v$(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig) — do not edit"
+    [[ $(head -1 "$out/a/server/src/lsp.zig") == "$header" ]] || { REASON="server/src/lsp.zig does not start with \"$header\""; return 1; }
+    tail -n +2 "$out/a/server/src/lsp.zig" | cmp -s - src/lsp/server_template.zig || { REASON="server/src/lsp.zig is not src/lsp/server_template.zig"; return 1; }
+    golden "$out/a/server/src/language.zig" "test/golden/$name.language.zig" || return 1
+    golden "$out/a/vscode/package.json" "test/golden/$name.package.json" || return 1
+    if [[ $name == editor ]]; then
+        golden "$out/a/vscode/extension.js" test/golden/editor.extension.js || return 1
+        golden "$out/a/server/build.zig" test/golden/editor.build.zig || return 1
+        golden "$out/a/server/src/main.zig" test/golden/editor.main.zig || return 1
+        golden "$out/a/server/src/hooks.zig" test/golden/editor.hooks.zig || return 1
+    fi
+    cp -R "$out/a" "$out/b"
+    echo "// changed" >>"$out/b/server/src/hooks.zig"
+    in_gd --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$gn" "$out/b" || { REASON="the second --editor failed"; return 1; }
+    grep -qF "Kept $out/b/server/src/hooks.zig" "$LOG" || { REASON="the second run does not say it kept hooks.zig"; return 1; }
+    [[ $(tail -1 "$out/b/server/src/hooks.zig") == "// changed" ]] || { REASON="the second run replaced a changed hooks.zig"; return 1; }
+    echo "// changed" >>"$out/a/server/src/hooks.zig"
+    diff -r "$out/a" "$out/b" >>"$LOG" 2>&1 || { REASON="the second run wrote different files"; return 1; }
+    return 0
+}
+
+# check_editor_server <suite dir> <name>: the server `--editor` writes,
+# with the stub hooks.zig, compiles.
+check_editor_server() {
+    local dir=$1 name=$2 out="$WORK/out/server_$2"
+    suite_conf "$dir"
+    lang_args
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$(basename "$GRAMMAR")" "$out") >>"$LOG" 2>&1 ||
+        { REASON="--editor failed"; return 1; }
+    if ! (cd "$out/server" && with_timeout 600 zig build-exe -fno-emit-bin src/main.zig --cache-dir "$OUTROOT/zig") >>"$LOG" 2>&1; then
+        REASON="the server does not compile: $(first_error "$LOG")"
+        return 1
+    fi
+    return 0
+}
+
+# check_editor_session <variant dir> <session>: replayed against the
+# variant's server (test/lib/lsp), with the suite's project/ as the root,
+# the session prints <session>.out.
+check_editor_session() {
+    local vdir=$1 session=$2 got
+    check_built "$vdir" build_server || return 1
+    got="$WORK/out/$(key_of "$session").out"
+    local server
+    server=$(ls "$OUTROOT/build/$(key_of "$vdir")"/server/zig-out/bin/*-lsp)
+    with_timeout "$TIMEOUT" python3 "$LIB/lsp" "$server" "$(dirname "$vdir")/project" "$session" >"$got" 2>>"$LOG" </dev/null
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        REASON="the session failed (exit $rc): $(grep -m1 '^!! ' "$got" || tail -1 "$got")"
+        tail -20 "$got" >>"$LOG"
+        return 1
+    fi
+    golden "$got" "${session%.session}.out"
+}
+
 # check_highlight <suite dir> <sample>: the editor files colour the sample
 # as <sample>.hl says (test/lib/highlight).
 check_highlight() {
@@ -496,7 +637,7 @@ check_cli() {
         return 0
     }
     mkdir -p "$dir"
-    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar test/highlight/highlight.grammar test/cli/wide.grammar test/cli/narrow.grammar "$dir/"
+    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar test/highlight/highlight.grammar test/cli/*.grammar test/cli/*.zig "$dir/"
     expect 0 "$want" --version || return 1
     # The progress output names an alternative that makes 32 rules or more.
     expect 0 "Expanded: rule 'item' (line 15): one alternative makes 32 rules" check wide.grammar || return 1
@@ -526,7 +667,25 @@ check_cli() {
     expect 2 "--highlight all writes a directory, not standard output" --highlight all highlight.grammar - || return 1
     expect 2 "the output file 'highlight.grammar' is the grammar file" --describe highlight.grammar highlight.grammar || return 1
     expect 1 "error: cannot create no_lang.grammar/sub" --highlight all highlight.grammar no_lang.grammar/sub || return 1
-    if [[ -n $(cd "$dir" && ls | grep -vxE 'no_lang\.grammar|list_tail_conflict\.grammar|highlight\.grammar|wide\.grammar|narrow\.grammar') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
+    expect 2 "--editor writes a directory: nexus --editor" --editor highlight.grammar || return 1
+    expect 2 "--editor writes a directory, not standard output" --editor highlight.grammar - || return 1
+    expect 2 "--spans has no effect on --editor" --editor --spans highlight.grammar ed || return 1
+    expect 2 "--lang needs the lang module's file" --editor --lang || return 1
+    expect 2 "--lang is an option of --editor" --lang pal.zig pal.grammar out.zig || return 1
+    expect 1 "no_lang.grammar:1:1: error: the grammar has no @highlight, so it has no editor files" --editor no_lang.grammar ed || return 1
+    expect 1 "lexer_only.grammar:1:1: error: the grammar has no parser rules, so it has no language server" --editor lexer_only.grammar ed || return 1
+    expect 2 "the grammar has @lang = \"pal\": give its lang module with --lang <file>" --editor pal.grammar ed || return 1
+    expect 2 "--lang pal.zig: the grammar has no @lang" --editor --lang pal.zig highlight.grammar ed || return 1
+    expect 1 "error: cannot copy missing.zig into the server: it cannot be read" --editor --lang missing.zig pal.grammar ed || return 1
+    expect 1 "error: cannot copy ../outside.zig into the server" --editor --lang escape.zig pal.grammar ed || return 1
+    expect 1 "error: the server has its own hooks.zig; the lang module clash.zig cannot bring one" --editor --lang clash.zig pal.grammar ed || return 1
+    expect 1 "error: cannot create no_lang.grammar/sub" --editor highlight.grammar no_lang.grammar/sub || return 1
+    if [[ -n $(cd "$dir" && ls | grep -vE '\.(grammar|zig)$') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
+    # With @lang, the lang module is copied as <name>.zig, with the files
+    # it imports.
+    expect 0 "Wrote ed/server/src/names.zig" --editor --lang pal.zig pal.grammar ed || return 1
+    cmp -s test/cli/pal.zig "$dir/ed/server/src/pal.zig" && cmp -s test/cli/names.zig "$dir/ed/server/src/names.zig" || { REASON="--editor --lang did not copy the lang module and its import"; return 1; }
+    rm -rf "$dir/ed"
     expect 0 '"format": 1' --describe no_lang.grammar || return 1
     expect 0 "Wrote the description to d.json" --describe no_lang.grammar d.json || return 1
     expect 0 "Wrote the vim file to h.vim" --highlight vim highlight.grammar h.vim || return 1
@@ -653,6 +812,9 @@ worker() {
         describe)    check_describe "$a" "$b"; ok=$? ;;
         hl-all)      check_highlight_all "$a" "$b"; ok=$? ;;
         hl)          check_highlight "$a" "$b"; ok=$? ;;
+        editor-files)  check_editor_files "$a" "$b"; ok=$? ;;
+        editor-server) check_editor_server "$a" "$b"; ok=$? ;;
+        session)     check_editor_session "$a" "$b"; ok=$? ;;
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         wasm32)      check_wasm32 "$a"; ok=$? ;;
@@ -694,7 +856,11 @@ if [[ "${1:-}" == "--worker" ]]; then
     for task in "${TASKS[@]}"; do
         [[ -n "$task" ]] || continue
         IFS=$'\x1f' read -r -a F <<<"$task"
-        if [[ ${F[1]} == build ]]; then ensure_built "${F[2]}"; else (worker "${F[@]}"); fi
+        case ${F[1]} in
+            build) ensure_built "${F[2]}" ;;
+            build-server) ensure_built "${F[2]}" build_server ;;
+            *) (worker "${F[@]}") ;;
+        esac
     done
     exit 0
 fi
@@ -774,14 +940,14 @@ add() { # add <id> <kind> [args...]
     selected "$1" || return 1
     local IFS=$'\x1f' to=$EARLY
     case $2 in
-        unit-nexus|unit-lang|diff-tool|lexfuzz|messages) to=$LONG ;;
-        case|bug|hl) to=$LATE ;;
+        unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server) to=$LONG ;;
+        case|bug|hl|session) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
 }
-need_build() {
+need_build() { # need_build <dir> [build-server]
     local line
-    line="build/$1"$'\x1f'build$'\x1f'"$1"
+    line="build/$1"$'\x1f'"${2:-build}"$'\x1f'"$1"
     grep -qxF "$line" "$BUILDS" || echo "$line" >>"$BUILDS"
 }
 
@@ -810,9 +976,23 @@ for dir in grammars/*/ test/*/; do
     case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *)
         add "sexp/$name" sexp "$dir" "$name"
         add "describe/$name" describe "$dir" "$name"
-        grep -q '^@highlight' "$GRAMMAR" && add "highlight/$name/files" hl-all "$dir" "$name"
+        if grep -q '^@highlight' "$GRAMMAR"; then
+            add "highlight/$name/files" hl-all "$dir" "$name"
+            add "editor/$name/files" editor-files "$dir" "$name"
+            add "editor/$name/server" editor-server "$dir" "$name"
+        fi
         ;;
     esac
+    # Language-server sessions: each subdirectory holding *.session files
+    # is a server, built with its hooks.zig (or the stub).
+    for sub in "$dir"/*/; do
+        sub=${sub%/}
+        for f in "$sub"/*.session; do
+            [[ -f $f ]] || continue
+            rel=$(basename "$f")
+            add "$name/$(basename "$sub")/${rel%.session}" session "$sub" "$f" && need_build "$sub" build-server
+        done
+    done
     SEXP_SEEN="$SEXP_SEEN|$GRAMMAR|"
     for f in "$dir"/highlight/*; do
         [[ -f $f && $f != *.hl ]] || continue

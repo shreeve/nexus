@@ -1,0 +1,8 @@
+(module
+  (use `util`)
+  (let `total` (* (call (member (name `util`) `add`) (num `1`) (num `2`)) (- (num `3`) (num `4`))))
+  (fn
+    `greet`
+    (params `name` `punct`)
+    (block (let `s` (+ (+ (str `"hello "`) (name `name`)) (name `punct`))) (return (name `s`))))
+  (call (name `greet`) (str `"world"`) (str `"!"`)))

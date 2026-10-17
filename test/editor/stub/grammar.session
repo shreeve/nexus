@@ -1,0 +1,26 @@
+# What the grammar alone gives: tokens, folds, selection ranges, parse
+# errors and keyword completion. The functions of hooks.zig are left
+# `lsp.todo`, so the requests that need them are not advertised.
+initialize
+open main.tally
+tokens main.tally
+folds main.tally
+selection main.tally 8:13
+completion main.tally 6:1
+completion main.tally 8:5
+completion main.tally 4:13
+hover main.tally 4:5
+request textDocument/definition main.tally
+request textDocument/documentSymbol main.tally
+request textDocument/formatting main.tally
+change main.tally
+| let x = (1 +
+| fn f() {
+completion main.tally 2:1
+folds main.tally
+change main.tally
+| fn f(a) {
+|     let y = a +
+|     return y
+| }
+folds main.tally

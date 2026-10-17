@@ -1,0 +1,18 @@
+# Parse errors as the text changes, the program of a file without a root,
+# and formatting.
+initialize
+open messy.tally
+format messy.tally
+symbols messy.tally
+change messy.tally
+| fn f(a) {
+|     return a +
+| }
+symbols messy.tally
+format messy.tally
+save messy.tally
+change messy.tally
+| fn f(a) {
+|     return a + 1
+| }
+format messy.tally

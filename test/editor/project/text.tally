@@ -1,0 +1,3 @@
+# Text past ASCII: "é" is two bytes and one UTF-16 unit, "𝄞" four and two.
+let s = "é𝄞"
+let t = s + "!"

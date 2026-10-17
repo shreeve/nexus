@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Replay a session against a language server and print what it answers.
+
+Usage:
+  test/lib/lsp SERVER ROOT SESSION
+
+SERVER is a language server `nexus --editor` wrote, built; ROOT the
+directory of the files the session names; SESSION a file of commands, one
+a line (`#` starts a comment):
+
+  initialize [utf-8] [root FILE]   the first command: the client's options
+  open FILE                        didOpen with FILE's text
+  change FILE                      didChange; the new text is the lines
+  | text                             after it that start with `| `
+  save FILE                        didSave
+  close FILE                       didClose
+  tokens FILE                      semanticTokens/full
+  folds FILE                       foldingRange
+  symbols FILE                     documentSymbol
+  format FILE                      formatting
+  hover FILE L:C                   hover (and the other requests at a
+  definition FILE L:C                position: L and C count from 1, C in
+  typeDefinition FILE L:C            the session's encoding)
+  references FILE L:C
+  highlight FILE L:C               documentHighlight
+  signature FILE L:C               signatureHelp
+  completion FILE L:C
+  selection FILE L:C               selectionRange
+  rename FILE L:C NAME
+  request METHOD FILE              any method, with just the document
+  exit                             exit without shutdown: the last command
+
+Each command is printed after `> `, then what came back: a request's
+result or error, the diagnostics a notification published, or the status
+`exit` ended the server with. Ranges print as `L:C-L:C`, URIs as paths
+relative to ROOT, semantic tokens as `L:C len scope` (the scope from the
+legend `initialize` returned), and a list one item a line. A session
+without `exit` ends with shutdown and exit; the server must then exit 0.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import threading
+
+
+def main():
+    if len(sys.argv) != 4:
+        sys.exit(__doc__)
+    server, root, session = sys.argv[1:]
+    root = os.path.abspath(root)
+    s = Session(server, root)
+    lines = open(session).read().split("\n")
+    i = 0
+    try:
+        while i < len(lines):
+            line = lines[i].strip()
+            i += 1
+            if not line or line.startswith("#"):
+                continue
+            body = []
+            while i < len(lines) and lines[i].startswith("|"):
+                body.append(lines[i][2:])
+                i += 1
+            print("> " + line)
+            if s.exited:
+                raise Failure("a command after exit")
+            s.command(line.split(), "\n".join(body) + "\n" if body else None)
+        if not s.exited:
+            s.finish()
+    except Failure as f:
+        print("!! " + str(f))
+        s.kill()
+        sys.exit(1)
+
+
+class Failure(Exception):
+    pass
+
+
+class Session:
+    def __init__(self, server, root):
+        self.root = root
+        self.proc = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.next_id = 1
+        self.legend = []
+        self.versions = {}
+        self.exited = False
+        self.timer = threading.Timer(30, self.proc.kill)
+        self.timer.start()
+
+    def kill(self):
+        self.timer.cancel()
+        self.proc.kill()
+
+    def uri(self, path):
+        return "file://" + os.path.join(self.root, path)
+
+    def send(self, msg):
+        body = json.dumps(msg).encode()
+        try:
+            self.proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+            self.proc.stdin.flush()
+        except BrokenPipeError:
+            raise Failure("the server closed its input")
+
+    def receive(self):
+        length = None
+        while True:
+            header = self.proc.stdout.readline()
+            if not header:
+                raise Failure("the server closed its output")
+            header = header.decode().strip()
+            if not header:
+                break
+            name, _, value = header.partition(":")
+            if name.lower() == "content-length":
+                length = int(value)
+        if length is None:
+            raise Failure("a message without Content-Length")
+        return json.loads(self.proc.stdout.read(length))
+
+    def notify(self, method, params):
+        self.send({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def request(self, method, params):
+        id = self.next_id
+        self.next_id += 1
+        self.send({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+        while True:
+            msg = self.receive()
+            if msg.get("id") == id and "method" not in msg:
+                return msg
+            self.show_notification(msg)
+
+    def show_notification(self, msg):
+        if msg.get("method") == "textDocument/publishDiagnostics":
+            p = msg["params"]
+            print("diagnostics %s%s" % (self.path(p["uri"]), "" if p["diagnostics"] else " none"))
+            for d in p["diagnostics"]:
+                print("  " + dump(self.render(d)))
+        else:
+            print("notification " + dump(self.render(msg)))
+
+    def path(self, uri):
+        prefix = "file://" + self.root + "/"
+        return uri[len(prefix):] if uri.startswith(prefix) else uri
+
+    def render(self, v):
+        """Ranges as `L:C-L:C`, locations as `FILE L:C-L:C`, URIs as paths."""
+        if isinstance(v, dict):
+            if set(v) == {"start", "end"} and isinstance(v["start"], dict):
+                a, b = v["start"], v["end"]
+                return "%d:%d-%d:%d" % (a["line"] + 1, a["character"] + 1, b["line"] + 1, b["character"] + 1)
+            if set(v) == {"uri", "range"}:
+                return "%s %s" % (self.path(v["uri"]), self.render(v["range"]))
+            out = {}
+            for k, x in v.items():
+                if k == "changes" and isinstance(x, dict):
+                    x = {self.path(u): e for u, e in x.items()}
+                out[k] = self.render(x)
+            return out
+        if isinstance(v, list):
+            return [self.render(x) for x in v]
+        if isinstance(v, str) and v.startswith("file://"):
+            return self.path(v)
+        return v
+
+    def doc(self, path):
+        return {"textDocument": {"uri": self.uri(path)}}
+
+    def at(self, path, lc):
+        line, _, col = lc.partition(":")
+        p = self.doc(path)
+        p["position"] = {"line": int(line) - 1, "character": int(col) - 1}
+        return p
+
+    def command(self, words, body):
+        cmd, args = words[0], words[1:]
+        if cmd == "initialize":
+            params = {"capabilities": {}, "initializationOptions": {}}
+            if "utf-8" in args:
+                params["capabilities"]["general"] = {"positionEncodings": ["utf-8", "utf-16"]}
+            if "root" in args:
+                params["initializationOptions"]["root"] = os.path.join(self.root, args[args.index("root") + 1])
+            msg = self.request("initialize", params)
+            self.legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"]
+            self.notify("initialized", {})
+            self.show(msg)
+        elif cmd == "open":
+            text = open(os.path.join(self.root, args[0]), encoding="utf-8", newline="").read()
+            self.versions[args[0]] = 1
+            self.notify("textDocument/didOpen", {"textDocument": {"uri": self.uri(args[0]), "languageId": "tally", "version": 1, "text": text}})
+        elif cmd == "change":
+            if body is None:
+                raise Failure("change needs its new text on `| ` lines")
+            self.versions[args[0]] += 1
+            p = self.doc(args[0])
+            p["textDocument"]["version"] = self.versions[args[0]]
+            p["contentChanges"] = [{"text": body}]
+            self.notify("textDocument/didChange", p)
+        elif cmd == "save":
+            self.notify("textDocument/didSave", self.doc(args[0]))
+        elif cmd == "close":
+            self.notify("textDocument/didClose", self.doc(args[0]))
+        elif cmd in DOCUMENT:
+            self.show(self.request(DOCUMENT[cmd], self.doc(args[0])), tokens=cmd == "tokens")
+        elif cmd in POSITION:
+            p = self.at(args[0], args[1])
+            if cmd == "references":
+                p["context"] = {"includeDeclaration": True}
+            elif cmd == "selection":
+                p["positions"] = [p.pop("position")]
+            elif cmd == "rename":
+                p["newName"] = args[2]
+            self.show(self.request(POSITION[cmd], p))
+        elif cmd == "request":
+            self.show(self.request(args[0], self.doc(args[1])))
+        elif cmd == "exit":
+            self.notify("exit", None)
+            self.proc.stdin.close()
+            rest = self.proc.stdout.read()
+            code = self.proc.wait()
+            self.timer.cancel()
+            self.exited = True
+            if rest:
+                raise Failure("output after exit: %r" % rest[:200])
+            print("exited %d" % code)
+        else:
+            raise Failure("unknown command " + cmd)
+        if cmd in ("open", "change", "save", "close"):
+            self.sync()
+
+    def sync(self):
+        """Wait for what a notification sent: the server answers in order,
+        so it answered the notification before this request (of a method
+        it does not have)."""
+        self.request("$/sync", {})
+
+    def show(self, msg, tokens=False):
+        if "error" in msg:
+            print("error %d %s" % (msg["error"]["code"], msg["error"]["message"]))
+            return
+        result = msg["result"]
+        if tokens and result is not None:
+            result = self.tokens(result["data"])
+        elif isinstance(result, dict) and isinstance(result.get("items"), list):
+            result = result["items"]
+        result = self.render(result)
+        if isinstance(result, list):
+            if not result:
+                print("[]")
+            for x in result:
+                print("  " + (x if tokens else dump(x)))
+        else:
+            print(dump(result))
+
+    def tokens(self, data):
+        out = []
+        line = col = 0
+        for i in range(0, len(data), 5):
+            dl, dc, n, t, _ = data[i : i + 5]
+            line += dl
+            col = col + dc if dl == 0 else dc
+            out.append("%d:%d %d %s" % (line + 1, col + 1, n, self.legend[t]))
+        return out
+
+    def finish(self):
+        self.show_tail(self.request("shutdown", None))
+        self.notify("exit", None)
+        self.proc.stdin.close()
+        rest = self.proc.stdout.read()
+        code = self.proc.wait()
+        self.timer.cancel()
+        if rest:
+            raise Failure("output after exit: %r" % rest[:200])
+        if code != 0:
+            raise Failure("the server exited %d" % code)
+
+    def show_tail(self, msg):
+        if "error" in msg:
+            raise Failure("shutdown: " + msg["error"]["message"])
+
+
+DOCUMENT = {
+    "tokens": "textDocument/semanticTokens/full",
+    "folds": "textDocument/foldingRange",
+    "symbols": "textDocument/documentSymbol",
+    "format": "textDocument/formatting",
+}
+
+POSITION = {
+    "hover": "textDocument/hover",
+    "definition": "textDocument/definition",
+    "typeDefinition": "textDocument/typeDefinition",
+    "references": "textDocument/references",
+    "highlight": "textDocument/documentHighlight",
+    "signature": "textDocument/signatureHelp",
+    "completion": "textDocument/completion",
+    "selection": "textDocument/selectionRange",
+    "rename": "textDocument/rename",
+}
+
+
+def dump(v):
+    return v if isinstance(v, str) else json.dumps(v, sort_keys=True, separators=(",", ":"))
+
+
+if __name__ == "__main__":
+    main()

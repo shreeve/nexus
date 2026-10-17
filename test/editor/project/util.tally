@@ -1,0 +1,11 @@
+# Adds two numbers.
+fn add(a, b) {
+    return a + b
+}
+
+# Twice a number.
+fn double(n) {
+    return add(n, n)
+}
+
+let greeting = "hello"
