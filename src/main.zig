@@ -37,6 +37,10 @@ const emit = @import("highlight/emit.zig");
 const describe = @import("describe.zig");
 
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
+/// An alternative that expands into this many rules or more is named in
+/// the progress output: each combination of its optional parts is a rule
+/// of its own (GRAMMAR.md, "Clause rules").
+const widestNote: usize = 32;
 
 test {
     _ = @import("diag.zig");
@@ -459,6 +463,8 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
         });
         if (result.table.conflictList.len > 0)
             diag.info("   {d} conflicts (as declared)", .{result.table.conflictList.len});
+        if (g.widest) |w| if (w.rules >= widestNote)
+            diag.info("   Expanded: rule '{s}' (line {d}): one alternative makes {d} rules, one per combination of its [...] groups and choices", .{ w.rule, w.line, w.rules });
 
         final = g;
         // Emit the combined lexer + parser module (checked in check mode

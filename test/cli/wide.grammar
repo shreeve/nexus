@@ -1,0 +1,15 @@
+# An alternative with 5 optional parts makes 32 rules; the progress
+# output names it from 32 on (check_cli).
+@lexer
+tokens
+    ident, a, b, c, d, e, eof, err
+'a'                 → a
+'b'                 → b
+'c'                 → c
+'d'                 → d
+'e'                 → e
+[x-z]+              → ident
+.                   → err
+
+@parser
+item! = IDENT ["a"] ["b"] ["c"] ["d"] ["e"]   → 1

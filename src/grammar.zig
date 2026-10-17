@@ -654,6 +654,9 @@ pub const Rule = struct {
 /// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and
 /// the directives later stages need. Built from a GrammarIR by expand.zig,
 /// in the run's arena (`allocator`).
+/// Where one alternative expands into the most rules (`Grammar.widest`).
+pub const Widest = struct { rule: []const u8, line: u32, rules: usize };
+
 pub const Grammar = struct {
     allocator: Allocator,
 
@@ -685,6 +688,9 @@ pub const Grammar = struct {
     schema: ?Schema = null,
     conflicts: []const ConflictEntry = &.{},
     trivia: []const []const u8 = &.{},
+    /// The alternative whose `[...]` groups and choices expand into the
+    /// most rules, and how many (null when none expands).
+    widest: ?Widest = null,
     repair: ?RepairSpec = null,
 
     /// Which terminal each lexer token reaches the parser as, in the order

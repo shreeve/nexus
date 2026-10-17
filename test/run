@@ -496,8 +496,11 @@ check_cli() {
         return 0
     }
     mkdir -p "$dir"
-    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar test/highlight/highlight.grammar "$dir/"
+    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar test/highlight/highlight.grammar test/cli/wide.grammar test/cli/narrow.grammar "$dir/"
     expect 0 "$want" --version || return 1
+    # The progress output names an alternative that makes 32 rules or more.
+    expect 0 "Expanded: rule 'item' (line 15): one alternative makes 32 rules" check wide.grammar || return 1
+    if (cd "$dir" && "$NEXUS" check narrow.grammar 2>&1) | grep -q "Expanded:"; then REASON="check narrow.grammar names an alternative of 16 rules"; return 1; fi
     expect 0 "$want" -V || return 1
     [[ $(cd "$dir" && "$NEXUS" --version 2>/dev/null) == "$want" ]] || { REASON="--version does not print \"$want\" on stdout"; return 1; }
     expect 0 "Usage: nexus" --help || return 1
@@ -523,7 +526,7 @@ check_cli() {
     expect 2 "--highlight all writes a directory, not standard output" --highlight all highlight.grammar - || return 1
     expect 2 "the output file 'highlight.grammar' is the grammar file" --describe highlight.grammar highlight.grammar || return 1
     expect 1 "error: cannot create no_lang.grammar/sub" --highlight all highlight.grammar no_lang.grammar/sub || return 1
-    if [[ -n $(cd "$dir" && ls | grep -vxE 'no_lang\.grammar|list_tail_conflict\.grammar|highlight\.grammar') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
+    if [[ -n $(cd "$dir" && ls | grep -vxE 'no_lang\.grammar|list_tail_conflict\.grammar|highlight\.grammar|wide\.grammar|narrow\.grammar') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
     expect 0 '"format": 1' --describe no_lang.grammar || return 1
     expect 0 "Wrote the description to d.json" --describe no_lang.grammar d.json || return 1
     expect 0 "Wrote the vim file to h.vim" --highlight vim highlight.grammar h.vim || return 1
@@ -788,7 +791,7 @@ SEXP_SEEN=""
 for dir in grammars/*/ test/*/; do
     dir=${dir%/}
     name=$(basename "$dir")
-    case $name in golden|adverse|known|regress|lib|bench|lexfuzz) continue ;; esac
+    case $name in golden|adverse|known|regress|lib|bench|lexfuzz|cli) continue ;; esac
     suite_conf "$dir"
     if [[ -n "$CONF_ERROR" || -z "$GRAMMAR" ]]; then add "$name" bad "${CONF_ERROR:-$dir holds no grammar}"; continue; fi
     for sub in cases known; do

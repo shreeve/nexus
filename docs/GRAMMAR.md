@@ -619,6 +619,19 @@ becomes a rule of its own, as a repeated choice does. A multi-element
 `[A B]` group is allowed only at the top level (elsewhere, use a helper
 rule). Groups and choices nest at most 64 deep.
 
+Each combination is a rule, and the parser gives each its own states:
+an alternative with five optional parts is 32 rules, and a run of
+optional parts written in several rules is copied into every one of
+them. Written once as a clause rule
+([SEMANTICS.md](SEMANTICS.md#clause-rules)), the run is parsed by one
+set of states wherever it is used. The progress output of generation and
+`nexus check` names the alternative that makes the most rules when it
+makes 32 or more:
+
+```text
+   Expanded: rule 'item' (line 15): one alternative makes 32 rules, one per combination of its [...] groups and choices
+```
+
 `[...]` is already optional: it takes no quantifier, and its body must
 match something. `[X?]`, `[X*]` and `[A | B?]` are errors (an absent
 body and an empty one would look alike); write `[X]` or `X?`. `L(X?)` counts as matching
