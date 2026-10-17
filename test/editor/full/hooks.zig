@@ -398,7 +398,8 @@ fn docAbove(text: []const u8, at: u32) []const u8 {
 
 pub fn analyze(arena: Allocator, root: []const u8, overlay: lsp.Overlay) !lsp.Analyzed(Analysis) {
     var b: Builder = .{ .arena = arena, .overlay = overlay, .dir = std.fs.path.dirname(root) orelse "." };
-    _ = try b.load(root);
+    // A program whose root cannot be read or parsed has no analysis.
+    _ = try b.load(root) orelse return error.NoProgram;
     // A module before the files that use it, so its types are known.
     var i = b.files.items.len;
     while (i > 0) {

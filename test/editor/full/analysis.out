@@ -1,0 +1,35 @@
+> initialize root main.tally
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open util.tally
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
+diagnostics util.tally none
+> open main.tally
+diagnostics util.tally none
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
+> change main.tally
+diagnostics main.tally
+  {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
+> save main.tally
+diagnostics util.tally none
+diagnostics main.tally
+  {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
+> hover util.tally 2:4
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> references util.tally 2:4
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15
+> change main.tally
+diagnostics main.tally none
+> save main.tally
+diagnostics util.tally none
+diagnostics main.tally none
+> references util.tally 2:4
+  main.tally 2:18-2:21
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15

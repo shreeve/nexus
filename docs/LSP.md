@@ -216,7 +216,12 @@ analysis, its diagnostics in every file, and the files it read.
 
 The server runs `analyze` when a file opens and when it is saved, never
 as you type, and holds the result in an arena of its own until the next
-analysis replaces it.
+analysis replaces it. An analysis that fails (`analyze` returns an error)
+leaves the one before in place. Until one succeeds, the requests that
+read the analysis answer nothing, and a rename is refused with "no
+analysis yet: save the file". A document without a path, such as an
+unsaved `untitled:` one, is parsed and coloured but never analyzed, so
+those requests answer nothing in it.
 
 Diagnostics are published to every file they name, opened or not. An
 open file shows its syntax errors and, while its text is the text the
@@ -225,7 +230,9 @@ next save. A file the last analysis named and the new one does not is
 cleared. A diagnostic's `notes` are its related locations.
 
 The functions that read the analysis take a position, a `Pos`: a path and
-a byte offset in that file's text.
+a byte offset in that file's text. In a file edited since the analysis,
+the offset is in the edited text, so until the next save an answer there
+can be missing or misplaced.
 
 ```zig fragment
 pub fn symbolAt(a: *Analysis, arena: Allocator, at: lsp.Pos) !?lsp.Symbol

@@ -9,7 +9,9 @@ directory of the files the session names; SESSION a file of commands, one
 a line (`#` starts a comment):
 
   initialize [utf-8] [root FILE]   the first command: the client's options
-  open FILE                        didOpen with FILE's text
+  open FILE                        didOpen with FILE's text, or with the
+                                     `| ` lines after it; a FILE that starts
+                                     with `untitled:` is an unsaved document
   change FILE                      didChange; the new text is the lines
   | text                             after it that start with `| `
   save FILE                        didSave
@@ -95,7 +97,7 @@ class Session:
         self.proc.kill()
 
     def uri(self, path):
-        return "file://" + os.path.join(self.root, path)
+        return path if path.startswith("untitled:") else "file://" + os.path.join(self.root, path)
 
     def send(self, msg):
         body = json.dumps(msg).encode()
@@ -189,7 +191,7 @@ class Session:
             self.notify("initialized", {})
             self.show(msg)
         elif cmd == "open":
-            text = open(os.path.join(self.root, args[0]), encoding="utf-8", newline="").read()
+            text = body if body is not None else open(os.path.join(self.root, args[0]), encoding="utf-8", newline="").read()
             self.versions[args[0]] = 1
             self.notify("textDocument/didOpen", {"textDocument": {"uri": self.uri(args[0]), "languageId": "tally", "version": 1, "text": text}})
         elif cmd == "change":

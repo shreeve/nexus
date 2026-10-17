@@ -267,9 +267,10 @@ server: the suite runs `nexus --editor` on the suite's grammar, puts the
 subdirectory's `hooks.zig` in place of the stub when it has one, builds
 the server with `zig build`, and replays each session against it with
 `test/lib/lsp`, on the files of `<suite>/project/`. A session is one
-command a line (`initialize`, `open`, `change` with its new text on `| `
-lines, `hover FILE L:C`, `rename FILE L:C NAME`, ...; `test/lib/lsp`
-lists them all), and its `.out` is each command after `> `, then what
+command a line (`initialize`; `open`, with the file's text or, for an
+`untitled:` document or a file not on disk, the `| ` lines after it;
+`change` with its new text on `| ` lines; `hover FILE L:C`;
+`rename FILE L:C NAME`; ...; `test/lib/lsp` lists them all), and its `.out` is each command after `> `, then what
 the server answered or published, ranges as `L:C-L:C` and semantic tokens
 as `L:C len scope`. `--update` writes the `.out` file.
 

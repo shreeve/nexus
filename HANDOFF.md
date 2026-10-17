@@ -64,8 +64,11 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    - The suite drives the server through sessions, but not the VS Code
      client in VS Code, nor `vsce package`; the extension's files are
      pinned by goldens.
-   - No session covers an analysis that fails after one that succeeded,
-     an untitled document, or a request before the first analysis.
+   - In a file edited since the last analysis, a request looks up the
+     edited text's offsets in that analysis, so until the save an answer
+     there can be missing or misplaced (`full/analysis.session` shows
+     `references` dropping the edited file's uses). Mapping offsets
+     through the edits would fix it.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
    - Next: `@lsp`, names and scopes declared in the grammar, so that
