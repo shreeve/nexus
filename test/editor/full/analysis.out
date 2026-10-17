@@ -16,16 +16,19 @@ diagnostics main.tally
 diagnostics main.tally
   {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
 > save main.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the analysis of main.tally failed: NoProgram","type":1}}
 diagnostics util.tally none
 diagnostics main.tally
   {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > hover util.tally 2:4
 {"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
 > references util.tally 2:4
   util.tally 2:4-2:7
   util.tally 8:12-8:15
 > change main.tally
-diagnostics main.tally none
+diagnostics main.tally
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > save main.tally
 diagnostics util.tally none
 diagnostics main.tally none

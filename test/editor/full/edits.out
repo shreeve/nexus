@@ -16,9 +16,12 @@ diagnostics messy.tally
 > format messy.tally
 null
 > save messy.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the analysis of messy.tally failed: NoProgram","type":1}}
 diagnostics messy.tally
   {"message":"expected an expression, got end of line","range":"2:15-3:1","severity":1,"source":"tally"}
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > change messy.tally
-diagnostics messy.tally none
+diagnostics messy.tally
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > format messy.tally
 null

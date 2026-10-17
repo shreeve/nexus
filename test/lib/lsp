@@ -34,9 +34,10 @@ a line (`#` starts a comment):
 
 Each command is printed after `> `, then what came back: a request's
 result or error, the diagnostics a notification published, or the status
-`exit` ended the server with. Ranges print as `L:C-L:C`, URIs as paths
-relative to ROOT, semantic tokens as `L:C len scope` (the scope from the
-legend `initialize` returned), and a list one item a line. A session
+`exit` ended the server with. Ranges print as `L:C-L:C`, URIs and the
+paths in other notifications relative to ROOT, semantic tokens as
+`L:C len scope` (the scope from the legend `initialize` returned), and a
+list one item a line. A session
 without `exit` ends with shutdown and exit; the server must then exit 0.
 """
 
@@ -143,7 +144,7 @@ class Session:
             for d in p["diagnostics"]:
                 print("  " + dump(self.render(d)))
         else:
-            print("notification " + dump(self.render(msg)))
+            print("notification " + dump(self.render(msg)).replace(self.root + "/", ""))
 
     def path(self, uri):
         prefix = "file://" + self.root + "/"

@@ -446,12 +446,15 @@ pub fn run(io: std.Io) u8 {
     return status;
 }
 
-/// An open document. `analyzed`: the last analysis read this text.
+/// An open document. `analyzed`: the last analysis read this text;
+/// `failed`: the error of the failed analysis its opening or saving ran,
+/// until an analysis succeeds.
 const Doc = struct {
     uri: []u8,
     path: []u8,
     text: []u8,
     analyzed: bool = false,
+    failed: ?[]const u8 = null,
 
     fn deinit(d: *Doc, gpa: Allocator) void {
         gpa.free(d.uri);
@@ -701,8 +704,9 @@ const Server = struct {
         for (s.docs.items) |*o| try s.publish(a, o);
     }
 
-    /// Hold what `analyze` makes of the program of `d`; an analysis that
-    /// fails keeps the last one.
+    /// Hold what `analyze` makes of the program of `d`. An analysis that
+    /// fails keeps the last one, and says so: in the log, and in a
+    /// diagnostic on `d` until an analysis succeeds.
     fn analyzeProgram(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
         var paths: std.ArrayList([]const u8) = .empty;
         var texts: std.ArrayList([]const u8) = .empty;
@@ -712,8 +716,11 @@ const Server = struct {
         };
         var held: Held = .{ .arena = .init(s.gpa), .value = undefined, .diagnostics = &.{}, .files = &.{} };
         const ha = held.arena.allocator();
-        const got = hooks.analyze(ha, s.root orelse d.path, .{ .io = s.io, .paths = paths.items, .texts = texts.items }) catch {
+        const got = hooks.analyze(ha, s.root orelse d.path, .{ .io = s.io, .paths = paths.items, .texts = texts.items }) catch |err| {
             held.arena.deinit();
+            d.failed = @errorName(err);
+            const message = try std.fmt.allocPrint(a, "the analysis of {s} failed: {s}", .{ s.root orelse d.path, @errorName(err) });
+            try s.notify(a, "window/logMessage", .{ .type = 1, .message = message });
             return;
         };
         held.value = try ha.create(Analysis);
@@ -722,7 +729,10 @@ const Server = struct {
         held.files = got.files;
         if (s.held) |*old| old.arena.deinit();
         s.held = held;
-        for (s.docs.items) |*o| o.analyzed = true;
+        for (s.docs.items) |*o| {
+            o.analyzed = true;
+            o.failed = null;
+        }
         // Clear what the last analysis published to files this one does not name.
         for (s.published.items) |p| {
             if (s.mentions(p)) continue;
@@ -752,14 +762,18 @@ const Server = struct {
     /// analysis's while it read this text.
     fn publish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
         const parsed = try parseDiagnostics(a, d.path, d.text);
-        try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .analyzed = d.analyzed, .uri = d.uri });
+        try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .analyzed = d.analyzed, .failed = d.failed, .uri = d.uri });
     }
 
-    const Open = struct { text: []const u8, parsed: []const Diagnostic, analyzed: bool, uri: []const u8 };
+    const Open = struct { text: []const u8, parsed: []const Diagnostic, analyzed: bool, failed: ?[]const u8, uri: []const u8 };
 
     fn sendFileDiagnostics(s: *Server, a: Allocator, path: []const u8, open: ?Open) error{ OutOfMemory, WriteFailed }!void {
         var list: std.ArrayList(Diagnostic) = .empty;
         if (open) |o| try list.appendSlice(a, o.parsed);
+        if (open) |o| if (o.failed) |err| try list.append(a, .{
+            .span = .{ .path = path, .start = 0, .end = 0 },
+            .message = try std.fmt.allocPrint(a, "the analysis failed: {s}", .{err}),
+        });
         if (s.held) |h| if (open == null or open.?.analyzed) {
             for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) try list.append(a, d);
         };
@@ -798,6 +812,11 @@ const Server = struct {
             try j.endObject();
         }
         try j.endArray();
+    }
+
+    fn notify(s: *Server, a: Allocator, method: []const u8, params: anytype) error{ OutOfMemory, WriteFailed }!void {
+        const body = try std.json.Stringify.valueAlloc(a, .{ .jsonrpc = "2.0", .method = method, .params = params }, .{});
+        try writeMessage(s.out, body);
     }
 
     fn sendDiagnostics(s: *Server, a: Allocator, uri: []const u8, diagnostics: []const u8) error{ OutOfMemory, WriteFailed }!void {

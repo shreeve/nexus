@@ -217,7 +217,10 @@ analysis, its diagnostics in every file, and the files it read.
 The server runs `analyze` when a file opens and when it is saved, never
 as you type, and holds the result in an arena of its own until the next
 analysis replaces it. An analysis that fails (`analyze` returns an error)
-leaves the one before in place. Until one succeeds, the requests that
+leaves the one before in place, and says so: the server logs "the
+analysis of ROOT failed: ERROR" (`window/logMessage`), and the file whose
+opening or saving ran it has an error at its start, "the analysis failed:
+ERROR", until an analysis succeeds. Until one succeeds, the requests that
 read the analysis answer nothing, and a rename is refused with "no
 analysis yet: save the file". A document without a path, such as an
 unsaved `untitled:` one, is parsed and coloured but never analyzed, so

@@ -3,8 +3,10 @@ error -32002 initialize first
 > initialize
 {"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
 > open odd.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the analysis of odd.tally failed: NoProgram","type":1}}
 diagnostics odd.tally
   {"message":"expected an expression, end of input, end of line, kw_use, kw_let, kw_fn or kw_return, got err","range":"1:1-1:1","severity":1,"source":"tally"}
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > tokens odd.tally
   1:1 3 keyword
   1:7 1 operator
