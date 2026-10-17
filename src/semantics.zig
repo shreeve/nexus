@@ -12,6 +12,10 @@
 //!     roles become `Rule.sideLabels`; every required role is filled, and
 //!     the result lists every slot in schema order (nil where unfilled)
 //!     followed by the rest children;
+//!   - clause rules: a rule whose alternatives build nothing and label the
+//!     same roles in the same order builds the untagged list of its labeled
+//!     values, and every alternative that uses it spreads that list into
+//!     its node's roles of those names, which follow one another there;
 //!   - the coverage gate: every value-bearing pattern element is used by
 //!     the action, labeled, or dropped (`!X`, `_:X`), unless the
 //!     alternative opts out (`~ "reason"`).
@@ -117,6 +121,16 @@ const Resolver = struct {
     /// Per rule name: its alternatives' list length when every one builds
     /// an untagged list of the same length (see `fixedLength`).
     fixed: std.StringHashMapUnmanaged(Fixed) = .empty,
+    /// Per clause rule: the roles its alternatives label, in order (see
+    /// `findClauses`).
+    clauses: std.StringHashMapUnmanaged([]const []const u8) = .empty,
+    /// Rules rejected as clause rules (their alternatives label different
+    /// roles): reported once, not again where they or their labels are
+    /// used.
+    rejected: std.StringHashMapUnmanaged(void) = .empty,
+    /// Positions of the alternative being resolved whose clause rule use
+    /// was reported, which the coverage gate passes over.
+    reported: std.ArrayList(u16) = .empty,
 
     const Current = struct { alt: ParsedAlternative, layout: Layout, aliases: *const std.StringHashMapUnmanaged([]const u8) };
 
@@ -149,6 +163,7 @@ const Resolver = struct {
         if (self.failed) return error.SemanticError;
 
         const aliases = try self.aliasTargets();
+        try self.findClauses();
 
         var resolved: std.ArrayList([]const Resolved) = .empty;
         for (self.ir.rules) |rule| {
@@ -185,9 +200,14 @@ const Resolver = struct {
         return out;
     }
 
-    fn resolveAlternative(self: *Resolver, rule: ParsedRule, alt: ParsedAlternative, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!Resolved {
-        const ctx: Ctx = .{ .rule = rule.name, .line = alt.line, .col = alt.col };
-        const layout = try Layout.of(self.a, alt.elements);
+    fn resolveAlternative(self: *Resolver, rule: ParsedRule, given: ParsedAlternative, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!Resolved {
+        const ctx: Ctx = .{ .rule = rule.name, .line = given.line, .col = given.col };
+        const layout = try Layout.of(self.a, given.elements);
+        if (self.clauses.contains(rule.name)) return self.resolveClause(ctx, given, layout, aliases);
+        if (self.rejected.contains(rule.name)) return .{ .tree = given.actionTree };
+        // The action, with a spread for each clause rule the pattern uses.
+        var alt = given;
+        alt.actionTree = try self.useClauses(ctx, given, layout);
 
         // Pattern labels, with their positions.
         var labels: std.ArrayList(Label) = .empty;
@@ -195,6 +215,7 @@ const Resolver = struct {
             const e = layout.element(alt.elements, p);
             const name = e.label orelse continue;
             if (std.mem.eql(u8, name, "_")) continue;
+            if (e.kind == .ident and self.clauses.contains(e.value)) continue; // useClauses reports it
             const lctx: Ctx = .{ .rule = rule.name, .line = e.line, .col = e.col };
             if (layout.whole(p)) |f| if (several(f)) {
                 const what = if (e.kind == .choice) "a choice with an alternative of several elements" else "a group of several elements";
@@ -243,6 +264,169 @@ const Resolver = struct {
 
         if (alt.optOut == null and alt.actionTree != null) try self.checkCoverage(ctx, alt, layout, aliases);
         return out;
+    }
+
+    // --- Clause rules ---
+
+    /// Record each clause rule: every alternative builds nothing (no
+    /// action) and labels roles, the same ones in the same order. Its
+    /// lists have that fixed length, so a spread of it fills roles.
+    fn findClauses(self: *Resolver) Error!void {
+        rules: for (self.ir.rules) |rule| {
+            for (rule.alternatives) |alt| if (alt.actionTree != null) continue :rules;
+            var names: ?[]const []const u8 = null;
+            var line: u32 = 0;
+            for (rule.alternatives) |alt| {
+                const these = try self.roleLabels(alt);
+                if (names) |n| {
+                    if (!sameNames(n, these)) {
+                        self.err(.{ .rule = rule.name, .line = alt.line, .col = alt.col }, "a clause rule labels the same roles in the same order in every alternative: line {d} labels {f}, this one {f}", .{ line, fmtNames(n), fmtNames(these) });
+                        try self.rejected.put(self.a, rule.name, {});
+                        continue :rules;
+                    }
+                } else {
+                    names = these;
+                    line = alt.line;
+                }
+            }
+            const n = names orelse continue;
+            if (n.len == 0) continue;
+            try self.clauses.put(self.a, rule.name, n);
+            try self.fixed.put(self.a, rule.name, .{ .len = @intCast(n.len) });
+        }
+    }
+
+    /// The role labels of an alternative (not `_`), in position order.
+    fn roleLabels(self: *Resolver, alt: ParsedAlternative) Error![]const []const u8 {
+        const layout = try Layout.of(self.a, alt.elements);
+        var out: std.ArrayList([]const u8) = .empty;
+        for (1..layout.slots.len + 1) |p| {
+            const name = layout.element(alt.elements, p).label orelse continue;
+            if (!std.mem.eql(u8, name, "_")) try out.append(self.a, name);
+        }
+        return out.toOwnedSlice(self.a);
+    }
+
+    /// A clause rule's alternative builds the untagged list of its labeled
+    /// values, in position order.
+    fn resolveClause(self: *Resolver, ctx: Ctx, alt: ParsedAlternative, layout: Layout, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!Resolved {
+        var items: std.ArrayList(ActionItem) = .empty;
+        for (1..layout.slots.len + 1) |p| {
+            const e = layout.element(alt.elements, p);
+            const name = e.label orelse continue;
+            if (std.mem.eql(u8, name, "_")) continue;
+            if (layout.whole(p)) |f| if (several(f)) {
+                const what = if (e.kind == .choice) "a choice with an alternative of several elements" else "a group of several elements";
+                self.err(.{ .rule = ctx.rule, .line = e.line, .col = e.col }, "label '{s}' names {s}; label those elements instead", .{ name, what });
+                continue;
+            };
+            try items.append(self.a, .{ .elem = .{ .ref = @intCast(p) } });
+        }
+        self.reported.clearRetainingCapacity();
+        for (alt.elements, layout.pos) |e, pos| if (try self.clauseInClause(ctx, e)) try self.reported.append(self.a, pos);
+        const tree: ActionTree = .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(self.a) } };
+        var built = alt;
+        built.actionTree = tree;
+        if (alt.optOut == null) try self.checkCoverage(ctx, built, layout, aliases);
+        return .{ .tree = tree };
+    }
+
+    /// A clause rule used inside another is an error: its roles would have
+    /// to be spread twice.
+    fn clauseInClause(self: *Resolver, ctx: Ctx, e: ParsedElement) Error!bool {
+        var found = false;
+        if (e.kind == .ident and self.clauses.contains(e.value)) {
+            self.err(.{ .rule = ctx.rule, .line = e.line, .col = e.col }, "clause rule '{s}' is used inside clause rule '{s}'; write its elements there instead", .{ e.value, ctx.rule });
+            found = true;
+        }
+        for (e.subElements) |sub| found = try self.clauseInClause(ctx, sub) or found;
+        for (e.choices) |c| for (c) |sub| {
+            found = try self.clauseInClause(ctx, sub) or found;
+        };
+        return found;
+    }
+
+    /// The action of an alternative with a `firstRole:...N` item for each
+    /// clause rule at the top level of its pattern; a clause rule anywhere
+    /// else, labeled, repeated, or in an alternative that builds no node is
+    /// an error.
+    fn useClauses(self: *Resolver, ctx: Ctx, alt: ParsedAlternative, layout: Layout) Error!?ActionTree {
+        self.reported.clearRetainingCapacity();
+        if (self.clauses.count() == 0 and self.rejected.count() == 0) return alt.actionTree;
+        var extra: std.ArrayList(ActionItem) = .empty;
+        for (alt.elements, 0..) |e, i| {
+            if (e.kind != .ident) {
+                var nested = false;
+                for (e.subElements) |sub| nested = try self.clauseNested(ctx, sub) or nested;
+                for (e.choices) |c| for (c) |sub| {
+                    nested = try self.clauseNested(ctx, sub) or nested;
+                };
+                if (nested) try self.reported.append(self.a, layout.pos[i]);
+                continue;
+            }
+            if (self.rejected.contains(e.value)) {
+                try self.reported.append(self.a, layout.pos[i]);
+                continue;
+            }
+            const names = self.clauses.get(e.value) orelse continue;
+            const ectx: Ctx = .{ .rule = ctx.rule, .line = e.line, .col = e.col };
+            const pos = layout.pos[i];
+            if (e.label) |l| {
+                if (!std.mem.eql(u8, l, "_"))
+                    try self.misused(ectx, pos, "clause rule '{s}' takes no label: its labels fill the roles of the node the action builds", .{e.value});
+                continue;
+            }
+            if (e.quantifier == .zeroPlus or e.quantifier == .onePlus) {
+                try self.misused(ectx, pos, "clause rule '{s}' is repeated; it fills a node's roles once", .{e.value});
+                continue;
+            }
+            const kind: ?Schema.Kind = if (alt.actionTree) |t| switch (t) {
+                .list => |l| switch (l.head) {
+                    .tag => |tag| if (self.kindIndex.get(tag)) |ki| self.schema.kinds[ki] else null,
+                    else => null,
+                },
+                else => null,
+            } else null;
+            const k = kind orelse {
+                try self.misused(ectx, pos, "clause rule '{s}' fills the roles of the node an action builds, but this alternative builds none", .{e.value});
+                continue;
+            };
+            const slotCount = slotsOf(k.roles);
+            const first = roleIndex(k.roles, names[0]);
+            const fits = if (first) |f| f + names.len <= slotCount and for (names, f..) |n, ri| {
+                if (!std.mem.eql(u8, k.roles[ri].name, n)) break false;
+            } else true else false;
+            if (!fits) {
+                try self.misused(ectx, pos, "clause rule '{s}' fills {f}, which are not consecutive roles of '{s}' in that order (roles: {f})", .{ e.value, fmtNames(names), k.tag, fmtRoles(k) });
+                continue;
+            }
+            try extra.append(self.a, .{ .role = names[0], .elem = .{ .spread = pos } });
+        }
+        if (extra.items.len == 0) return alt.actionTree;
+        const l = alt.actionTree.?.list;
+        return .{ .list = .{ .head = l.head, .items = try std.mem.concat(self.a, ActionItem, &.{ l.items, extra.items }) } };
+    }
+
+    /// Report a misused clause rule at position `pos`, which the coverage
+    /// gate then passes over.
+    fn misused(self: *Resolver, ctx: Ctx, pos: u16, comptime fmt: []const u8, args: anytype) Error!void {
+        self.err(ctx, fmt, args);
+        try self.reported.append(self.a, pos);
+    }
+
+    /// A clause rule inside a group or choice of a pattern is an error: its
+    /// position is not one element of the alternative.
+    fn clauseNested(self: *Resolver, ctx: Ctx, e: ParsedElement) Error!bool {
+        var found = false;
+        if (e.kind == .ident and self.clauses.contains(e.value)) {
+            self.err(.{ .rule = ctx.rule, .line = e.line, .col = e.col }, "clause rule '{s}' is inside a group or choice; use it at the top level of the alternative", .{e.value});
+            found = true;
+        }
+        for (e.subElements) |sub| found = try self.clauseNested(ctx, sub) or found;
+        for (e.choices) |c| for (c) |sub| {
+            found = try self.clauseNested(ctx, sub) or found;
+        };
+        return found;
     }
 
     /// A pattern label. `lits`: the texts a labeled string literal or
@@ -685,6 +869,7 @@ const Resolver = struct {
         const used = try self.a.alloc(bool, layout.slots.len + 1);
         @memset(used, false);
         markTree(alt.actionTree.?, used);
+        for (self.reported.items) |p| used[p] = true;
         for (1..layout.slots.len + 1) |p| {
             const e = layout.element(alt.elements, p);
             if (used[p] or e.label != null or e.skip) continue;
@@ -888,6 +1073,24 @@ fn writeRoleNames(k: Schema.Kind, w: *std.Io.Writer) std.Io.Writer.Error!void {
 
 fn fmtList(names: []const []const u8) std.fmt.Alt([]const []const u8, writeList) {
     return .{ .data = names };
+}
+
+fn fmtNames(names: []const []const u8) std.fmt.Alt([]const []const u8, writeNames) {
+    return .{ .data = names };
+}
+
+fn writeNames(names: []const []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    if (names.len == 0) return w.writeAll("nothing");
+    for (names, 0..) |n, i| {
+        if (i > 0) try w.writeAll(", ");
+        try w.writeAll(n);
+    }
+}
+
+fn sameNames(a: []const []const u8, b: []const []const u8) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| if (!std.mem.eql(u8, x, y)) return false;
+    return true;
 }
 
 fn writeList(names: []const []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {

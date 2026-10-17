@@ -1,0 +1,142 @@
+> #!/usr/bin/env nexis
+  ^^^^^^^^^^^^^^^^^^^^ comment
+> ; Every token and context of nexis's editor colouring; read, not run.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> (ns demo.sample (:require [clojure.string :as str]))
+  ^ punctuation
+   ^^ keyword
+                  ^ punctuation
+                   ^^^^^^^^ constant.symbol
+                            ^ punctuation
+                                            ^^^ constant.symbol
+                                                   ^^^ punctuation
+> 
+> (def answer 42)
+  ^ punctuation
+   ^^^^ keyword
+       ^^^^^^ function
+              ^^ constant.numeric
+                ^ punctuation
+> (defn- greet "Greets a name." [name] (str "hi, " name "\n"))
+  ^ punctuation
+   ^^^^^^ keyword
+         ^^^^^ function
+               ^^^^^^^^^^^^^^^^ string
+                                ^ punctuation
+                                     ^ punctuation
+                                       ^ punctuation
+                                            ^^^^^^ string
+                                                        ^^^^ string
+                                                            ^^ punctuation
+> (defmacro unless [test & body] `(if ~test nil (do ~@body)))
+  ^ punctuation
+   ^^^^^^^^^ keyword
+            ^^^^^^ function
+                   ^ punctuation
+                               ^ punctuation
+                                 ^ operator
+                                  ^ punctuation
+                                   ^^ keyword.control
+                                      ^ operator
+                                            ^^^ constant
+                                                ^ punctuation
+                                                 ^^ keyword.control
+                                                    ^^ operator
+                                                          ^^^ punctuation
+> 
+> (let [x 1, y -2.5e3 z ##Inf]
+  ^ punctuation
+   ^^^ keyword
+       ^ punctuation
+          ^ constant.numeric
+               ^^^^^^ constant.numeric
+                        ^^^^^ constant.numeric
+                             ^ punctuation
+>   (if (and (< x y) (not= x 0))
+    ^ punctuation
+     ^^ keyword.control
+        ^ punctuation
+         ^^^ keyword.control
+             ^ punctuation
+                   ^ punctuation
+                     ^ punctuation
+                             ^ constant.numeric
+                              ^^ punctuation
+>     (println :ok x 'sym @a ^:private q #'greet)
+      ^ punctuation
+               ^^^ constant.symbol
+                     ^ operator
+                          ^ operator
+                             ^ operator
+                              ^^^^^^^^ constant.symbol
+                                         ^^ operator
+                                                ^ punctuation
+>     (when-not false (recur (inc x)))))
+      ^ punctuation
+       ^^^^^^^^ keyword.control
+                ^^^^^ constant
+                      ^ punctuation
+                       ^^^^^ keyword.control
+                             ^ punctuation
+                                   ^^^^^ punctuation
+> 
+> (def m {:name "nexis" :tags #{:lisp :zig} :re #"a+b*" :c \newline :d \a})
+  ^ punctuation
+   ^^^^ keyword
+       ^ function
+         ^ punctuation
+          ^^^^^ constant.symbol
+                ^^^^^^^ string
+                        ^^^^^ constant.symbol
+                              ^^ punctuation
+                                ^^^^^ constant.symbol
+                                      ^^^^ constant.symbol
+                                          ^ punctuation
+                                            ^^^ constant.symbol
+                                                ^^^^^^^ string
+                                                        ^^ constant.symbol
+                                                           ^^^^^^^^ constant
+                                                                    ^^ constant.symbol
+                                                                       ^^ constant
+                                                                         ^^ punctuation
+> (map #(* % 2) [1 2 3]) #_ (ignored form) #inst "2026-10-16"
+  ^ punctuation
+       ^^ punctuation
+             ^ constant.numeric
+              ^ punctuation
+                ^ punctuation
+                 ^ constant.numeric
+                   ^ constant.numeric
+                     ^ constant.numeric
+                      ^^ punctuation
+                         ^^ operator
+                            ^ punctuation
+                                         ^ punctuation
+                                           ^^^^^ type
+                                                 ^^^^^^^^^^^^ string
+> (try (throw (ex-info "bad" {})) (catch Exception e nil) (finally true))
+  ^ punctuation
+   ^^^ keyword.control
+       ^ punctuation
+        ^^^^^ keyword.control
+              ^ punctuation
+                       ^^^^^ string
+                             ^^^^ punctuation
+                                  ^ punctuation
+                                   ^^^^^ keyword.control
+                                                     ^^^ constant
+                                                        ^ punctuation
+                                                          ^ punctuation
+                                                           ^^^^^^^ keyword.control
+                                                                   ^^^^ constant
+                                                                       ^^ punctuation
+> (let* [let-x 1 fn-y 2 x-1 3] [let-x fn-y x-1])
+  ^ punctuation
+   ^^^^ keyword
+        ^ punctuation
+               ^ constant.numeric
+                      ^ constant.numeric
+                            ^ constant.numeric
+                             ^ punctuation
+                               ^ punctuation
+                                              ^^ punctuation

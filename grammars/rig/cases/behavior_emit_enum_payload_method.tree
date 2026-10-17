@@ -9,6 +9,7 @@
       ((read `self`)@115..120)@114..121
       `Bool`
       _
+      _
       (block
         (match
           `self`
@@ -21,6 +22,7 @@
     `main`
     _
     ()@201..203
+    _
     _
     (block
       (set

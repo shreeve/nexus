@@ -548,6 +548,9 @@ const Expander = struct {
             if (total > maxRules)
                 return self.fail(alt.line, alt.col, "this alternative's [...] groups and choices expand into more than {d} rules (one per combination); move some into helper rules", .{maxRules});
         };
+        if (total > 1) if (self.g.widest == null or total > self.g.widest.?.rules) {
+            self.g.widest = .{ .rule = self.g.symbols.items[lhsId].name, .line = alt.line, .rules = total };
+        };
 
         // Without a schema, a leading `role:N` names the head tag only when
         // the alternative is not expanded (otherwise the key is dropped).

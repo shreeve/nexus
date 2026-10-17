@@ -2,6 +2,7 @@ SAMPLE ; Every token and context of M's editor colouring; read, not run
  ;
 EN(A,B) ; a label with formals
  N X,Y S X=1,Y="say ""hi""" W X,!
+ S Z="" W Z,!
  S X1=2,A=X1_1,%B=X1 ; names with digits and %
  S:A>0 ^G(1,"a")=A+B I X=1 W "one",! E  W "other",!
  Q:'$D(^G(1))  K ^G

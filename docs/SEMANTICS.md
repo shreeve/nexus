@@ -433,6 +433,71 @@ error names the item (`item 2 of the list of element 2 (head)`). When the
 element is optional (`[head]`) and absent, its roles are nil. The list is
 plumbing: it gets no node id, and the node reads its items in place.
 
+### Clause rules
+
+A run of optional parts that several kinds share is written once as a
+*clause rule*: a rule with no actions whose every alternative labels the
+same roles in the same order. Each alternative that uses it at the top
+level of its pattern gets those roles filled, as if its labels were
+written there, and builds the same parser as a spread of a fixed-length
+rule does: the run's states are shared, not copied into every rule that
+has it.
+
+```grammar clauses.grammar
+@lexer
+
+tokens
+    ident, kw_fn, kw_extern, lparen, rparen, arrow, eq, eof, err
+
+[ \t\n]+                    → skip, skip
+"fn"                        → kw_fn
+"extern"                    → kw_extern
+'('                         → lparen
+')'                         → rparen
+"->"                        → arrow
+'='                         → eq
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    module     ...decls
+    fn         name:leaf params:group? result? body:leaf
+    extern     name:leaf params:group? result?
+
+program! = decl*                                → (module ...1)
+
+decl     = "fn" name:IDENT sig "=" body:IDENT   → (fn)
+         | "extern" name:IDENT sig              → (extern)
+
+sig      = [params:params] [result:result]
+
+params   = "(" IDENT* ")"                       → (...2)
+result   = "->" IDENT                           → 2
+```
+
+```input
+fn f (a b) -> t = x
+extern g -> u
+fn h = y
+```
+
+```tree
+(module
+  (fn `f` (`a` `b`)@5..10 `t` `x`)@0..19
+  (extern `g` _ `u`)@20..33
+  (fn `h` _ _ `y`)@34..42)@0..42
+```
+
+`sig` fills `params` and `result` of `fn` and of `extern`, absent parts
+nil. Generation checks that the roles a clause rule labels follow one
+another in that order in every kind that uses it, and rejects a clause
+rule that is labeled where it is used, repeated, used inside a group or
+choice or inside another clause rule, or used by an alternative that
+builds no node; alternatives of a clause rule that label different roles
+are an error.
+
 ## Labels
 
 `role:element` in a pattern labels an element. When the action builds a

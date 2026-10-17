@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `label_at` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `inline` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `as_comma` `label_at` `comment` `eof` `err`)
   (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
@@ -162,6 +162,11 @@
           opt)
         (role
           _
+          `keeps`
+          (type `group`)
+          opt)
+        (role
+          _
           `body`
           (type `block`)
           opt)
@@ -174,7 +179,7 @@
         (role
           _
           `mark`
-          (type `called` `rarely`)
+          (type `inline` `called` `rarely`)
           opt))
       _
       _)
@@ -204,6 +209,11 @@
           opt)
         (role
           _
+          `keeps`
+          (type `group`)
+          opt)
+        (role
+          _
           `body`
           (type `block`)
           opt)
@@ -216,7 +226,7 @@
         (role
           _
           `mark`
-          (type `called` `rarely`)
+          (type `inline` `called` `rarely`)
           opt))
       _
       _)
@@ -367,6 +377,11 @@
           _
           `origins`
           (type `group`)
+          opt)
+        (role
+          _
+          `keeps`
+          (type `group`)
           opt))
       _
       _)
@@ -381,6 +396,11 @@
         (role
           _
           `params`
+          (type `group`)
+          opt)
+        (role
+          _
+          `keeps`
           (type `group`)
           opt))
       _
@@ -423,7 +443,7 @@
       _
       _)
     (kind_decl
-      (kinds `called` `rarely`)
+      (kinds `inline` `called` `rarely`)
       (roles)
       _
       _)
@@ -508,6 +528,34 @@
       _
       wrapper)
     (kind_decl
+      (kinds `destructure`)
+      (roles
+        (role
+          _
+          `op`
+          (type
+            (tagset `tag` `fixed` `shadow` `shadow_fixed`))
+          opt)
+        (role
+          _
+          `targets`
+          (type `group`)
+          _)
+        (role _ `value` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `result_part`)
+      (roles)
+      _
+      wrapper)
+    (kind_decl
+      (kinds `results`)
+      (roles
+        (role rest `values` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `pass`)
       (roles)
       _
@@ -528,6 +576,17 @@
           _
           `name`
           (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `as_results`)
+      (roles
+        (role _ `value` _ _)
+        (role
+          _
+          `names`
+          (type `group`)
           _))
       _
       _)
@@ -777,6 +836,12 @@
       _
       _)
     (kind_decl
+      (kinds `tuple`)
+      (roles
+        (role rest `elems` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `kwarg`)
       (roles
         (role
@@ -884,6 +949,12 @@
             (tagset `tag` `fails`))
           opt))
       _
+      _)
+    (kind_decl
+      (kinds `results_type`)
+      (roles
+        (role rest `types` _ _))
+      _
       _))
   (display
     (name_pair `IDENT` `"a name"`)
@@ -901,14 +972,17 @@
     (name_pair `KWARG_NAME` `"a keyword argument"`)
     (name_pair `OF` `"\`of\`"`)
     (name_pair `OBJ` `"\`obj\`"`)
+    (name_pair `INLINE` `"\`inline\`"`)
     (name_pair `CALLED` `"\`called\`"`)
     (name_pair `RARELY` `"\`rarely\`"`)
     (name_pair `UNIQUE` `"\`unique\`"`)
     (name_pair `FROM` `"\`from\`"`)
     (name_pair `STATIC` `"\`static\`"`)
+    (name_pair `KEEPS` `"\`keeps\`"`)
     (name_pair `DOTDOT_OPEN` `"\`..\`"`)
     (name_pair `NULLISH_JUMP` `"\`??\`"`)
     (name_pair `STEP_COLON` `"\`:\`"`)
+    (name_pair `AS_COMMA` `"\`,\`"`)
     (name_pair `LABEL_AT` `"\`@\`"`)
     (name_pair `TRUE` `"\`true\`"`)
     (name_pair `FALSE` `"\`false\`"`)
@@ -963,6 +1037,7 @@
     (name_pair `"<<="` `"\`<<=\`"`)
     (name_pair `"<<%="` `"\`<<%=\`"`)
     (name_pair `">>="` `"\`>>=\`"`)
+    (name_pair `"=!"` `"\`=!\`"`)
     (name_pair `"+%="` `"\`+%=\`"`)
     (name_pair `"-%="` `"\`-%=\`"`)
     (name_pair `"*%="` `"\`*%=\`"`)
@@ -1019,6 +1094,10 @@
     (name_pair `params` `"a parameter list"`)
     (name_pair `unary` `"an operand"`)
     (name_pair `step` `"an assignment or a call"`))
+  (repair
+    (repair_line `holes` `IDENT`)
+    (repair_line `structure` `INDENT` `OUTDENT`)
+    (repair_line `terminator` `NEWLINE`))
   (highlight
     (hl_line `language` `"Rig"`)
     (hl_line `scope-name` `source.rig`)
@@ -1034,7 +1113,8 @@
     (hl_line `keyword.control` `("break" | "continue") [ \\t]+ label:('@' [A-Za-z_] [A-Za-z0-9_]*)`)
     (hl_line `label` `'@' [A-Za-z_] [A-Za-z0-9_]* after [ \\t]+ ("for" | "while" | "match" | "raw")`)
     (hl_line `function.builtin` `'@' [a-z_]+ after '('`)
-    (hl_line `storage.modifier` `[<?!+^*~] not before [A-Za-z0-9_)\\]] after [A-Za-z_(\\[<]`)
+    (hl_line `storage.modifier` `[*] not before [A-Za-z0-9_)\\]] after '<' [A-Za-z_(\\[]`)
+    (hl_line `storage.modifier` `[<?!+^*~] not before [A-Za-z0-9_)\\]] after [A-Za-z_(\\[]`)
     (hl_line `storage.modifier` `[!?] before [A-Za-z0-9_)\\]] not after [A-Za-z0-9_(\\[=?]`)
     (hl_line `variable.parameter` `[A-Za-z_] [A-Za-z0-9_]* after ':' not before [A-Za-z0-9_.]`)
     (hl_line `type` `[A-Z] [A-Za-z0-9_]* not before [A-Za-z0-9_]`)
@@ -1049,11 +1129,12 @@
     (hl_line `string.escape` `'\\\\' [^\\x00-\\x1f\\x7f] within STRING_DQ`)
     (hl_line `string.escape` `"''" within STRING_SQ`)
     (hl_line `comment` `COMMENT`)
-    (hl_line `invalid` `"**" "&&" "=!"`)
-    (hl_line `operator` `"+" "-" "*" "/" "%" "+%" "-%" "*%" "+|" "-|" "==" "!=" "<" ">" "<=" ">="` `"!" "?" "??" "|" "&" "^" "~" "<<" "<<%" ">>" "=" "+=" "-=" "*=" "/=" "%="` `"&=" "|=" "^=" "<<=" "<<%=" ">>=" "+%=" "-%=" "*%=" "+|=" "-|=" "->" "=>"`)
+    (hl_line `invalid` `"**" "&&"`)
+    (hl_line `invalid` `'=' [!] not after [ \\t]`)
+    (hl_line `operator` `"+" "-" "*" "/" "%" "+%" "-%" "*%" "+|" "-|" "==" "!=" "<" ">" "<=" ">="` `"!" "?" "??" "|" "&" "^" "~" "<<" "<<%" ">>" "=" "=!" "+=" "-=" "*=" "/=" "%="` `"&=" "|=" "^=" "<<=" "<<%=" ">>=" "+%=" "-%=" "*%=" "+|=" "-|=" "->" "=>"`)
     (hl_line `punctuation` `"(" ")" "[" "]" "," ":" "." ".." "@"`))
   (keywords
-    (kw_group `ctx` `unique` `from` `static`))
+    (kw_group `ctx` `unique` `from` `static` `keeps`))
   (as
     `IDENT`
     _
@@ -1191,6 +1272,21 @@
       _
       ((label
           `target`
+          (ref `postfix`))
+        (lit `"=!"`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `set`
+        (named
+          `op`
+          (tag `fixed`)))
+      _)
+    (alt
+      _
+      ((label
+          `target`
           (ref `name`))
         (lit `":"`)
         (label
@@ -1204,31 +1300,14 @@
       _)
     (alt
       _
-      ((tok `CONST`)
-        (label
-          `target`
-          (ref `name`))
-        (lit `"="`)
-        (label
-          `value`
-          (ref `tail`)))
-      (node
-        `set`
-        (named
-          `op`
-          (tag `fixed`)))
-      _)
-    (alt
-      _
-      ((tok `CONST`)
-        (label
+      ((label
           `target`
           (ref `name`))
         (lit `":"`)
         (label
           `type`
           (ref `type`))
-        (lit `"="`)
+        (lit `"=!"`)
         (label
           `value`
           (ref `tail`)))
@@ -1277,11 +1356,10 @@
     (alt
       _
       ((tok `NEW`)
-        (tok `CONST`)
         (label
           `target`
           (ref `name`))
-        (lit `"="`)
+        (lit `"=!"`)
         (label
           `value`
           (ref `tail`)))
@@ -1294,7 +1372,6 @@
     (alt
       _
       ((tok `NEW`)
-        (tok `CONST`)
         (label
           `target`
           (ref `name`))
@@ -1302,7 +1379,7 @@
         (label
           `type`
           (ref `type`))
-        (lit `"="`)
+        (lit `"=!"`)
         (label
           `value`
           (ref `tail`)))
@@ -1326,6 +1403,91 @@
               `value`
               (ref `tail`)))))
       (node `return`)
+      _)
+    (alt
+      _
+      ((tok `RETURN`)
+        (ref `rvals`))
+      (node
+        `return`
+        (named
+          `value`
+          (node
+            `results`
+            (spread `2`))))
+      _)
+    (alt
+      _
+      ((label
+          `targets`
+          (ref `dtargets`))
+        (lit `"="`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node `destructure`)
+      _)
+    (alt
+      _
+      ((label
+          `targets`
+          (ref `dtargets`))
+        (lit `"="`)
+        (ref `rvals`))
+      (node
+        `destructure`
+        (named
+          `value`
+          (node
+            `results`
+            (spread `3`))))
+      _)
+    (alt
+      _
+      ((tok `NEW`)
+        (label
+          `targets`
+          (ref `dtargets`))
+        (lit `"="`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `destructure`
+        (named
+          `op`
+          (tag `shadow`)))
+      _)
+    (alt
+      _
+      ((label
+          `targets`
+          (ref `dtargets`))
+        (lit `"=!"`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `destructure`
+        (named
+          `op`
+          (tag `fixed`)))
+      _)
+    (alt
+      _
+      ((tok `NEW`)
+        (label
+          `targets`
+          (ref `dtargets`))
+        (lit `"=!"`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `destructure`
+        (named
+          `op`
+          (tag `shadow_fixed`)))
       _)
     (alt
       _
@@ -1383,6 +1545,46 @@
           `body`
           (ref `block`)))
       (node `raw_block`)
+      _))
+  (rule
+    (name `dtargets`)
+    (alt
+      _
+      ((ref `postfix`)
+        (lit `","`)
+        (ref `postfix`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `dtargets`)
+        (lit `","`)
+        (ref `postfix`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `rvals`)
+    (alt
+      _
+      ((ref `value`)
+        (lit `","`)
+        (ref `value`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `rvals`)
+        (lit `","`)
+        (ref `value`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `assign`)
@@ -1480,11 +1682,10 @@
       _)
     (alt
       _
-      ((tok `CONST`)
-        (label
+      ((label
           `target`
           (ref `name`))
-        (lit `"="`)
+        (lit `"=!"`)
         (label
           `value`
           (ref `tail`)))
@@ -1496,15 +1697,14 @@
       _)
     (alt
       _
-      ((tok `CONST`)
-        (label
+      ((label
           `target`
           (ref `name`))
         (lit `":"`)
         (label
           `type`
           (ref `type`))
-        (lit `"="`)
+        (lit `"=!"`)
         (label
           `value`
           (ref `tail`)))
@@ -1600,6 +1800,11 @@
     (name `mark`)
     (alt
       _
+      ((tok `INLINE`))
+      (node `inline`)
+      _)
+    (alt
+      _
       ((tok `CALLED`))
       (node `called`)
       _)
@@ -1641,6 +1846,11 @@
           ((label
               `origins`
               (ref `origins`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1669,6 +1879,11 @@
           ((label
               `params`
               (ref `params`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1696,6 +1911,11 @@
               `params`
               (ref `params`))))
         (lit `"!"`)
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1747,6 +1967,11 @@
           ((label
               `origins`
               (ref `origins`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1787,6 +2012,11 @@
           ((label
               `origins`
               (ref `origins`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1822,6 +2052,11 @@
           ((label
               `params`
               (ref `params`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1858,6 +2093,11 @@
               `params`
               (ref `params`))))
         (lit `"!"`)
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1892,6 +2132,11 @@
           ((label
               `params`
               (ref `params`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1923,6 +2168,11 @@
               `params`
               (ref `params`))))
         (lit `"!"`)
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
         (label
           `body`
           (ref `block`)))
@@ -1984,6 +2234,14 @@
       (list
         (spread `1`)
         (pos `3`))
+      _))
+  (rule
+    (name `keeps`)
+    (alt
+      _
+      ((tok `KEEPS`)
+        (ref `onames`))
+      (pos `2`)
       _))
   (rule
     (name `params`)
@@ -2446,7 +2704,12 @@
           opt
           ((label
               `origins`
-              (ref `origins`)))))
+              (ref `origins`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
       (node `extern_fun`)
       _))
   (rule
@@ -2462,7 +2725,12 @@
           opt
           ((label
               `params`
-              (ref `params`)))))
+              (ref `params`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
       (node `extern_sub`)
       _))
   (rule
@@ -2577,7 +2845,12 @@
           opt
           ((label
               `origins`
-              (ref `origins`)))))
+              (ref `origins`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
       (node `fun`)
       _)
     (alt
@@ -2600,7 +2873,12 @@
           opt
           ((label
               `params`
-              (ref `params`)))))
+              (ref `params`))))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
       (node `sub`)
       _)
     (alt
@@ -2624,7 +2902,12 @@
           ((label
               `params`
               (ref `params`))))
-        (lit `"!"`))
+        (lit `"!"`)
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
       (node
         `sub`
         (named
@@ -2860,6 +3143,82 @@
         (ref `type`)
         (lit `")"`))
       (pos `2`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `type`)
+        (lit `","`)
+        (ref `rtypes`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node
+        `results_type`
+        (pos `2`)
+        (spread `4`))
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `rnamed`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node
+        `results_type`
+        (spread `2`))
+      _))
+  (rule
+    (name `rtypes`)
+    (alt
+      _
+      ((ref `type`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `rtypes`)
+        (lit `","`)
+        (ref `type`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `rnamed`)
+    (alt
+      _
+      ((ref `rnfield`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `rnamed`)
+        (lit `","`)
+        (ref `rnfield`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `rnfield`)
+    (alt
+      _
+      ((label
+          `name`
+          (tok `KWARG_NAME`))
+        (lit `":"`)
+        (label
+          `type`
+          (ref `type`)))
+      (node `:`)
       _))
   (rule
     (name `tname`)
@@ -3337,8 +3696,56 @@
       _)
     (alt
       _
+      ((label
+          `value`
+          (at_ref `infix`))
+        (tok `AS`)
+        (label
+          `names`
+          (ref `anames`)))
+      (node `as_results`)
+      _)
+    (alt
+      _
       ((at_ref `infix`))
       _
+      _))
+  (rule
+    (name `anames`)
+    (alt
+      _
+      ((ref `name`)
+        (tok `AS_COMMA`)
+        (ref `name`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `anames`)
+        (tok `AS_COMMA`)
+        (ref `name`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `texprs`)
+    (alt
+      _
+      ((ref `expr`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `texprs`)
+        (lit `","`)
+        (ref `expr`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `exprs`)
@@ -4333,6 +4740,22 @@
         (ref `cclosure`)
         (lit `")"`))
       (pos `2`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `expr`)
+        (lit `","`)
+        (ref `texprs`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node
+        `tuple`
+        (pos `2`)
+        (spread `4`))
       _))
   (infix
     `unary`

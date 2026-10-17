@@ -6,6 +6,7 @@
     ((: `s` (read_view `String`)@188..195)@185..195)@184..196
     (error_union `Int`)@200..204
     _
+    _
     (block
       (if
         (== `s` `"?"`)@242..250
@@ -21,6 +22,7 @@
     _
     ((: `s` (read_view `String`)@284..291)@281..291)@280..292
     (read_view `String`)@296..303
+    _
     _
     (block
       (set
@@ -44,6 +46,7 @@
     `main`
     _
     ()@459..461
+    _
     _
     (block
       (call

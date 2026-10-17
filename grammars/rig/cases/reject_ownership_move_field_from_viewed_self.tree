@@ -9,6 +9,7 @@
       _
       ((read `self`)@149..154)@148..155
       _
+      _
       (block
         (set _ `x` _ (move (member `self` `a`)@165..171)@164..171)@160..171
         (call `print` (member `x` `payload`)@182..191)@176..192)@160..194
@@ -19,6 +20,7 @@
     `main`
     _
     ()@202..204
+    _
     _
     (block
       (set

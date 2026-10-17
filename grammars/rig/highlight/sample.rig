@@ -8,7 +8,7 @@ extern zig "math.zig"
   pub fun sqrt(x: Float) -> Float
 
 type Byte = U8
-const LIMIT = 1_000
+LIMIT = 1_000
 pub PI = 3.141_592
 
 enum Shape
@@ -81,6 +81,8 @@ fun numbers() -> Int
 fun strings() -> String
   s = "tab\tnewline\nquote\"backslash\\ hex\x41"
   t = 'single ''quoted'' text'
+  e = ''
+  f = ""
   u = String(s, t)
   u
 
@@ -142,14 +144,15 @@ sub resources()
   defer print("done")
   errdefer print("failed")
   new x = 1
-  new const y = x * 2
+  z =! x
+  new y =! x * 2
   st: Status = .missing
   ok = true and not false or none == none
   b: Bool = st == .ok
   print(@size(Point), @align(Point), @name(Point), @variants(Status))
   raw
     pass
-  print(ok, b, y)
+  print(ok, b, y, z)
 
 test "area"
   print(shapes(.point))
@@ -163,9 +166,9 @@ sub main()
 # Below here, nothing compiles: these are tokens an editor still colours.
 
 # Reserved words, keywords though no form uses them yet.
-try async await impl trait when where yield
+try async await const impl trait when where yield
 
 # Rejected forms, lexed only so Rig can say why; shown as invalid.
 p = 2 ** 3
 q = a && b
-x =! 1
+x =!y

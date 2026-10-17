@@ -4,6 +4,20 @@
 
 ### Added
 
+- Clause rules: a rule with no actions whose every alternative labels the
+  same roles in the same order fills those roles of the node of every
+  alternative that uses it, as if its labels were written there, and is
+  parsed by one set of states wherever it is used
+  ([SEMANTICS.md](docs/SEMANTICS.md#clause-rules)). A grammar that
+  repeats a run of optional parts across rules writes it once:
+  `sig = [params:params] [result:result]`, then `"fn" name:IDENT sig
+  body:block → (fn)`. Such a rule was an error ("label fills a role, but
+  the action builds no schema node"), so no grammar changes meaning.
+- The progress output of generation and `nexus check` names the
+  alternative whose `[...]` groups and choices make the most rules when
+  it makes 32 or more (`Expanded: rule 'x' (line N): one alternative
+  makes M rules, ...`).
+
 - `@highlight` (preamble or @parser section): how editors colour the
   language. Metadata lines (`language "Rig"`, `scope-name source.rig`,
   `extensions rig`, optional `line-comment`, `block-comment`, `indent`,
@@ -43,6 +57,14 @@
   `[A-Za-z0-9_]`. A literal that starts or ends with one does not match
   next to another, in every editor file; `--describe` gives it as
   `highlight.word_chars` (`"format"` stays 1: the key is new).
+
+### Changed
+
+- An `@highlight` entry with a context, `line-start` or `line-end` may
+  name a literal, token or `@keywords` group that another entry lists
+  (`storage.modifier '*' not before … after …` beside `operator "*"`);
+  only entries without contexts claim a target. Rig's workaround of
+  writing `[*]` (a pattern) keeps working.
 
 ### Fixed
 

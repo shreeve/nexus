@@ -2,6 +2,7 @@
 # A comment with "quotes" and if
 pub fun area(width: Int, height: Int) -> Int {
   return width * height
+  q = *n * 2
 }
 
 fun scale(x: real) -> real {
