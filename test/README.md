@@ -33,6 +33,9 @@ systems' own tools.
 | `describe/<grammar>` | `nexus --describe` equals `test/golden/<grammar>.describe.json`; every grammar file has one, under the first suite that uses it |
 | `highlight/<grammar>/files` | for a grammar with `@highlight`: `nexus --highlight all` writes exactly its four files, each equal to `--highlight <target>` and to its golden (`test/golden/<grammar>.tmLanguage.json`, `.language-configuration.json`, `.hljs.js`, `.vim`), and the grammar without `@highlight` generates the same parser |
 | `highlight/<grammar>/<sample>` | the grammar's TextMate grammar, highlight.js language and Vim syntax file colour `<suite>/highlight/<sample>` as `<sample>.hl` says (`test/lib/highlight`, see "Highlight checks") |
+| `editor/<grammar>/files` | for a grammar with `@highlight`: `nexus --editor` (with the suite's lang module) writes exactly its files: the highlighting files equal to `--highlight all`'s, `parser.zig` equal to `--spans` output, `lsp.zig` the server template under its header, the lang module and its imports equal to their sources, and `language.zig` and `package.json` equal to their goldens (`test/golden/<grammar>.language.zig`, `.package.json`; for `editor`, `extension.js`, `build.zig`, `main.zig` and `hooks.zig` too); a second run keeps an edited `hooks.zig` (`Kept`) and writes every other file the same |
+| `editor/<grammar>/server` | that server type checks (`zig build-exe -fno-emit-bin src/main.zig`) with the stub `hooks.zig` |
+| `<grammar>/<dir>/<session>` | the language server built from `<suite>/<dir>/` (its `hooks.zig`, else the stub) answers `<suite>/<dir>/<session>.session` as `<session>.out` says (`test/lib/lsp`, see "Language-server sessions") |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
@@ -42,7 +45,7 @@ systems' own tools.
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
 | `tools/messages` | every error the generator's source can print is printed by `nexus check` on some grammar under `grammars/` or `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
 | `tools/readme` | `docs/index.html` shows README.md's tested `calc.grammar`, and every number in README.md's validated-languages table (lines, LR states, declared conflicts and cells, suite cases, mode) is this checkout's (`test/lib/readme`) |
-| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`, a missing or unknown `--highlight` target, `--highlight all` without a directory), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp`, `--describe`, `--highlight` (one file, `all`, a grammar without `@highlight`), and the `Expanded:` progress line for an alternative of 32 rules and none for one of 16 (`test/cli/`) |
+| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`, a missing or unknown `--highlight` target, `--highlight all` without a directory), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp`, `--describe`, `--highlight` (one file, `all`, a grammar without `@highlight`), `--editor` and `--lang` (their usage errors, a grammar without `@highlight`, without parser rules, or with `@lang` and no `--lang`, a lang module that cannot be read, imports a file from outside its directory or brings a file the server has, and a lang module copied with its import), and the `Expanded:` progress line for an alternative of 32 rules and none for one of 16 (`test/cli/`) |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
 | `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
@@ -103,6 +106,7 @@ The suites under `test/`:
 | `word_chars` | Mint, a small M-like language whose `@highlight` sets `word-chars [%A-Za-z0-9]` (`_` an operator, `%` part of a name) and puts contexts around `@keywords` groups and a `line-start` alternation | `highlight/sample.mint`, coloured |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
+| `editor` | Tally, a small language with `@schema`, `@repair` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; two parse cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:
@@ -256,6 +260,20 @@ The references stand in for the editors' own engines (Oniguruma in VS
 Code, highlight.js's JavaScript): the regexes Nexus writes use only what
 Python's `re`, Oniguruma, JavaScript and Vim agree on.
 
+## Language-server sessions
+
+A subdirectory of a suite that holds `*.session` files is a language
+server: the suite runs `nexus --editor` on the suite's grammar, puts the
+subdirectory's `hooks.zig` in place of the stub when it has one, builds
+the server with `zig build`, and replays each session against it with
+`test/lib/lsp`, on the files of `<suite>/project/`. A session is one
+command a line (`initialize`; `open`, with the file's text or, for an
+`untitled:` document or a file not on disk, the `| ` lines after it;
+`change` with its new text on `| ` lines; `hover FILE L:C`;
+`rename FILE L:C NAME`; ...; `test/lib/lsp` lists them all), and its `.out` is each command after `> `, then what
+the server answered or published, ranges as `L:C-L:C` and semantic tokens
+as `L:C len scope`. `--update` writes the `.out` file.
+
 ## Lexer fuzzing
 
 `test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [-O MODE]` generates random
@@ -297,6 +315,7 @@ the current numbers; update it when a change moves them.
 | `test/lib/readme` | the `tools/readme` check |
 | `test/lexfuzz/fuzz.py` | the lexer fuzzer |
 | `test/lib/highlight` | the `highlight/*` checks: the TextMate and highlight.js references, the Vim run |
+| `test/lib/lsp` | replays a session against a language server |
 | `test/golden/` | generated-code (`.zig`), frontend-tree (`.sexp`), description (`.describe.json`) and editor-file goldens |
 
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite

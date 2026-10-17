@@ -1,0 +1,18 @@
+# An analysis that fails keeps the last one and says so: the root stops
+# parsing, the server logs the failure and marks the saved file, and the
+# files the analysis read still answer from the one before.
+initialize root main.tally
+open util.tally
+open main.tally
+change main.tally
+| use util
+| let total = util.add(1,
+save main.tally
+hover util.tally 2:4
+references util.tally 2:4
+# The root parses again, and the next save analyzes it.
+change main.tally
+| use util
+| let total = util.add(1, 2)
+save main.tally
+references util.tally 2:4

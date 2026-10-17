@@ -1,0 +1,19 @@
+# lexer_only.grammar: @highlight without parser rules. It has editor files
+# but no language server, so `nexus --editor` refuses it (tools/cli).
+
+@lexer
+
+tokens
+    ident, newline, eof, err
+
+'\n'                → newline
+[a-z]+              → ident
+.                   → err
+
+@parser
+
+@highlight
+    language        "Lex"
+    scope-name      source.lex
+    extensions      lex
+    type            IDENT

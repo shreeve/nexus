@@ -69,7 +69,7 @@ zig build unit                              # the generator's unit tests alone
 ./bin/nexus --highlight all some.grammar editors   # its editor files, from @highlight
 ./bin/nexus nexus.grammar src/frontend/parser.zig   # regenerate the frontend
 test/bench/run                              # generation time and parse throughput
-zig fmt --check build.zig src/*.zig src/{codegen,highlight,lexgen,lr} src/frontend/{lang,lower,frontend}.zig test/lib
+zig fmt --check build.zig src/*.zig src/{codegen,highlight,lexgen,lr,lsp} src/frontend/{lang,lower,frontend}.zig test/lib test/editor
 ```
 
 - Fixing a bug starts with a failing test that reproduces it (`test/known/`).
@@ -134,6 +134,7 @@ downstream repository are in `CHANGELOG.md`.
 | `test/` | the suite, `test/diff`, `test/bench/`, `test/lexfuzz/` ([test/README.md](test/README.md)) |
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
+| `docs/LSP.md` | `nexus --editor`: the VS Code extension, the language server, the functions of `hooks.zig` |
 | `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
 | `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
 | `CHANGELOG.md` | every release, and the migration steps for downstream |

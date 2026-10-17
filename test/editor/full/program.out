@@ -1,0 +1,148 @@
+> initialize root main.tally
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
+> hover main.tally 4:5
+{"contents":{"kind":"markdown","value":"```tally\nlet total\n```\n\nThe running total."}}
+> hover main.tally 4:19
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> hover main.tally 5:5
+{"contents":{"kind":"markdown","value":"```tally\nlet name: str\n```"}}
+> hover main.tally 8:13
+{"contents":{"kind":"markdown","value":"```tally\nparameter x\n```"}}
+> hover main.tally 4:22
+{"contents":{"kind":"markdown","value":"`int`"}}
+> hover main.tally 5:28
+{"contents":{"kind":"markdown","value":"`str`"}}
+> hover main.tally 6:1
+null
+> definition main.tally 4:19
+util.tally 2:4-2:7
+> definition main.tally 9:12
+main.tally 1:5-1:9
+> definition main.tally 4:22
+null
+> typeDefinition main.tally 5:12
+null
+> references main.tally 4:19
+  main.tally 4:18-4:21
+  main.tally 13:6-13:9
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15
+> references main.tally 8:9
+  main.tally 8:9-8:10
+  main.tally 9:24-9:25
+> highlight main.tally 8:9
+  {"range":"8:9-8:10"}
+  {"range":"9:24-9:25"}
+> signature main.tally 4:23
+{"activeParameter":0,"activeSignature":0,"signatures":[{"documentation":"Adds two numbers.","label":"add(a, b)","parameters":[{"label":"a"},{"label":"b"}]}]}
+> signature main.tally 4:25
+{"activeParameter":1,"activeSignature":0,"signatures":[{"documentation":"Adds two numbers.","label":"add(a, b)","parameters":[{"label":"a"},{"label":"b"}]}]}
+> signature main.tally 9:24
+{"activeParameter":0,"activeSignature":0,"signatures":[{"documentation":"Twice a number.","label":"double(n)","parameters":[{"label":"n"}]}]}
+> signature main.tally 1:1
+null
+> completion main.tally 4:18
+  {"detail":"fn add(a, b)","documentation":{"kind":"markdown","value":"Adds two numbers."},"kind":3,"label":"add"}
+  {"detail":"fn double(n)","documentation":{"kind":"markdown","value":"Twice a number."},"kind":3,"label":"double"}
+  {"detail":"let greeting: str","kind":6,"label":"greeting"}
+> completion main.tally 1:5
+  {"kind":9,"label":"app"}
+  {"kind":9,"label":"lib"}
+  {"kind":9,"label":"main"}
+  {"kind":9,"label":"messy"}
+  {"kind":9,"label":"odd"}
+  {"kind":9,"label":"text"}
+  {"kind":9,"label":"util"}
+> completion main.tally 9:12
+  {"detail":"module util","kind":9,"label":"util"}
+  {"detail":"let total","documentation":{"kind":"markdown","value":"The running total."},"kind":6,"label":"total"}
+  {"detail":"let name: str","kind":6,"label":"name"}
+  {"detail":"fn scale(x, factor)","kind":3,"label":"scale"}
+  {"detail":"parameter x","kind":6,"label":"x"}
+  {"detail":"parameter factor","kind":6,"label":"factor"}
+> completion main.tally 6:1
+  {"detail":"module util","kind":9,"label":"util"}
+  {"detail":"let total","documentation":{"kind":"markdown","value":"The running total."},"kind":6,"label":"total"}
+  {"detail":"let name: str","kind":6,"label":"name"}
+  {"detail":"fn scale(x, factor)","kind":3,"label":"scale"}
+  {"kind":14,"label":"fn"}
+  {"kind":14,"label":"let"}
+  {"kind":14,"label":"return"}
+  {"kind":14,"label":"use"}
+> rename main.tally 8:9 z
+{"changes":{"main.tally":[{"newText":"z","range":"8:9-8:10"},{"newText":"z","range":"9:24-9:25"}]}}
+> rename main.tally 1:5 utils
+error -32803 this name cannot be renamed
+> rename main.tally 4:19 plus
+{"changes":{"main.tally":[{"newText":"plus","range":"4:18-4:21"},{"newText":"plus","range":"13:6-13:9"}],"util.tally":[{"newText":"plus","range":"2:4-2:7"},{"newText":"plus","range":"8:12-8:15"}]}}
+> rename main.tally 6:1 none
+error -32803 nothing to rename here
+> symbols main.tally
+  {"kind":13,"name":"total","range":"4:1-4:27","selectionRange":"4:5-4:10"}
+  {"kind":13,"name":"name","range":"5:1-5:36","selectionRange":"5:5-5:9"}
+  {"children":[{"kind":13,"name":"x","range":"7:10-7:11","selectionRange":"7:10-7:11"},{"kind":13,"name":"factor","range":"7:13-7:19","selectionRange":"7:13-7:19"}],"detail":"scale(x, factor)","kind":12,"name":"scale","range":"7:1-10:2","selectionRange":"7:4-7:9"}
+> tokens main.tally
+  1:1 3 keyword
+  3:1 20 comment
+  4:1 3 keyword
+  4:11 1 operator
+  4:17 1 punctuation
+  4:18 3 function
+  4:21 1 punctuation
+  4:22 1 constantNumeric
+  4:23 1 punctuation
+  4:25 1 constantNumeric
+  4:26 1 punctuation
+  5:1 3 keyword
+  5:10 1 operator
+  5:16 1 punctuation
+  5:26 1 operator
+  5:28 8 string
+  7:1 2 keyword
+  7:4 5 function
+  7:9 1 punctuation
+  7:11 1 punctuation
+  7:19 1 punctuation
+  7:21 1 punctuation
+  8:5 3 keyword
+  8:11 1 operator
+  8:15 1 operator
+  9:5 6 keywordControl
+  9:16 1 punctuation
+  9:17 6 function
+  9:23 1 punctuation
+  9:25 1 punctuation
+  10:1 1 punctuation
+  12:1 5 function
+  12:6 1 punctuation
+  12:12 1 punctuation
+  12:14 1 constantNumeric
+  12:15 1 punctuation
+  13:5 1 punctuation
+  13:6 3 function
+  13:9 1 punctuation
+  13:15 1 punctuation
+  14:5 1 punctuation
+  14:6 7 function
+  14:13 1 punctuation
+  14:14 1 constantNumeric
+  14:15 1 punctuation
+  15:9 1 operator
+  15:11 1 constantNumeric
+> folds main.tally
+  {"endLine":9,"startLine":6}
+> selection main.tally 8:13
+  {"parent":{"parent":{"parent":{"parent":{"parent":{"range":"1:1-16:1"},"range":"7:1-10:2"},"range":"7:21-10:2"},"range":"8:5-8:23"},"range":"8:13-8:23"},"range":"8:13-8:14"}
+> change main.tally
+diagnostics main.tally none
+> save main.tally
+diagnostics main.tally none
+> close main.tally
+diagnostics main.tally none
+> hover main.tally 1:5
+error -32602 no open document

@@ -1,0 +1,33 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open untitled:Untitled-1
+diagnostics untitled:Untitled-1
+  {"message":"expected an expression, got end of line","range":"1:12-2:1","severity":1,"source":"tally"}
+> tokens untitled:Untitled-1
+  1:1 3 keyword
+  1:7 1 operator
+  1:9 1 constantNumeric
+  1:11 1 operator
+  2:1 3 keyword
+  2:7 1 operator
+> folds untitled:Untitled-1
+[]
+> hover untitled:Untitled-1 2:9
+null
+> definition untitled:Untitled-1 2:9
+null
+> rename untitled:Untitled-1 2:9 z
+error -32803 no analysis yet: save the file
+> completion untitled:Untitled-1 2:9
+[]
+> open main.tally
+diagnostics untitled:Untitled-1
+  {"message":"expected an expression, got end of line","range":"1:12-2:1","severity":1,"source":"tally"}
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
+> hover main.tally 4:5
+{"contents":{"kind":"markdown","value":"```tally\nlet total\n```\n\nThe running total."}}
+> hover untitled:Untitled-1 2:9
+null

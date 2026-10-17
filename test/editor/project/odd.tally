@@ -1,0 +1,3 @@
+﻿let a = 1
+let s = "é" + alet c = a
+let d = c

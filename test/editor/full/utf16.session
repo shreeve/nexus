@@ -1,0 +1,8 @@
+# Positions in UTF-16 code units, the encoding a client gets unless it
+# offers UTF-8.
+initialize
+open text.tally
+tokens text.tally
+hover text.tally 3:9
+hover text.tally 2:10
+symbols text.tally

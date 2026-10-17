@@ -5,6 +5,7 @@
 //!        nexus --dump-sexp <grammar-file> [output-file]
 //!        nexus --describe <grammar-file> [output-file]
 //!        nexus --highlight <target> <grammar-file> [output-file]
+//!        nexus --editor [--lang <file>] <grammar-file> <directory>
 //!        nexus --help | --version
 //!
 //! Pipeline: frontend (the self-hosted grammar-file parser, lowered to the
@@ -14,8 +15,9 @@
 //! Grammar) -> semantics.checkTypes (with @schema) -> check (defined
 //! symbols, reachable rules, token binding, `X "c"` hint resolution) -> lr
 //! (automaton, lookaheads, table) -> codegen (the parser module).
-//! `--describe` and `--highlight` run the whole pipeline, then write the
-//! grammar's JSON description or one of its editor files.
+//! `--describe`, `--highlight` and `--editor` run the whole pipeline, then
+//! write the grammar's JSON description, one of its editor files, or its
+//! VS Code extension and language server (lsp/editor.zig).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -35,6 +37,7 @@ const codegen = @import("codegen/codegen.zig");
 const highlight = @import("highlight/highlight.zig");
 const emit = @import("highlight/emit.zig");
 const describe = @import("describe.zig");
+const editor = @import("lsp/editor.zig");
 
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 /// An alternative that expands into this many rules or more is named in
@@ -62,6 +65,7 @@ const usage =
     \\       nexus --dump-sexp <grammar-file> [output-file]
     \\       nexus --describe <grammar-file> [output-file]
     \\       nexus --highlight <target> <grammar-file> [output-file]
+    \\       nexus --editor [--lang <file>] <grammar-file> <directory>
     \\       nexus --help | --version
     \\
 ;
@@ -91,6 +95,16 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\                  vscode/language-configuration.json,
     \\                  vim/syntax/<id>.vim, highlightjs/<id>.js (<id>: the
     \\                  last part of the scope-name)
+    \\  --editor        Write the language's VS Code extension and language
+    \\                  server into a directory (docs/LSP.md): the files of
+    \\                  `--highlight all`, vscode/package.json and extension.js,
+    \\                  and server/ (build.zig; in src/, main.zig, lsp.zig,
+    \\                  parser.zig, language.zig and the lang module). Every
+    \\                  file is written again but server/src/hooks.zig, the
+    \\                  language's functions, written only when missing. The
+    \\                  grammar needs @highlight; with @lang, --lang <file>
+    \\                  names its lang module, which is copied with the files
+    \\                  it imports
     \\
     \\An output-file of - is standard output. Output replaces the file
     \\atomically (through a symlink, the file it names), keeping its mode;
@@ -112,6 +126,7 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\  nexus --dump-sexp nexus.grammar
     \\  nexus --highlight textmate calc.grammar calc.tmLanguage.json
     \\  nexus --highlight all calc.grammar editors
+    \\  nexus --editor calc.grammar editors
     \\
 ;
 
@@ -121,6 +136,8 @@ const Options = struct {
     checkMode: bool = false,
     emitComments: bool = false,
     spans: bool = false,
+    /// `--editor --lang`: the lang module.
+    langModule: ?[]const u8 = null,
     grammarFile: []const u8,
     outputFile: []const u8,
 };
@@ -147,8 +164,8 @@ pub fn main(init: std.process.Init) !void {
             return writeStdout(io, help);
         } else if (eql(arg, "-V") or eql(arg, "--version")) {
             return writeStdout(io, "nexus " ++ version ++ "\n");
-        } else if (eql(arg, "--dump-sexp") or eql(arg, "--describe") or eql(arg, "--highlight")) {
-            const next: Command = if (eql(arg, "--dump-sexp")) .dump else if (eql(arg, "--describe")) .describe else .highlight;
+        } else if (eql(arg, "--dump-sexp") or eql(arg, "--describe") or eql(arg, "--highlight") or eql(arg, "--editor")) {
+            const next: Command = if (eql(arg, "--dump-sexp")) .dump else if (eql(arg, "--describe")) .describe else if (eql(arg, "--editor")) .editor else .highlight;
             if (command == .check) usageError("{s} and check are separate commands", .{arg});
             if (command != .generate) usageError("{s} and {s} are separate commands", .{ command.name(), arg });
             command = next;
@@ -158,6 +175,10 @@ pub fn main(init: std.process.Init) !void {
                 if (!eql(args[a], "all")) target = emit.Target.parse(args[a]) orelse
                     usageError("unknown --highlight target '{s}' (textmate, language-configuration, highlightjs, vim or all)", .{args[a]});
             }
+        } else if (eql(arg, "--lang")) {
+            a += 1;
+            if (a == args.len) usageError("--lang needs the lang module's file", .{});
+            opts.langModule = args[a];
         } else if (eql(arg, "-c") or eql(arg, "--comments")) {
             opts.emitComments = true;
             generationOption = arg;
@@ -181,9 +202,10 @@ pub fn main(init: std.process.Init) !void {
     if (output) |path| if (command != .check) refuseGrammarAsOutput(io, positional[0], path);
 
     switch (command) {
-        .dump, .describe, .highlight => if (generationOption) |o| usageError("{s} has no effect on {s}", .{ o, command.name() }),
+        .dump, .describe, .highlight, .editor => if (generationOption) |o| usageError("{s} has no effect on {s}", .{ o, command.name() }),
         else => {},
     }
+    if (opts.langModule != null and command != .editor) usageError("--lang is an option of --editor", .{});
     switch (command) {
         .dump => return dumpSexp(allocator, io, positional[0], output orelse "-"),
         .check => {
@@ -197,6 +219,13 @@ pub fn main(init: std.process.Init) !void {
                 const dir = output orelse usageError("--highlight all writes a directory: nexus --highlight all <grammar-file> <directory>", .{});
                 if (eql(dir, "-")) usageError("--highlight all writes a directory, not standard output", .{});
             }
+        },
+        .editor => {
+            const dir = output orelse usageError("--editor writes a directory: nexus --editor <grammar-file> <directory>", .{});
+            if (eql(dir, "-")) usageError("--editor writes a directory, not standard output", .{});
+            opts.outputFile = dir;
+            // The server's folds and selection ranges read node spans.
+            opts.spans = true;
         },
         .generate => opts.outputFile = output orelse usageError("no output file given (nexus <grammar-file> <output-file>)", .{}),
     }
@@ -243,8 +272,77 @@ pub fn main(init: std.process.Init) !void {
             try writeOutput(io, opts.outputFile, bytes);
             if (!eql(opts.outputFile, "-")) diag.info("Wrote the {s} file to {s} ({d} bytes)", .{ one.name(), opts.outputFile, bytes.len });
         },
+        .editor => try writeEditor(allocator, io, opts, &built),
         .dump => unreachable,
     }
+}
+
+/// `nexus --editor`: the files of lsp/editor.zig under `opts.outputFile`.
+fn writeEditor(allocator: Allocator, io: Io, opts: Options, built: *const Built) !void {
+    const h = if (built.highlight) |*h| h else {
+        diag.errLine(opts.grammarFile, 1, 1, "the grammar has no @highlight, so it has no editor files", .{});
+        fail();
+    };
+    const g = if (built.g) |*g| g else {
+        diag.errLine(opts.grammarFile, 1, 1, "the grammar has no parser rules, so it has no language server", .{});
+        fail();
+    };
+    var copied: []const editor.Copied = &.{};
+    if (g.lang) |lang| {
+        const module = opts.langModule orelse usageError("the grammar has @lang = \"{s}\": give its lang module with --lang <file>", .{lang});
+        switch (try editor.langFiles(allocator, io, module, lang)) {
+            .files => |files| copied = files,
+            .bad => |path| {
+                diag.err("cannot copy {s} into the server: it cannot be read, or it is outside the directory of {s}", .{ path, module });
+                fail();
+            },
+            .clash => |path| {
+                diag.err("the server has its own {s}; the lang module {s} cannot bring one", .{ path, module });
+                fail();
+            },
+        }
+    } else if (opts.langModule) |module| usageError("--lang {s}: the grammar has no @lang", .{module});
+
+    const name = std.fs.path.basename(opts.grammarFile);
+    const in: editor.Input = .{ .h = h, .g = g, .spec = &built.spec, .keywordGroups = built.ir.keywordGroups, .grammarName = name, .version = version };
+    const File = struct { path: []const u8, bytes: []const u8 };
+    var files: std.ArrayList(File) = .empty;
+    for (std.enums.values(emit.Target)) |t|
+        try files.append(allocator, .{ .path = try emit.layoutPath(allocator, h, t), .bytes = try emit.emit(allocator, h, t, name, version) });
+    try files.append(allocator, .{ .path = "vscode/package.json", .bytes = try editor.packageJson(allocator, in) });
+    try files.append(allocator, .{ .path = "vscode/extension.js", .bytes = try editor.extensionJs(allocator, in) });
+    try files.append(allocator, .{ .path = "vscode/.gitignore", .bytes = "node_modules/\nbin/\n*.vsix\n" });
+    try files.append(allocator, .{ .path = "server/build.zig", .bytes = try editor.buildZig(allocator, in) });
+    try files.append(allocator, .{ .path = "server/.gitignore", .bytes = ".zig-cache/\nzig-out/\n" });
+    try files.append(allocator, .{ .path = "server/src/main.zig", .bytes = try editor.mainZig(allocator, in) });
+    try files.append(allocator, .{ .path = "server/src/lsp.zig", .bytes = try std.mem.concat(allocator, u8, &.{ "//! Generated by nexus v" ++ version ++ " — do not edit\n", editor.server_template }) });
+    try files.append(allocator, .{ .path = "server/src/parser.zig", .bytes = built.code });
+    try files.append(allocator, .{ .path = "server/src/language.zig", .bytes = try editor.languageZig(allocator, in) });
+    for (copied) |c| try files.append(allocator, .{ .path = try std.fs.path.join(allocator, &.{ "server/src", c.path }), .bytes = c.text });
+
+    const cwd = std.Io.Dir.cwd();
+    for (files.items) |f| {
+        const path = try std.fs.path.join(allocator, &.{ opts.outputFile, f.path });
+        makeParent(io, path);
+        try writeOutput(io, path, f.bytes);
+        diag.info("Wrote {s}", .{path});
+    }
+    // The language's own functions: written once, never replaced.
+    const hooks = try std.fs.path.join(allocator, &.{ opts.outputFile, "server/src/hooks.zig" });
+    if (cwd.statFile(io, hooks, .{})) |_| {
+        diag.info("Kept {s}", .{hooks});
+    } else |_| {
+        try writeOutput(io, hooks, try editor.hooksZig(allocator, in));
+        diag.info("Wrote {s}", .{hooks});
+    }
+}
+
+fn makeParent(io: Io, path: []const u8) void {
+    const dir = std.fs.path.dirname(path) orelse return;
+    std.Io.Dir.cwd().createDirPath(io, dir) catch |err| {
+        diag.err("cannot create {s}: {s}", .{ dir, @errorName(err) });
+        fail();
+    };
 }
 
 const Command = enum {
@@ -253,6 +351,7 @@ const Command = enum {
     dump,
     describe,
     highlight,
+    editor,
 
     fn name(self: Command) []const u8 {
         return switch (self) {
@@ -261,6 +360,7 @@ const Command = enum {
             .dump => "--dump-sexp",
             .describe => "--describe",
             .highlight => "--highlight",
+            .editor => "--editor",
         };
     }
 };

@@ -27,7 +27,9 @@ parser module
 
 `--describe` and `--highlight` run the same stages, then write the
 grammar's JSON description (`src/describe.zig`) or its editor files
-(`src/highlight/emit.zig`) instead of the parser module.
+(`src/highlight/emit.zig`) instead of the parser module. `--editor` runs
+them with spans on and writes the parser module, the editor files and a
+language server into a directory (`src/lsp/editor.zig`).
 
 `src/main.zig` runs the stages in this order. Every stage reports its own
 errors as `file:line:col: error:` and returns an error; the run stops at
@@ -99,6 +101,19 @@ JavaScript and Vim very magic, which match characters within a line);
 `emit.zig` writes the four editor files from the items. None of it
 reaches the parser module: a grammar generates the same module with or
 without `@highlight` (`highlight/<grammar>/files` checks it).
+
+`src/lsp/editor.zig` writes the rest of `nexus --editor`
+([LSP.md](LSP.md)): the extension's `package.json` and `extension.js`,
+and the server's `build.zig`, `main.zig`, `language.zig` (the grammar's
+token scopes and completion words, read from `Highlight` and the
+grammar) and the stub `hooks.zig`; it copies the lang module and the
+files it imports. The server itself, `lsp.zig`, is
+`src/lsp/server_template.zig` under a header, written as it is. Like the
+runtime template it is a real Zig file, seen by `zig fmt`, but it
+imports the `parser.zig`, `language.zig` and `hooks.zig` beside it in a
+server, so it compiles only there: `editor/*/server` compiles it for
+every grammar with `@highlight`, and the editor suite builds and drives
+it.
 
 ### Lexer generation
 
@@ -362,8 +377,9 @@ check them:
 | tested features, tested docs | every suite, `docs/*` |
 | nothing silent | `adverse/*` (every rejection), `tools/messages` (every message printed by some test), `known/*` |
 | located errors, exit 1, nothing written | `adverse/*`, `tools/cli` |
-| deterministic output | `determinism/*`, `gen/*`, `describe/*`, `highlight/*/files` (byte-exact goldens) |
+| deterministic output | `determinism/*`, `gen/*`, `describe/*`, `highlight/*/files`, `editor/*/files` (byte-exact goldens) |
 | editor files colour as documented | `highlight/*` (samples through the TextMate and highlight.js references and Vim) |
+| language servers answer as documented | `editor/*` (every server compiles), `editor/full/*` and `editor/stub/*` (sessions) |
 | the bootstrap converges | `bootstrap` |
 | LALR is LALR | `unit/nexus` (lookaheads equal merged canonical LR(1)) |
 | every generated parser compiles and runs | every suite and doc example |
@@ -402,6 +418,8 @@ current numbers and how to compare two builds.
 | `src/highlight/highlight.zig` | `@highlight`: checks against the lexer spec, the order editors match in |
 | `src/highlight/render.zig` | patterns as regexes: bytes, Oniguruma, JavaScript, Vim |
 | `src/highlight/emit.zig` | the TextMate grammar, VS Code language configuration, highlight.js language, Vim syntax file |
+| `src/lsp/editor.zig` | `--editor`: the VS Code extension, the server's files, the stub `hooks.zig` |
+| `src/lsp/server_template.zig` | the language server, written as each server's `lsp.zig` |
 | `src/describe.zig` | `--describe`: the grammar as JSON |
 | `src/json.zig` | JSON strings |
 | `src/semantics.zig` | schema, placement, coverage, static types |

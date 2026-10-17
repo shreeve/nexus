@@ -1,0 +1,96 @@
+# tally.grammar: Tally, the language of the editor suite. `nexus --editor`
+# writes its VS Code extension and language server, which the suite builds
+# twice: in full/, with full/hooks.zig (every function of the language
+# written), and in stub/, with the hooks.zig `--editor` writes. Each
+# directory's sessions are replayed against its server, on the files of
+# project/ (test/lib/lsp).
+
+@lexer
+
+tokens
+    ident, number, string, comment, newline
+    kw_fn, kw_let, kw_use, kw_return
+    assign, plus, minus, star, lparen, rparen, lbrace, rbrace, comma, dot
+    eof, err
+
+'#' [^\n]*                  → comment
+'"' [^"\n]* '"'             → string
+'\n'                        → newline
+"fn"                        → kw_fn
+"let"                       → kw_let
+"use"                       → kw_use
+"return"                    → kw_return
+'='                         → assign
+'+'                         → plus
+'-'                         → minus
+'*'                         → star
+'('                         → lparen
+')'                         → rparen
+'{'                         → lbrace
+'}'                         → rbrace
+','                         → comma
+'.'                         → dot
+[0-9]+                      → number
+[a-z_] [a-z_0-9]*           → ident
+.                           → err
+
+@parser
+
+@display
+    IDENT: "a name", NEWLINE: "end of line"
+
+@errors
+    expr: "an expression"
+
+@trivia COMMENT
+
+@repair
+    holes       IDENT
+    terminator  NEWLINE
+
+@highlight
+    language            "Tally"
+    scope-name          source.tally
+    extensions          tally
+    line-comment        "#"
+    indent              '{' [ \t]* line-end
+    dedent              line-start [ \t]* '}'
+
+    keyword             "fn" [ \t]+ function:([a-z_] [a-z_0-9]*)
+    keyword             "fn" "let" "use"
+    keyword.control     "return"
+    operator            "=" "+" "-" "*"
+    punctuation         "(" ")" "{" "}" "," "."
+    constant.numeric    NUMBER
+    string              STRING
+    comment             COMMENT
+    invalid             ERR
+
+program! = body                                 → (module ...1)
+
+body     = line                                 → (1)
+         | body NEWLINE line                    → (...1 3)
+
+line     = stmt
+         |                                      → _
+
+stmt     = KW_USE IDENT                         → (use 2)
+         | KW_LET IDENT "=" expr                → (let 2 4)
+         | KW_FN IDENT "(" [L(IDENT)] ")" block → (fn 2 (params ...4) 6)
+         | KW_RETURN expr                       → (return 2)
+         | expr
+
+block    = "{" body "}"                         → (block ...2)
+
+expr     = @infix
+
+atom     = IDENT                                → (name 1)
+         | NUMBER                               → (num 1)
+         | STRING                               → (str 1)
+         | atom "." IDENT                       → (member 1 3)
+         | atom "(" [L(expr)] ")"               → (call 1 ...3)
+         | "(" expr ")"                         → 2
+
+@infix atom
+    "+" left, "-" left
+    "*" left

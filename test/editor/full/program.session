@@ -1,0 +1,42 @@
+# The analysis of a program of two files, and every request that reads
+# it. util.tally is never opened: the analysis reads it from disk.
+initialize root main.tally
+open main.tally
+hover main.tally 4:5
+hover main.tally 4:19
+hover main.tally 5:5
+hover main.tally 8:13
+hover main.tally 4:22
+hover main.tally 5:28
+hover main.tally 6:1
+definition main.tally 4:19
+definition main.tally 9:12
+definition main.tally 4:22
+typeDefinition main.tally 5:12
+references main.tally 4:19
+references main.tally 8:9
+highlight main.tally 8:9
+signature main.tally 4:23
+signature main.tally 4:25
+signature main.tally 9:24
+signature main.tally 1:1
+completion main.tally 4:18
+completion main.tally 1:5
+completion main.tally 9:12
+completion main.tally 6:1
+rename main.tally 8:9 z
+rename main.tally 1:5 utils
+rename main.tally 4:19 plus
+rename main.tally 6:1 none
+symbols main.tally
+tokens main.tally
+folds main.tally
+selection main.tally 8:13
+# An edit hides the analysis's diagnostics of the file until it is saved.
+change main.tally
+| use util
+| let total = util.add(1, 2)
+| util.add(total, total)
+save main.tally
+close main.tally
+hover main.tally 1:5

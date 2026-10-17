@@ -1,0 +1,27 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open messy.tally
+diagnostics messy.tally
+  {"message":"a tab indents this line; Tally indents with spaces","range":"2:1-2:2","severity":2,"source":"tally"}
+> format messy.tally
+  {"newText":"fn f(a) {\n    return a\n}\nlet b = f(1)\n","range":"1:1-5:1"}
+> symbols messy.tally
+  {"children":[{"kind":13,"name":"a","range":"1:6-1:7","selectionRange":"1:6-1:7"}],"detail":"f(a)","kind":12,"name":"f","range":"1:1-3:2","selectionRange":"1:4-1:5"}
+  {"kind":13,"name":"b","range":"4:3-4:15","selectionRange":"4:7-4:8"}
+> change messy.tally
+diagnostics messy.tally
+  {"message":"expected an expression, got end of line","range":"2:15-3:1","severity":1,"source":"tally"}
+> symbols messy.tally
+[]
+> format messy.tally
+null
+> save messy.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the analysis of messy.tally failed: NoProgram","type":1}}
+diagnostics messy.tally
+  {"message":"expected an expression, got end of line","range":"2:15-3:1","severity":1,"source":"tally"}
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
+> change messy.tally
+diagnostics messy.tally
+  {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
+> format messy.tally
+null

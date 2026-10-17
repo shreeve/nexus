@@ -1,0 +1,18 @@
+# Before the first analysis, and an unsaved document: one has no path, so
+# it is parsed but never analyzed, and requests that read the analysis
+# find none.
+initialize
+open untitled:Untitled-1
+| let x = 1 +
+| let y = x
+tokens untitled:Untitled-1
+folds untitled:Untitled-1
+hover untitled:Untitled-1 2:9
+definition untitled:Untitled-1 2:9
+rename untitled:Untitled-1 2:9 z
+completion untitled:Untitled-1 2:9
+# A file of the program opens: its analysis runs, and the unsaved
+# document still has none.
+open main.tally
+hover main.tally 4:5
+hover untitled:Untitled-1 2:9
