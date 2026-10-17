@@ -1,0 +1,49 @@
+# A clause rule's misuses, each one error at its use: alternatives that
+# label different roles, roles not consecutive in the node's kind, a
+# label on the use, repetition, a group around it, a node without the
+# roles, an alternative that builds no node, and use inside another
+# clause rule.
+# error: clause_rule_misuse.grammar:48:11: error: rule 'mixed': a clause rule labels the same roles in the same order in every alternative: line 47 labels a, this one b
+# error: clause_rule_misuse.grammar:36:15: error: rule 'top': clause rule 'sig' fills a, b, which are not consecutive roles of 'gap' in that order (roles: a, c, b)
+# error: clause_rule_misuse.grammar:37:19: error: rule 'top': clause rule 'sig' takes no label: its labels fill the roles of the node the action builds
+# error: clause_rule_misuse.grammar:38:23: error: rule 'top': clause rule 'sig' is repeated; it fills a node's roles once
+# error: clause_rule_misuse.grammar:39:24: error: rule 'top': clause rule 'sig' is inside a group or choice; use it at the top level of the alternative
+# error: clause_rule_misuse.grammar:40:23: error: rule 'top': clause rule 'sig' fills a, b, which are not consecutive roles of 'many' in that order (roles: items)
+# error: clause_rule_misuse.grammar:41:19: error: rule 'top': clause rule 'sig' fills the roles of the node an action builds, but this alternative builds none
+# error: clause_rule_misuse.grammar:49:19: error: rule 'outer': clause rule 'sig' is used inside clause rule 'outer'; write its elements there instead
+@lexer
+tokens
+    ident
+    integer
+    comma
+    semi
+    eof
+    err
+','                                         → comma
+';'                                         → semi
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    pair        a:leaf? b:leaf? c:leaf?
+    gap         a:leaf? c:leaf? b:leaf?
+    many        ...items
+
+top!    = many
+        | "," sig                           → (pair)
+        | ";" sig                           → (gap)
+        | "," "," p:sig                     → (pair)
+        | "," "," "," sig*                  → (pair)
+        | ";" ";" ("," sig)                 → (pair)
+        | ";" ";" ";" sig                   → (many)
+        | INTEGER sig
+        | "," ";" mixed                     → (pair)
+        | ";" "," outer                     → (pair)
+many    = IDENT                             → (many 1)
+
+sig     = [a:IDENT] [b:INTEGER]
+mixed   = a:IDENT
+        | b:INTEGER
+outer   = c:IDENT sig
