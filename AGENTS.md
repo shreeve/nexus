@@ -42,7 +42,7 @@ dependency. Nexus parses its own grammar files with a parser it generates.
 8. **Zig 0.17, all in.** Nexus, and every parser it generates, is Zig 0.17
    code in its current idioms (`@backingInt`, `std.ArrayList`, `last()`,
    `gpa.print`, `std.mem.find*`, `@splat`, `std.lang`). Read
-   [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md)
+   [ZIG-0.17.md](https://gist.githubusercontent.com/shreeve/57a74df35e17dacb30dcaa5d5164a27f/raw/ZIG-0.17.md)
    before writing Zig, and check a std API in its source (`zig env` prints
    `std_dir`) rather than from memory.
 9. **Measure speed.** A change that could affect speed is benchmarked
@@ -139,4 +139,4 @@ downstream repository are in `CHANGELOG.md`.
 | `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
 | `CHANGELOG.md` | every release, and the migration steps for downstream |
 | `HANDOFF.md` | current state, open work, tips |
-| [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md) | the Zig 0.17 reference (shreeve/zig-agent-docs) |
+| [ZIG-0.17.md](https://gist.githubusercontent.com/shreeve/57a74df35e17dacb30dcaa5d5164a27f/raw/ZIG-0.17.md) | the Zig 0.17 reference (a gist, mirrored from shreeve/rig's ZIG-0.17.md) |
