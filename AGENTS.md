@@ -105,8 +105,10 @@ build of theirs:
   project's own corpus with the current `bin/nexus` and with the change's
   build, the project's grammar and lang module on both sides (em:
   `misc/vista` and `misc/foia/oro`; Rig: `test/`, `examples/`, `std/`,
-  the `rig` fences of its Markdown (`test/equiv.py` extracts them) and the
-  programs `test/matrix.py --keep DIR` writes; nexis: every `.nx` file,
+  the cases of `test/rig/*.rig.test` as the programs
+  `swarm test/rig.rip tree` writes in `.zig-cache/rig-tests/tree`, the
+  `rig` fences of its Markdown (as `tools/equiv.py` extracts them) and
+  the programs `test/matrix.py --keep DIR` writes; nexis: every `.nx` file,
   `git ls-files '*.nx'`). The pull request states the result;
   a file that differs is explained there and reported to its project
   before the merge. A downstream's own differential runs use one
