@@ -30,7 +30,7 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   every name of the corpus, and with a resolution over std.zig.Ast on
   every member and import); keyword completion tests each word against
   one parse to the cursor; CHANGELOG.md, "Unreleased".
-- **The suite is green on macOS (arm64):** `./test/run` → 1070 passed, 0
+- **The suite is green on macOS (arm64):** `./test/run` → 1106 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
