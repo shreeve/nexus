@@ -226,9 +226,10 @@ fence's info string:
 | ` ```zig test ` | `zig test` against the last grammar's parser |
 | ` ```zig fragment ` | illustration only |
 | ` ```sample ` then ` ```highlight ` | the last complete grammar's editor files colour the sample as shown (the `.hl` format of "Highlight checks") |
+| ` ```session ` then ` ```out ` | the last complete grammar's language server, with the stub `hooks.zig`, answers the session as shown (the format of "Language-server sessions") |
 
 A `grammar` or `zig` fence without one of these markers fails, and so does
-an `input` without its `tree` or a `sample` without its `highlight`, so nothing in a document goes untested by
+an `input` without its `tree`, a `sample` without its `highlight` or a `session` without its `out`, so nothing in a document goes untested by
 accident. Other fences (`text`, `bash`, ...) are not checked. The examples
 are extracted into `.zig-cache/nexus-test/docs/` and run like any suite.
 

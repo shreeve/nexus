@@ -31,6 +31,9 @@
 #   ```sample              text for the last grammar's @highlight ...
 #   ```highlight           ... and how its editor files colour it (the format
 #                          of test/lib/highlight)
+#   ```session             a session for the last grammar's language server
+#                          (the format of test/lib/lsp) ...
+#   ```out                 ... and what the server answers
 # A `grammar` or `zig` fence without one of these markers is an error; any
 # other fence (text, bash, ...) is not checked.
 
@@ -71,6 +74,10 @@ function pendingSample() {
     if (sampleBase != "") bad(sampleLine, "a ```sample block needs a ```highlight block after it")
     sampleBase = ""
 }
+function pendingSession() {
+    if (sessionBase != "") bad(sessionLine, "a ```session block needs an ```out block after it")
+    sessionBase = ""
+}
 function pendingError() {
     if (rejectsLine != "") bad(rejectsLine, "a `rejects` grammar needs an ```error block after it")
     rejectsLine = ""
@@ -81,7 +88,7 @@ function needSuite(what) {
 }
 function finish(    name, dir, flags, i, n, lines, subdir, path) {
     if (lang == "grammar") {
-        pendingCase(); pendingError(); pendingSample()
+        pendingCase(); pendingError(); pendingSample(); pendingSession()
         name = suffixed(".grammar")
         if (name != "") {
             dir = OUT "/" DOCID "/L" start "-" substr(name, 1, length(name) - 8)
@@ -140,6 +147,18 @@ function finish(    name, dir, flags, i, n, lines, subdir, path) {
         if (sampleBase == "") { bad(start, "a ```highlight block needs a ```sample block before it"); return }
         write(sampleBase ".txt.hl", body)
         sampleBase = ""
+    } else if (lang == "session") {
+        pendingSession()
+        if (!needSuite("session")) return
+        if (rejects) { bad(start, "a ```session block follows a `rejects` grammar"); return }
+        system("mkdir -p \"" suite "/server\" \"" suite "/project\"")
+        sessionBase = suite "/server/L" start
+        sessionLine = start
+        write(sessionBase ".session", body)
+    } else if (lang == "out") {
+        if (sessionBase == "") { bad(start, "an ```out block needs a ```session block before it"); return }
+        write(sessionBase ".out", body)
+        sessionBase = ""
     } else if (lang == "error") {
         if (rejectsLine == "") { bad(start, "an ```error block needs a `rejects` grammar before it"); return }
         n = split(body, lines, "\n")
@@ -148,7 +167,7 @@ function finish(    name, dir, flags, i, n, lines, subdir, path) {
         rejectsLine = ""
     }
 }
-BEGIN { inFence = 0; suite = ""; caseBase = ""; rejectsLine = ""; sampleBase = "" }
+BEGIN { inFence = 0; suite = ""; caseBase = ""; rejectsLine = ""; sampleBase = ""; sessionBase = "" }
 {
     if (!inFence) {
         if (match($0, /^[ \t]*```/)) {
@@ -175,7 +194,7 @@ BEGIN { inFence = 0; suite = ""; caseBase = ""; rejectsLine = ""; sampleBase = "
 }
 END {
     if (inFence) bad(start, "unclosed code fence")
-    pendingCase(); pendingError(); pendingSample()
+    pendingCase(); pendingError(); pendingSample(); pendingSession()
 }
 ' "$doc"
 done

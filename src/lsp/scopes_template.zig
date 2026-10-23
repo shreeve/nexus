@@ -305,8 +305,9 @@ pub const Index = struct {
     }
 
     /// The tokens of `start..end`, one blank where the text between two
-    /// has blanks, a line end or a comment, without comments and doc
-    /// tokens; with `trim`, without operators at the end.
+    /// has blanks, a line end or a comment, without comments, doc tokens
+    /// and layout (tokens of blanks and line ends, or of no text); with
+    /// `trim`, without operators at the end.
     fn tokenText(self: *const Index, arena: Allocator, start: u32, end: u32, trim: bool) error{OutOfMemory}![]const u8 {
         var last = self.firstTokenAt(start);
         var stop = last;
@@ -314,7 +315,7 @@ pub const Index = struct {
         var kept: std.ArrayList(parser.Token) = .empty;
         while (last < stop) : (last += 1) {
             const t = self.tokens[last];
-            if (t.len == 0 or isComment(t)) continue;
+            if (isComment(t) or std.mem.trim(u8, self.text[t.pos..][0..t.len], " \t\r\n").len == 0) continue;
             try kept.append(arena, t);
         }
         if (trim) while (kept.items.len > 1) {

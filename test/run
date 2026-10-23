@@ -1188,6 +1188,11 @@ while IFS=$'\t' read -r kind id arg; do
                 rel=$(basename "$f")
                 add "$id/highlight/${rel%.*}" hl "$arg" "$f"
             done
+            for f in "$arg"/server/*.session; do
+                [[ -f $f ]] || continue
+                rel=$(basename "$f")
+                add "$id/server/${rel%.session}" session "$arg/server" "$f" && need_build "$arg/server" build-server
+            done
             add "$id" bug "$arg" || continue
             suite_conf "$arg"
             grep -qE '^# error:' "$GRAMMAR" || need_build "$arg" ;;

@@ -12,6 +12,7 @@ Contents: [Layout](#layout) · [The @lexer section](#the-lexer-section) ·
 [Operators and keywords](#operators-and-keywords) ·
 [Conflicts and hints](#conflicts-and-hints) · [Directives](#directives) ·
 [Messages](#messages) · [Editor support](#editor-support) ·
+[Names and scopes](#names-and-scopes) ·
 [Describing a grammar](#describing-a-grammar) · [Limits](#limits) ·
 [Errors](#errors)
 
@@ -1201,6 +1202,7 @@ when it decides a cell for any rule its alternative expands into.
 | `@repair` | any | the tokens tolerant parsing may insert |
 | `@highlight` | any | how editors colour the language ([Editor support](#editor-support)) |
 | `@messages` | any | messages of their own for syntax errors, by example ([Messages](#messages)) |
+| `@lsp` | any | names and scopes, for the language server ([Names and scopes](#names-and-scopes)) |
 
 "Any" means the preamble or the @parser section; a directive of the
 @lexer section anywhere else is an error. Each directive appears at most
@@ -1698,6 +1700,283 @@ or `before`; a `before` pattern of varying length; trailing context `/`;
 `within` something other than a token, or a token whose rules are not
 regions; a context on a region's entry; a region within a region; a
 pattern with no editor form; and a second `@highlight`.
+
+## Names and scopes
+
+`@lsp` (in the preamble or the @parser section, at most once) declares a
+language's names: which nodes open scopes, which leaves define names and
+which use them. From it the language server `nexus --editor` writes
+([LSP.md](LSP.md)) gives the outline, go to definition, references,
+document highlights, rename, completion of the names in scope and hover,
+with no code in `hooks.zig`. `@lsp` names the kinds and roles of
+`@schema` ([SEMANTICS.md](SEMANTICS.md#schema)), so it needs one; it
+changes nothing in the generated parser.
+
+```grammar steps.grammar
+@lexer
+
+tokens
+    ident, number, comment, newline
+    kw_def, kw_let, kw_end, eq, plus, lparen, rparen, comma, dot
+    eof, err
+
+'#' [^\n]*                  → comment
+'\n'                        → newline
+"def"                       → kw_def
+"let"                       → kw_let
+"end"                       → kw_end
+'='                         → eq
+'+'                         → plus
+'('                         → lparen
+')'                         → rparen
+','                         → comma
+'.'                         → dot
+[0-9]+                      → number
+[a-z_]+                     → ident
+.                           → err
+
+@parser
+
+@schema
+    file        ...items
+    def         name:leaf params:params body:body
+    params      ...names:leaf
+    body        ...items
+    let         name:leaf value
+    name        id:leaf
+    num         value:leaf
+    add         left right
+    call        callee ...args
+    get         object field:leaf
+
+@trivia COMMENT
+
+@repair
+    holes       IDENT
+    terminator  NEWLINE
+
+@highlight
+    language            "Steps"
+    scope-name          source.steps
+    extensions          steps
+    line-comment        "#"
+    keyword             "def" "let" "end"
+    operator            "=" "+"
+    punctuation         "(" ")" "," "."
+    constant.numeric    NUMBER
+    comment             COMMENT
+    invalid             ERR
+
+@lsp
+    scope       file unordered
+    scope       def body
+    define      def.name        function  outer  doc:leading  detail:..body
+    define      params.names    variable
+    define      let.name        variable  doc:leading
+    use         IDENT
+    skip        get.field
+    builtin     "print"
+    doc         COMMENT strip "#"
+    undefined   warning
+
+file!  = lines                                      → (file ...1)
+
+lines  = line                                       → (1)
+       | lines NEWLINE line                         → (...1 3)
+
+line   = item
+       |                                            → _
+
+item   = KW_DEF IDENT "(" [L(IDENT)] ")" NEWLINE lines KW_END
+                                                    → (def 2 (params ...4) (body ...7))
+       | KW_LET IDENT "=" expr                      → (let 2 4)
+       | expr
+
+expr   = expr "+" atom                              → (add 1 3)
+       | atom
+
+atom   = IDENT                                      → (name 1)
+       | NUMBER                                     → (num 1)
+       | atom "." IDENT                             → (get 1 3)
+       | atom "(" [L(expr)] ")"                     → (call 1 ...3)
+       | "(" expr ")"                               → 2
+```
+
+A file of Steps is a scope whose names are in sight anywhere in it
+(`unordered`); a `def` opens a scope for its parameters, and its body
+one for its `let`s, each in sight from the end of its `let` on. The name
+of a `def` belongs to the scope around the `def` (`outer`), its detail is
+its text up to its body, and its doc is the comment lines just before
+it. A name after `.` is a field, which is not looked up; `print` is a
+builtin. The server, with `hooks.zig` as `--editor` writes it, answers
+this session ([test/README.md, "Language-server
+sessions"](../test/README.md#language-server-sessions)) as shown:
+
+```session
+initialize quiet
+open main.steps
+| # Twice a number.
+| def twice(n)
+|     let sum = n + n
+|     sum
+| end
+| let four = twice(2)
+| def show(x)
+|     print(x.size, four, missing)
+| end
+hover main.steps 2:6
+definition main.steps 4:5
+references main.steps 2:11
+completion main.steps 8:20
+completion main.steps 8:13
+rename main.steps 3:9 total
+rename main.steps 7:10 four
+rename main.steps 6:6 eight
+symbols main.steps
+```
+
+```out
+> initialize quiet
+> open main.steps
+diagnostics main.steps
+  {"message":"'missing' is not defined","range":"8:25-8:32","severity":2,"source":"steps"}
+> hover main.steps 2:6
+{"contents":{"kind":"markdown","value":"```steps\ndef twice(n)\n```\n\nTwice a number."}}
+> definition main.steps 4:5
+main.steps 3:9-3:12
+> references main.steps 2:11
+  main.steps 2:11-2:12
+  main.steps 3:15-3:16
+  main.steps 3:19-3:20
+> completion main.steps 8:20
+  {"kind":6,"label":"x"}
+  {"detail":"def show(x)","kind":3,"label":"show"}
+  {"kind":6,"label":"four"}
+  {"detail":"def twice(n)","documentation":{"kind":"markdown","value":"Twice a number."},"kind":3,"label":"twice"}
+> completion main.steps 8:13
+[]
+> rename main.steps 3:9 total
+{"changes":{"main.steps":[{"newText":"total","range":"3:9-3:12"},{"newText":"total","range":"4:5-4:8"}]}}
+> rename main.steps 7:10 four
+error -32803 'four' would capture the use of 'four' on line 8
+> rename main.steps 6:6 eight
+error -32803 'four' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+> symbols main.steps
+  {"children":[{"kind":13,"name":"n","range":"2:11-2:12","selectionRange":"2:11-2:12"}],"detail":"def twice(n)","kind":12,"name":"twice","range":"2:1-5:4","selectionRange":"2:5-2:10"}
+  {"kind":13,"name":"four","range":"6:1-6:20","selectionRange":"6:5-6:9"}
+  {"children":[{"kind":13,"name":"x","range":"7:10-7:11","selectionRange":"7:10-7:11"}],"detail":"def show(x)","kind":12,"name":"show","range":"7:1-9:4","selectionRange":"7:5-7:9"}
+```
+
+### The lines
+
+Each indented line starts with its key; the words after it are taken
+whole (as `@keywords` takes them), and a line indented further than the
+block's first continues the line above. `KIND` and `ROLE` are names of
+`@schema`, `TOKEN` a token as rules write it, `SYMBOLKIND` one of LSP's
+symbol kinds as the server names them (`file`, `module`, `namespace`,
+`package`, `class`, `method`, `property`, `field`, `constructor`,
+`enum`, `interface`, `function`, `variable`, `constant`, `string`,
+`number`, `boolean`, `array`, `object`, `key`, `null`, `enum_member`,
+`struct`, `event`, `operator`, `type_parameter`).
+
+| Line | Meaning |
+|---|---|
+| `scope KIND ... [unordered]` | a node of each kind opens a scope; in an `unordered` one, a name is in sight anywhere in it |
+| `define KIND.ROLE SYMBOLKIND [options]` | the leaf in ROLE of a KIND node defines a name |
+| `use TOKEN ...` | a leaf of these tokens that no `define` or `skip` takes uses a name |
+| `skip KIND.ROLE ...` | the leaf in ROLE is neither: a member, a label, a field initializer's name |
+| `skip KIND.ROLE when ...` | the same, only when the conditions hold, before any `define` line |
+| `builtin "name" ...` or `builtin TOKEN` | names, or every leaf of a token, that resolve to nothing, silently |
+| `doc TOKEN [strip "text"]` | the token of doc comments, and the text to take off each one's start |
+| `undefined error\|warning` | a use that resolves to nothing is an error or a warning in the editor |
+
+The options of `define`:
+
+| Option | Meaning |
+|---|---|
+| `when ROLE "text"` | only when the node's ROLE leaf is `text` (an absent role's text is empty) |
+| `when ROLE` | only when the node has ROLE |
+| `when ^KIND.ROLE ["text"]` | the same of a role of the node's parent, which is a KIND |
+| `outer` | the name belongs to the scope around the nearest one |
+| `member` / `lexical` | the name is only a member of its scope (a field: in the outline, never in sight by itself), or only in sight (not in the outline as a member); by default both |
+| `value:ROLE` | the node's value: when it opens a scope, that scope's names are the name's children in the outline |
+| `type:ROLE` | its declared type: the name's detail when it has no other |
+| `doc:ROLE` or `doc:leading` | its doc: the leaves of ROLE, or the doc tokens on the lines just before the node, each without the `strip` text and one blank after it |
+| `export:ROLE` or `export:^KIND` | other files see the name only when ROLE is present, or when the node's parent is a KIND; without it, a name of the file's own scope is seen by other files |
+| `detail` or `detail:..ROLE` | its one-line detail: the node's tokens, or its tokens before ROLE, one blank between two that have any, without comments and without operators at the end |
+
+`when` may be given more than once; every one must hold. Two `define`
+lines for one role differ in their `when`s, and the first whose
+conditions hold defines; a leaf none takes is what it would be without
+them.
+
+### How names resolve
+
+One walk over the tree the parser builds (tolerantly, with `@repair`, so
+a file with errors keeps its names) finds the scopes, the definitions and
+the uses. The file is the outermost scope, unordered when the kind its
+start symbol builds is. A definition belongs to the nearest scope at or
+around its node; with `outer`, to the scope around that one. A use
+resolves up its chain of scopes to the nearest definition of its name
+that is in sight: in an unordered scope any, in an ordered one the last
+whose node ends before the use (whose own leaf does, for an `outer`
+definition and for one whose node opens the scope it belongs to, like a
+capture). A use no definition answers is a builtin when `builtin` names
+it, else unresolved; a builtin's name is never a definition. A member
+is never in sight. Members (`a.b`), imports and names that need types
+answer nothing.
+
+### Checks
+
+Every mistake is an error at its word: `@lsp` without `@schema`; an
+unknown line, kind, role, token or symbol kind; a role of the side band;
+`define` or `skip` on a role that holds no token (a group, a tag, nodes
+of kinds); a role of a kind twice in `skip`, or a kind twice in `scope`;
+a role every `define` line takes and `skip` names; two `define` lines
+with the same conditions; an option twice, `member` with `lexical`, an
+option's role that is a rest role or (for `value:` and `type:`) a tag;
+`when` on a role that holds no text, or `^KIND` that is never the node's
+parent; `outer` on a kind that is no scope and no scope kind holds;
+`export:^KIND` that is never the parent; `doc:leading` without a `doc`
+line; `doc:ROLE` on a role of nodes; a `use` token of `@trivia`; a
+`builtin TOKEN` that no `use` line names; an empty or repeated builtin
+name; an `@lsp` without a `define` line; a second `doc` or `undefined`
+line. The lines of imports, members, binding, colours and completion
+words (`import`, `member`, `qualify`, `nominal`, `bind`, `color`,
+`words`) are a later step of `@lsp`: each is an error that says so.
+
+```grammar steps_bad.grammar rejects
+@lexer
+
+tokens
+    ident, newline, kw_let, eq, eof, err
+
+'\n'                        → newline
+"let"                       → kw_let
+'='                         → eq
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    file        ...items
+    let         name:leaf value:name
+    name        id:leaf
+
+@lsp
+    scope       file unordered
+    define      let.value variable
+    use         IDENT
+
+file!  = item+                              → (file ...1)
+item   = KW_LET IDENT "=" name NEWLINE      → (let 2 4)
+name   = IDENT                              → (name 1)
+```
+
+```error
+steps_bad.grammar:21:17: error: define let.value: the role holds no token, and a definition is a token
+```
 
 ## Describing a grammar
 
