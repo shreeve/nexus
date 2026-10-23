@@ -1,8 +1,0 @@
-# `none` is the absent optional.
-
-sub main()
-  x: Int? = none
-  print(x ?? 7)
-
-# expect:
-# 7

@@ -1,0 +1,268 @@
+(module
+  (set _ `HISTORY` _ `3`)@396..407
+  (struct
+    `Tape`
+    _
+    _
+    (: `label` (read_view `String`)@427..434)@420..434
+    (: `minutes` `Int`)@437..449
+    (drop_decl
+      ((write `@`)@458..460)@457..461
+      (block (call _ `print` `"eject"` (member `@` `label`)@481..487)@466..488)@466..490)@453..490)@409..490
+  (generic_struct
+    `Stack`
+    (`T`)@499..502
+    _
+    _
+    (: `items` (generic_inst `List` `T`)@512..519)@505..519
+    (sub
+      `push`
+      _
+      ((write `@`)@532..534 (: `x` `T`)@536..540)@531..541
+      _
+      _
+      (block
+        (write
+          (call
+            _
+            (member (member `@` `items`)@547..553 `push`)@547..558
+            (move `x`)@559..561)@547..562)@546..562)@546..566
+      _
+      _
+      _)@523..566
+    (fun
+      `pop`
+      _
+      ((write `@`)@574..576)@573..577
+      (optional `T`)@581..583
+      _
+      _
+      (block
+        (call _ (member (write (member `@` `items`)@590..596)@589..596 `pop`)@588..601)@588..603)@588..607
+      _
+      _
+      _)@566..607
+    (fun
+      `map`
+      (`U`)@614..617
+      ((read `@`)@618..620
+        (: `f` (fun_type ((read_view `T`)@629..631)@629..631 `U` _)@625..637)@622..637)@617..638
+      (generic_inst `Stack` `U`)@642..650
+      _
+      _
+      (block
+        (set
+          _
+          `out`
+          _
+          (call
+            _
+            (index `Stack` `U`)@661..669
+            (kwarg `items` (call _ `List`)@677..683)@670..683)@661..684)@655..684
+        (for
+          iter
+          `x`
+          _
+          (read (member `@` `items`)@699..705)@698..705
+          (block
+            (write
+              (call
+                _
+                (member `out` `push`)@713..721
+                (call _ `f` (read `x`)@724..726)@722..727)@713..728)@712..728)@712..733
+          _)@689..733
+        `out`)@655..738
+      _
+      _
+      _)@607..738)@490..738
+  (generic_struct
+    `Ring`
+    (`T` (: `n` `Int`)@750..756)@746..757
+    _
+    _
+    (: `items` (array_type `n` `T`)@767..771)@760..771
+    (default `count` `Int` `0`)@774..788
+    (sub
+      `put`
+      _
+      ((write `@`)@800..802 (: `x` `T`)@804..808)@799..809
+      _
+      _
+      (block
+        (set
+          _
+          (index
+            (member `@` `items`)@814..820
+            (% (member `@` `count`)@821..827 `n`)@821..831)@814..832
+          _
+          `x`)@814..836
+        (set += (member `@` `count`)@841..847 _ `1`)@841..852)@814..856
+      _
+      _
+      _)@792..856
+    (fun
+      `last`
+      _
+      ((read `@`)@865..867)@864..868
+      `T`
+      _
+      _
+      (block
+        (index
+          (member `@` `items`)@878..884
+          (% (- (member `@` `count`)@886..892 `1`)@886..896 `n`)@885..901)@878..902)@878..904
+      _
+      _
+      _)@856..904)@738..904
+  (fun
+    `total`
+    ((: `n` `Int`)@914..920)@913..921
+    ((: `xs` (array_type `n` `Int`)@926..932)@922..932)@921..933
+    `Int`
+    _
+    _
+    (block
+      (set _ `sum` _ `0`)@943..950
+      (for iter `x` _ `xs` (block (set += `sum` _ `x`)@969..977)@969..980 _)@953..980
+      `sum`)@943..985
+    _
+    _
+    _)@904..985
+  (fun
+    `minutes`
+    _
+    ((: `t` (read_view (shared `Tape`)@1001..1006)@1000..1006)@997..1006)@996..1007
+    `Int`
+    _
+    _
+    (block (member `t` `minutes`)@1017..1026)@1017..1028
+    _
+    _
+    _)@985..1028
+  (fun
+    `max`
+    (`T`)@1035..1038
+    ((: `a` `T`)@1039..1043 (: `b` `T`)@1045..1049)@1038..1050
+    `T`
+    _
+    _
+    (block (if (> `a` `b`)@1063..1068 `a` `b`)@1058..1075)@1058..1077
+    _
+    _
+    _)@1028..1077
+  (fun
+    `pick`
+    (`T`)@1085..1088
+    ((: `a` `T`)@1089..1093 (: `b` `T`)@1095..1099 (: `first` `Bool`)@1101..1112)@1088..1113
+    `T`
+    _
+    _
+    (block
+      (if `first` (block (return (move `a`)@1141..1143)@1134..1143)@1134..1146 _)@1121..1146
+      (move `b`)@1146..1148)@1121..1150
+    _
+    _
+    _)@1077..1150
+  (sub
+    `main`
+    _
+    ()@1158..1160
+    _
+    _
+    (block
+      (set
+        _
+        `tapes`
+        _
+        (call
+          _
+          (index `Stack` (share `Tape`)@1177..1182)@1171..1183
+          (kwarg `items` (call _ `List`)@1191..1197)@1184..1197)@1171..1198)@1163..1198
+      (write
+        (call
+          _
+          (member `tapes` `push`)@1202..1212
+          (share
+            (call
+              _
+              `Tape`
+              (kwarg `label` `"jazz"`)@1219..1232
+              (kwarg `minutes` `45`)@1234..1245)@1214..1246)@1213..1246)@1202..1247)@1201..1247
+      (write
+        (call
+          _
+          (member `tapes` `push`)@1251..1261
+          (share
+            (call
+              _
+              `Tape`
+              (kwarg `label` `"rock"`)@1268..1281
+              (kwarg `minutes` `38`)@1283..1294)@1263..1295)@1262..1295)@1251..1296)@1250..1296
+      (set
+        fixed
+        `lengths`
+        _
+        (call _ (member `tapes` `map`)@1310..1319 `minutes`)@1310..1328)@1299..1328
+      (call
+        _
+        `print`
+        (member `lengths` `items`)@1337..1350
+        (call
+          _
+          `max`
+          (index (member `lengths` `items`)@1356..1369 `0`)@1356..1372
+          (index (member `lengths` `items`)@1374..1387 `1`)@1374..1390)@1352..1391)@1331..1392
+      (set
+        fixed
+        `spare`
+        _
+        (call
+          _
+          `pick`
+          (call
+            _
+            `Tape`
+            (kwarg `label` `"demo"`)@1414..1427
+            (kwarg `minutes` `3`)@1429..1439)@1409..1440
+          (call
+            _
+            `Tape`
+            (kwarg `label` `"blank"`)@1447..1461
+            (kwarg `minutes` `0`)@1463..1473)@1442..1474
+          `false`)@1404..1482)@1395..1482
+      (call _ `print` `"spare"` (member `spare` `label`)@1500..1511)@1485..1512
+      (if
+        (as (call _ (member (write `tapes`)@1519..1525 `pop`)@1518..1530)@1518..1532 `t`)@1518..1537
+        (block (call _ `print` `"played"` (member `t` `label`)@1558..1565)@1542..1566)@1542..1569
+        _)@1515..1569
+      (call
+        _
+        `print`
+        `"left"`
+        (member (member `tapes` `items`)@1583..1594 `len`)@1583..1598
+        (call _ (index `max` `Float`)@1600..1610 `1` `2`)@1600..1616)@1569..1617
+      (set
+        _
+        `recent`
+        _
+        (call
+          _
+          (inst `Ring` `Int` `HISTORY`)@1629..1647
+          (kwarg `items` (array_fill `HISTORY` `0`)@1655..1669)@1648..1669)@1629..1670)@1620..1670
+      (for
+        iter
+        `m`
+        _
+        (array `45` `38` `60` `12`)@1682..1698
+        (block
+          (write (call _ (member `recent` `put`)@1704..1714 `m`)@1704..1717)@1703..1717)@1703..1720
+        _)@1673..1720
+      (call
+        _
+        `print`
+        (member `recent` `items`)@1726..1738
+        (call _ (member `recent` `last`)@1740..1751)@1740..1753
+        (call _ `total` (member `recent` `items`)@1761..1773)@1755..1774)@1720..1775)@1163..1917
+    _
+    _
+    _)@1150..1917)@396..1917

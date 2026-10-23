@@ -4,7 +4,7 @@
   "autoClosingPairs": [{"open": "(", "close": ")"}, {"open": "[", "close": "]"}, {"open": "\"", "close": "\"", "notIn": ["string", "comment"]}, {"open": "'", "close": "'", "notIn": ["string", "comment"]}],
   "surroundingPairs": [["(", ")"], ["[", "]"], ["\"", "\""], ["'", "'"]],
   "indentationRules": {
-    "increaseIndentPattern": "^[\\x09 ]*(?:pub[\\x09 ]+)?(?:called|rarely|inline|fun|sub|obj|enum|if|else|while|for|match|test|raw|extern|defer|errdefer)(?:[\\x09 (].*)?$",
+    "increaseIndentPattern": "^[\\x09 ]*(?:\\$[A-Z_a-z][0-9A-Z_a-z]*:(?:[\\x09 ]+(?:pub[\\x09 ]+)?(?:called|inline|fun|sub|obj|enum|if|else|while|for|match|test|raw|extern|defer|errdefer)(?:[\\x09 (].*)?)?|(?:pub[\\x09 ]+)?(?:called|inline|fun|sub|obj|enum|if|else|while|for|match|test|raw|extern|defer|errdefer)(?:[\\x09 (].*)?)[\\x09 ]*$",
     "decreaseIndentPattern": "^[\\x09 ]*else"
   }
 }

@@ -5,8 +5,8 @@
 obj Owner
   cell: *Cell[Int]
 
-  drop(!self)
-    print(self.cell.get())
+  drop(!@)
+    print(@cell.get())
 
 sub main()
   c: *Cell[Int] = *Cell(42)

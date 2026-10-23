@@ -1,0 +1,6 @@
+# Ternary and guard pieces without their other halves.
+sub main()
+  x = 1 if
+  y = if 1 else 2
+  z = 1 if 2 else
+  print(1 if true)

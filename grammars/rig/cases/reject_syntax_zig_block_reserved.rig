@@ -1,8 +1,0 @@
-# Inline `zig "..."` source splicing is reserved and does not parse;
-# `raw` blocks and `extern` declarations are the escape hatches.
-
-sub main()
-  zig "const x = 42; std.debug.print(\"{any}\\n\", .{x});"
-
-# error: unexpected keyword `zig`
-# error: inline Zig is reserved

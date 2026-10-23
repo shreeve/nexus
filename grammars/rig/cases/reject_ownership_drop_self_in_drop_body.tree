@@ -1,6 +1,0 @@
-(module
-  (struct
-    `Owner`
-    _
-    (: `cell` (shared (generic_inst `Cell` `Int`)@54..63)@53..63)@47..63
-    (drop_decl ((write `self`)@72..77)@71..78 (block (move `self`)@83..88)@83..143)@67..143)@35..143)@35..143

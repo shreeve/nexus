@@ -1,0 +1,35 @@
+(module
+  (use (member `std` `text`)@221..229 _)@217..229
+  (use (member `std` `utf8`)@234..242 _)@230..242
+  (use (member `std` `utf16`)@247..256 _)@243..256
+  (sub
+    `main`
+    _
+    ()@266..268
+    _
+    _
+    (block
+      (set _ `word` _ `"cafe\\u{301}-\\u{1f44b}\\u{1f3fd}"`)@271..310
+      (call
+        _
+        `print`
+        `word`
+        (member `word` `len`)@325..333
+        (call _ (member `utf8` `rune_count`)@335..350 `word`)@335..356
+        (call _ (member `utf16` `unit_count`)@358..374 `word`)@358..380
+        (call _ (member `text` `char_count`)@382..397 `word`)@382..403)@313..404
+      (for
+        iter
+        `c`
+        _
+        (call _ (member `text` `chars`)@416..426 `word`)@416..432
+        (block (call _ `print` `c` (member `c` `len`)@446..451)@437..452)@437..455
+        _)@407..455
+      (call
+        _
+        `print`
+        (call _ (member `text` `first_chars`)@461..477 `word` `4`)@461..486
+        (call _ (member `text` `last_chars`)@488..503 `word` `1`)@488..512)@455..513)@271..616
+    _
+    _
+    _)@258..616)@217..616

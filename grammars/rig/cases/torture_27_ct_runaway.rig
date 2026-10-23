@@ -1,0 +1,21 @@
+# Compile-time functions that never finish, nest without end, and grow
+# without end: each stops at its limit, with a diagnostic, in bounded time.
+fun spin[n: Int] -> Int
+  k = 0
+  while k >= 0
+    k = (k + n) % 7
+  k
+
+fun deep[n: Int] -> Int
+  deep[n + 1] + 1
+
+fun wide[n: Int] -> Int
+  t = [1000000 of 0]
+  wide[n + 1] + t.len
+
+A = spin[3]
+B = deep[0]
+C = wide[0]
+
+sub main()
+  print(A, B, C)

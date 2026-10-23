@@ -1,0 +1,91 @@
+(module
+  (sub
+    `main`
+    _
+    ()@206..208
+    _
+    _
+    (block
+      (set
+        _
+        `mine`
+        _
+        (call _ (member (index `Set` (read `String`)@222..229)@218..230 `new`)@218..234)@218..236)@211..236
+      (for
+        iter
+        `name`
+        _
+        (array `"ada"` `"bob"` `"cy"` `"bob"`)@251..278
+        (block
+          (if
+            (not (call _ (member (write `mine`)@291..296 `add`)@290..301 `name`)@290..307)@286..307
+            (block (call _ `print` `"again"` `name`)@314..334)@314..338
+            _)@283..338)@283..338
+        _)@239..338
+      (set
+        _
+        `yours`
+        _
+        (call _ (member (index `Set` (read `String`)@350..357)@346..358 `new`)@346..362)@346..364)@338..364
+      (for
+        iter
+        `name`
+        _
+        (array `"cy"` `"dee"` `"ada"`)@379..399
+        (block (write (call _ (member `yours` `add`)@405..414 `name`)@405..420)@404..420)@404..424
+        _)@367..424
+      (set
+        _
+        `both`
+        _
+        (call _ (member (index `Set` (read `String`)@435..442)@431..443 `new`)@431..447)@431..449)@424..449
+      (for
+        iter
+        `k`
+        _
+        (read (call _ (member `mine` `items`)@462..472)@462..474)@461..474
+        (block (write (call _ (member `both` `add`)@480..488 `k`)@480..491)@479..491)@479..494
+        _)@452..494
+      (for
+        iter
+        `k`
+        _
+        (read (call _ (member `yours` `items`)@504..515)@504..517)@503..517
+        (block (write (call _ (member `both` `add`)@523..531 `k`)@523..534)@522..534)@522..538
+        _)@494..538
+      (set
+        _
+        `only_mine`
+        (generic_inst `List` (read_view `String`)@554..561)@549..562
+        (call _ `List`)@565..571)@538..571
+      (for
+        iter
+        `k`
+        _
+        (read (call _ (member `mine` `items`)@584..594)@584..596)@583..596
+        (block
+          (if
+            (not (call _ (member `yours` `has`)@608..617 `k`)@608..620)@604..620
+            (block
+              (write (call _ (member `only_mine` `push`)@628..642 `k`)@628..645)@627..645)@627..649
+            _)@601..649)@601..649
+        _)@574..649
+      (call
+        _
+        `print`
+        (member `mine` `len`)@655..663
+        (member `yours` `len`)@665..674
+        (member `both` `len`)@676..684
+        (call _ (member `mine` `has`)@686..694 `"bob"`)@686..701
+        (call _ (member `yours` `has`)@703..712 `"bob"`)@703..719)@649..720
+      (call _ `print` `only_mine`)@723..739
+      (for
+        iter
+        `k`
+        _
+        (read (call _ (member `both` `items`)@752..762)@752..764)@751..764
+        (block (call _ `print` `k`)@769..777)@769..853
+        _)@742..853)@211..853
+    _
+    _
+    _)@198..853)@198..853

@@ -16,6 +16,7 @@ syn sync fromstart
 " the items are defined from the last tried to the first.
 syn match rigPlain "\v."
 syn match rigPlain "\v[A-Z_a-z][0-9A-Z_a-z]*"
+syn match rigPlain "\v\$"
 syn match rigPlain "\v\|\|"
 syn match rigPlain "\v[0-9][0-9A-Z_a-z]*"
 syn match rigConstantNumeric "\v0|[1-9]%(_=[0-9])*"
@@ -34,27 +35,38 @@ syn match rigPlain "\v\\%x0d%x0a"
 syn match rigPlain "\v\\%x0a"
 syn match rigComment "\v\#.*"
 syn match rigPlain "\v[\x09 ]+"
-syn match rigPunctuation "\v\.\.|\(|\)|\,|\.|\:|\@|\[|\]"
+syn match rigPunctuation "\v\.\.\=|\.\.|\(|\)|\,|\.|\:|\[|\]"
 syn match rigOperator "\v\<\<\%\=|\*\%\=|\+\%\=|\+\|\=|\-\%\=|\-\|\=|\<\<\%|\<\<\=|\>\>\=|\!\=|\%\=|\&\=|\*\%|\*\=|\+\%|\+\=|\+\||\-\%|\-\=|\-\>|\-\||\/\=|\<\<|\<\=|\=\!|\=\=|\=\>|\>\=|\>\>|\?\?|\^\=|\|\=|\!|\%|\&|\*|\+|\-|\/|\<|\=|\>|\?|\^|\||\~"
 syn match rigInvalid "\v\&\&|\*\*"
-syn match rigVariableSpecial "\v\w@<!self\w@!"
+syn match rigVariableSpecial "\v\@"
 syn match rigConstant "\v\w@<!false\w@!|\w@<!none\w@!|\w@<!true\w@!"
 syn match rigKeywordOperator "\v\w@<!and\w@!|\w@<!not\w@!|\w@<!or\w@!"
-syn match rigKeyword "\v\w@<!extern\w@!|\w@<!static\w@!|\w@<!unique\w@!|\w@<!async\w@!|\w@<!const\w@!|\w@<!error\w@!|\w@<!keeps\w@!|\w@<!trait\w@!|\w@<!where\w@!|\w@<!drop\w@!|\w@<!enum\w@!|\w@<!from\w@!|\w@<!impl\w@!|\w@<!test\w@!|\w@<!type\w@!|\w@<!when\w@!|\w@<!fun\w@!|\w@<!pub\w@!|\w@<!raw\w@!|\w@<!sub\w@!|\w@<!use\w@!|\w@<!zig\w@!|\w@<!as\w@!"
-syn match rigKeywordControl "\v\w@<!continue\w@!|\w@<!errdefer\w@!|\w@<!return\w@!|\w@<!await\w@!|\w@<!break\w@!|\w@<!catch\w@!|\w@<!defer\w@!|\w@<!match\w@!|\w@<!while\w@!|\w@<!yield\w@!|\w@<!else\w@!|\w@<!pass\w@!|\w@<!for\w@!|\w@<!try\w@!|\w@<!if\w@!|\w@<!in\w@!"
+syn match rigKeyword "\v\w@<!extern\w@!|\w@<!async\w@!|\w@<!const\w@!|\w@<!error\w@!|\w@<!trait\w@!|\w@<!where\w@!|\w@<!drop\w@!|\w@<!enum\w@!|\w@<!impl\w@!|\w@<!test\w@!|\w@<!type\w@!|\w@<!when\w@!|\w@<!fun\w@!|\w@<!pub\w@!|\w@<!raw\w@!|\w@<!sub\w@!|\w@<!use\w@!|\w@<!zig\w@!|\w@<!as\w@!"
+syn match rigKeywordControl "\v\w@<!continue\w@!|\w@<!errdefer\w@!|\w@<!return\w@!|\w@<!await\w@!|\w@<!break\w@!|\w@<!catch\w@!|\w@<!defer\w@!|\w@<!match\w@!|\w@<!panic\w@!|\w@<!while\w@!|\w@<!yield\w@!|\w@<!else\w@!|\w@<!pass\w@!|\w@<!for\w@!|\w@<!try\w@!|\w@<!if\w@!|\w@<!in\w@!"
 syn match rigInvalid "\v\=\!%([\x09 ])@!"
+syn match rigConstantSymbol "\v%([)0-9A-Z\]_a-z])@<!\:[A-Z_a-z][0-9A-Z_a-z]*%(%(\-|\.)[0-9A-Z_a-z]+)*"
 syn match rigType "\v%([0-9A-Z_a-z])@<![A-Z][0-9A-Z_a-z]*"
 syn match rigVariableParameter "\v%([.0-9A-Z_a-z])@<![A-Z_a-z][0-9A-Z_a-z]*%(\:)@="
-syn match rigStorageModifier "\v%([)0-9A-Z\]_a-z])@<=[!?]%([(0-9=?A-\x5b_a-z])@!"
-syn match rigStorageModifier "\v%([)0-9A-Z\]_a-z])@<![!*+<?\^~]%([(A-\x5b_a-z])@="
-syn match rigStorageModifier "\v%([)0-9A-Z\]_a-z])@<!\*%(\<[(A-\x5b_a-z])@="
-syn match rigFunctionBuiltin "\v\@[_a-z]+%(\()@="
-syn match rigLabel "\v\@[A-Z_a-z][0-9A-Z_a-z]*%([\x09 ]+%(for|while|match|raw))@="
-syn match rigKeywordControl "\v%(break|continue)[\x09 ]+\ze\@[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq3Part2
-syn match rigSeq3Part2 "\v\@[A-Z_a-z][0-9A-Z_a-z]*" contained
+syn match rigStorageModifier "\v%(\?)@<=\!%([(0-9=?-\x5b_a-z])@!"
+syn match rigStorageModifier "\v%([)0-9@-Z\]_a-z])@<=[!?]%([(0-9=?-\x5b_a-z])@!"
+syn match rigStorageModifier "\v%(\))@<=\&%([^\x09\x0a #),\]])@!"
+syn match rigStorageModifier "\v%([)\-0-9=>@-Z\]_a-z])@<!\>%([A-Z_a-z])@="
+syn match rigStorageModifier "\v%(\])@<=[*\^]%([!*?\^~]*%([A-Z][0-9a-z]|%(fun|sub)\())@="
+syn match rigStorageModifier "\v%(\])@<=[!?~]%([!*?\^~]*[A-Z_a-z])@="
+syn match rigStorageModifier "\v%([)0-9@-Z\]_a-z])@<!\*%(\|)@="
+syn match rigStorageModifier "\v%([)0-9@-Z\]_a-z])@<![!*+<?\^~]%([!*<?\^~]*[(@-\x5b_a-z])@="
+syn match rigFunctionBuiltin "\v\$[A-Z_a-z]+%(\()@="
+syn match rigLabel "\v\$[A-Z_a-z][0-9A-Z_a-z]*\:"
+syn match rigKeywordControl "\v%(break|continue)[\x09 ]+\ze\$[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq3Part2
+syn match rigSeq3Part2 "\v\$[A-Z_a-z][0-9A-Z_a-z]*" contained
+syn match rigKeyword "\v%([0-9A-Z\]_a-z] )@<=\w@<!unique\w@!%([\x09 ]*[^\x09\x0a #])@!"
+syn match rigKeyword "\v%(\: )@<=\w@<!once\w@!%( [(*?A-Z_a-z])@="
+syn match rigKeyword "\v%( )@<=%(from|keeps)%( [@-Z_a-z])@="
+syn match rigKeyword "\vfrom[\x09 ]+static%([0-9A-Z_a-z])@!"
 syn match rigKeyword "\v%( )@<=\w@<!of\w@!%( )@="
 syn match rigKeyword "\v^[\x09 ]*new%([\x09 ]+[A-Z_a-z])@="
-syn match rigKeyword "\v%(called|rarely|inline)%([\x09 ]+%(fun|sub))@="
+syn match rigKeyword "\v^[\x09 ]*rarely%([\x09 ]*[^\x09\x0a #])@!"
+syn match rigKeyword "\v%(called|inline)%([\x09 ]+%(fun|sub))@="
 syn match rigKeyword "\v%(obj|enum|type)[\x09 ]+\ze[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq2Part2
 syn match rigSeq2Part2 "\v[A-Z_a-z][0-9A-Z_a-z]*" contained
 syn match rigKeyword "\v%(fun|sub)[\x09 ]+\ze[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq1Part2
@@ -65,6 +77,7 @@ hi def link rigKeywordControl Statement
 hi def link rigKeywordOperator Operator
 hi def link rigConstant Constant
 hi def link rigConstantNumeric Number
+hi def link rigConstantSymbol Constant
 hi def link rigString String
 hi def link rigStringEscape SpecialChar
 hi def link rigComment Comment

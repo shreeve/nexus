@@ -1,8 +1,0 @@
-pub obj Point
-  pub x: Int
-  pub y: Int
-
-  pub fun sum(self: ?Point) -> Int
-    self.x + self.y
-
-pub type Meters = Int

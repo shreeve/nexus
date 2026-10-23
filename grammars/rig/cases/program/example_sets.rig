@@ -1,0 +1,39 @@
+# Sets: `Set` holds each key once, in the order it was first added.
+# `add` says whether the key was new, `has` tests membership, and plain
+# loops build the union and the difference of two sets.
+
+
+sub main()
+  mine = Set[?String].new()
+  for name in ["ada", "bob", "cy", "bob"]
+    if not (!mine).add(name)
+      print("again", name)
+
+  yours = Set[?String].new()
+  for name in ["cy", "dee", "ada"]
+    !yours.add(name)
+
+  both = Set[?String].new()
+  for k in ?mine.items()
+    !both.add(k)
+  for k in ?yours.items()
+    !both.add(k)
+
+  only_mine: List[?String] = List()
+  for k in ?mine.items()
+    if not yours.has(k)
+      !only_mine.push(k)
+
+  print(mine.len, yours.len, both.len, mine.has("bob"), yours.has("bob"))
+  print(only_mine)
+  for k in ?both.items()
+    print(k)
+
+# expect:
+# again bob
+# 3 3 4 true false
+# ["bob"]
+# ada
+# bob
+# cy
+# dee

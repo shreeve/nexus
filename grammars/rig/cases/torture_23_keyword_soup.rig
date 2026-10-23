@@ -1,0 +1,9 @@
+# Keywords where names belong, and names where keywords belong.
+new new = 1
+if if
+else else
+fun fun()
+  return return
+sub main()
+  x = not not
+  and

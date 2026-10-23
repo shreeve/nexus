@@ -1,0 +1,118 @@
+(module
+  (use (member `std` `json`)@346..354 _)@342..354
+  (sub
+    `main`
+    _
+    ()@364..366
+    _
+    _
+    (block
+      (set
+        _
+        `src`
+        _
+        `"{\\"name\\": \\"Ada\\", \\"born\\": 1815, \\"langs\\": [\\"en\\", \\"fr\\"], \\"ratio\\": 0.5, \\"notes\\": {\\"x\\": [1, 2]}}"`)@369..485
+      (set _ `doc` _ (call _ (member `json` `new_doc`)@494..506)@494..508)@488..508
+      (if
+        (not
+          (call _ (member (write `doc`)@519..523 `parse`)@518..530 (read `src`)@531..535)@518..536)@514..536
+        (block
+          (call
+            _
+            `print`
+            `"error"`
+            (call _ (member `json` `error_name`)@556..571 (member `doc` `error`)@572..581)@556..582
+            `"at byte"`
+            (member `doc` `error_pos`)@595..608)@541..609
+          (return _)@614..620)@541..623
+        _)@511..623
+      (call
+        _
+        `print`
+        (call _ (member `doc` `size`)@629..637)@629..639
+        (call _ (member `doc` `kind`)@641..649 `0`)@641..652)@623..653
+      (set _ `i` _ `1`)@657..662
+      (while
+        (!=
+          (call _ (member `doc` `kind`)@671..679 `i`)@671..682
+          (enum_lit `object_end`)@686..697)@671..697
+        _
+        (block
+          (set
+            _
+            `key`
+            _
+            (read (call _ (member `doc` `get_str`)@709..720 `i`)@709..723)@708..723)@702..723
+          (set += `i` _ `1`)@728..734
+          (set _ `k` _ (call _ (member `doc` `kind`)@743..751 `i`)@743..754)@739..754
+          (if
+            (== `k` (enum_lit `string`)@767..774)@762..774
+            (block
+              (call
+                _
+                `print`
+                `key`
+                `"is the text"`
+                (call _ (member `doc` `get_str`)@807..818 `i`)@807..821)@781..822)@781..827
+            (if
+              (== `k` (enum_lit `int`)@840..844)@835..844
+              (block
+                (call
+                  _
+                  `print`
+                  `key`
+                  `"is the integer"`
+                  (call _ (member `doc` `get_int`)@880..891 `i`)@880..894)@851..895)@851..900
+              (if
+                (== `k` (enum_lit `float`)@913..919)@908..919
+                (block
+                  (call
+                    _
+                    `print`
+                    `key`
+                    `"is the float"`
+                    (call _ (member `doc` `get_float`)@953..966 `i`)@953..969)@926..970)@926..975
+                (if
+                  (== `k` (enum_lit `array`)@988..994)@983..994
+                  (block
+                    (call _ `print` `key` `"holds"`)@1001..1020
+                    (for
+                      iter
+                      `j`
+                      _
+                      (..
+                        (+ `i` `1`)@1036..1041
+                        (- (call _ (member `doc` `next`)@1043..1051 `i`)@1043..1054 `1`)@1043..1058
+                        _)@1036..1058
+                      (block
+                        (call
+                          _
+                          `print`
+                          `"-"`
+                          (call _ (member `doc` `get_str`)@1078..1089 `j`)@1078..1092)@1067..1093)@1067..1098
+                      _)@1027..1098)@1001..1098
+                  (block (call _ `print` `key` `"is skipped"`)@1109..1133)@1109..1138)@980..1138)@905..1138)@832..1138)@759..1138
+          (set _ `i` _ (call _ (member `doc` `next`)@1142..1150 `i`)@1142..1153)@1138..1153)@702..1157
+        _)@665..1157
+      (set _ `bad` _ `"[1, 2"`)@1157..1170
+      (set _ `again` _ (call _ (member `json` `new_doc`)@1181..1193)@1181..1195)@1173..1195
+      (if
+        (not
+          (call
+            _
+            (member (write `again`)@1206..1212 `parse`)@1205..1219
+            (read `bad`)@1220..1224)@1205..1225)@1201..1225
+        (block
+          (call
+            _
+            `print`
+            (call
+              _
+              (member `json` `error_name`)@1236..1251
+              (member `again` `error`)@1252..1263)@1236..1264
+            `"at byte"`
+            (member `again` `error_pos`)@1277..1292)@1230..1293)@1230..1456
+        _)@1198..1456)@369..1456
+    _
+    _
+    _)@356..1456)@342..1456

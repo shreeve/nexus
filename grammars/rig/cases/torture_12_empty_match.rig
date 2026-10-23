@@ -1,0 +1,7 @@
+enum Color
+  red
+  blue
+
+sub main()
+  c = Color.red
+  match c

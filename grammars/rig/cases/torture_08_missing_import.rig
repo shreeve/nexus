@@ -1,0 +1,4 @@
+use nope_does_not_exist
+
+sub main()
+  print("hi")

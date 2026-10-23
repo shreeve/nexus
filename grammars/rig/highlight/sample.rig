@@ -1,7 +1,6 @@
 # Every token and context of Rig's highlighting, for the editor grammars'
 # goldens. It is read, not run: the last section holds what Rig rejects.
 
-use std.hash
 use std.text
 
 extern zig "math.zig"
@@ -24,24 +23,40 @@ obj Point
   x: Int = 0
   pub ?name: String = String("p")
 
-  fun norm(?self) -> Int
-    self.x * self.x
+  fun norm(?@) -> Int
+    @x * @x
 
-  sub shift(!self, by: Int)
-    self.x += by
+  sub shift(!@, by: Int)
+    @x += by
 
 obj Handle
   fd: Int
 
-  sub drop(!self)
-    print("closed", self.fd)
+  sub drop(!@)
+    print("closed", @fd)
 
 obj Pair[T]
   left: T
   right: T
 
-  fun first(?self) -> ?T from self
-    ?self.left
+  fun first(?@) -> ?T from @
+    ?@left
+
+obj Random unique
+  seed: U64
+  name: ?String
+
+  fun pick(?@, xs: []?String, from: Int) -> ?String from xs
+    xs[from]
+
+  sub watch(!@, s: ?String) keeps s
+    @name = s
+
+fun run(f: once ?fun() -> Int) -> Int
+  f()
+
+fun table() -> String from static
+  "fixed"
 
 called fun hot(n: Int) -> Int
   n *% 3 +% 1
@@ -49,7 +64,8 @@ called fun hot(n: Int) -> Int
 inline fun twice(n: Int) -> Int
   n * 2
 
-rarely sub report(msg: ?String)
+sub report(msg: ?String)
+  rarely
   print("error:", msg)
 
 fun numbers() -> Int
@@ -98,7 +114,7 @@ fun ownership(p: ^Point, h: *Point, w: ~Point, xs: !List[Int], v: ?Point) -> Int
   <r
   n
 
-fun fallible(m: ?hash.Map[String, Int], k: ?String) -> Int!
+fun fallible(m: ?Map[String, Int], k: ?String) -> Int!
   n = m.get(k) ?? 0
   x = text.parse_int("12")!
   y = m.get(k)?
@@ -114,11 +130,14 @@ fun loops(xs: ?List[Int]) -> Int
   i = 0
   while i < 10 : i += 1
     total += i
-  @outer for row in xs
+  $outer: for row in xs
     for col in xs
       if col == row
-        break @outer
+        break $outer
       total += 1 if col != row
+  $done:
+    break $done if total > 99
+    total += 1
   v = next() ?? continue
   total
 
@@ -127,11 +146,31 @@ fun closures(xs: !List[Int]) -> Int
   bump = |!count, n| count += n
   quiet = || print(1)
   sort.sort_by(!xs, |a, b| a < b)
-  m = hash.Map[Int, Int].new(capacity: 16)
+  m = Map[Int, Int].new(capacity: 16)
   grid = [3 of 0]
   tail = xs[1..]
   all = xs[..]
+  head = xs[..=1]
   count
+
+fun holds(u: ?*Point, v: ^?Point, cells: [2]*Point, xs: ![]Int, q: Point) -> Int?!
+  boxed = ^<q
+  weak = ~cells[0]
+  each(2, *|i| print(i))
+  unique = xs[0]*LIMIT + xs[1]*n
+  unique
+
+fun tasks(xs: ?List[Int], ts: !Tasks[Int]) -> Int!
+  t = total(?xs)&
+  u = half(4)&
+  v = find(?xs)&
+  !ts.add(sq(3)&)
+  x = >t
+  y = >u!
+  z = >v?
+  all = >ts
+  m = f()&b
+  x + y + z + all.len + m if x > y and x >= y and x>y else x >> 1
 
 fun shapes(s: ?Shape) -> Int
   match s
@@ -147,12 +186,13 @@ sub resources()
   z =! x
   new y =! x * 2
   st: Status = .missing
+  tag = :content-type
   ok = true and not false or none == none
   b: Bool = st == .ok
-  print(@size(Point), @align(Point), @name(Point), @variants(Status))
+  print($size(Point), $align(Point), $name(Point), $variants(Status))
   raw
     pass
-  print(ok, b, y, z)
+  print(ok, b, y, z, tag == :if)
 
 test "area"
   print(shapes(.point))

@@ -1,0 +1,7 @@
+# Struct field named `if`.
+obj Node
+  if: Int
+
+sub main()
+  n = Node(if: 1)
+  print(n.if)

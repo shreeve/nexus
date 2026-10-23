@@ -1,0 +1,79 @@
+(module
+  (use (member `std` `sort`)@305..313 _)@301..313
+  (use (member `std` `text`)@318..326 _)@314..326
+  (struct
+    `Count`
+    _
+    _
+    (: `word` (read_view `String`)@346..353)@340..353
+    (: `n` `Int`)@356..362)@328..364
+  (sub
+    `main`
+    _
+    ()@372..374
+    _
+    _
+    (block
+      (set _ `line` _ `"the cat and the dog and the bird"`)@377..418
+      (set
+        _
+        `seen`
+        _
+        (call
+          _
+          (member (inst `Map` (read `String`)@432..439 `Int`)@428..445 `new`)@428..449)@428..451)@421..451
+      (for
+        iter
+        `w`
+        _
+        (call _ (member `text` `words`)@463..473 `line`)@463..479
+        (block
+          (set
+            _
+            `c`
+            _
+            (call _ (member (write `seen`)@489..494 `ensure`)@488..502 `w` `0`)@488..508)@484..508
+          (set += `c` _ `1`)@513..519)@484..522
+        _)@454..522
+      (call
+        _
+        `print`
+        (member `seen` `len`)@528..536
+        (?? (call _ (member `seen` `get`)@538..546 `"the"`)@538..553 `0`)@538..558
+        (?? (call _ (member `seen` `get`)@560..568 `"fish"`)@560..576 `0`)@560..581)@522..582
+      (set _ `counts` (generic_inst `List` `Count`)@594..605 (call _ `List`)@608..614)@586..614
+      (for
+        iter
+        `e`
+        _
+        (read (call _ (member `seen` `items`)@627..637)@627..639)@626..639
+        (block
+          (write
+            (call
+              _
+              (member `counts` `push`)@645..656
+              (call
+                _
+                `Count`
+                (kwarg `word` (member `e` `key`)@669..674)@663..674
+                (kwarg `n` (member `e` `value`)@679..686)@676..686)@657..687)@645..688)@644..688)@644..691
+        _)@617..691
+      (call
+        _
+        (member `sort` `sort_by`)@691..703
+        (write `counts`)@704..711
+        (lambda
+          _
+          (`a` `b`)@713..719
+          (block (> (member `a` `n`)@720..723 (member `b` `n`)@726..729)@720..729)@720..729)@713..729)@691..730
+      (for
+        iter
+        `c`
+        _
+        (read `counts`)@742..749
+        (block
+          (call _ `print` (member `c` `word`)@760..766 (member `c` `n`)@768..771)@754..772)@754..833
+        _)@733..833)@377..833
+    _
+    _
+    _)@364..833)@301..833

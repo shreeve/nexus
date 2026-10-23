@@ -1,2 +1,0 @@
-pub fun helper() -> Int
-  7

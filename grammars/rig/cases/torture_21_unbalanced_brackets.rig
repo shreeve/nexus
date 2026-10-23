@@ -1,0 +1,4 @@
+# Closers without openers and openers left open at end of file.
+sub main()
+  x = (1 + 2))
+  y = [1, (2

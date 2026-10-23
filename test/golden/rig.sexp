@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `inline` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `as_comma` `label_at` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `inline` `rarely` `called` `not` `or` `panic` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `dollar` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `dotdot_eq` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `catch_jump` `catch_block` `task_amp` `step_colon` `symbol_colon` `as_comma` `label` `label_colon` `comment` `eof` `err`)
   (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
@@ -49,6 +49,7 @@
   (lex_rule `"->"` _ `arrow`)
   (lex_rule `"=>"` _ `fat_arrow`)
   (lex_rule `"??"` _ `nullish`)
+  (lex_rule `"..="` _ `dotdot_eq`)
   (lex_rule `".."` _ `dotdot`)
   (lex_rule `"<<%"` _ `lshift_wrap`)
   (lex_rule `"<<"` _ `lshift`)
@@ -67,6 +68,7 @@
   (lex_rule `'^'` _ `caret`)
   (lex_rule `'~'` _ `tilde`)
   (lex_rule `'@'` _ `at`)
+  (lex_rule `'$'` _ `dollar`)
   (lex_rule `'='` _ `assign`)
   (lex_rule `'('` _ `lparen`)
   (lex_rule `')'` _ `rparen`)
@@ -96,6 +98,7 @@
   (lex_rule `"match"` _ `match`)
   (lex_rule `"not"` _ `not`)
   (lex_rule `"or"` _ `or`)
+  (lex_rule `"panic"` _ `panic`)
   (lex_rule `"pass"` _ `pass`)
   (lex_rule `"pub"` _ `pub`)
   (lex_rule `"raw"` _ `raw`)
@@ -179,7 +182,7 @@
         (role
           _
           `mark`
-          (type `inline` `called` `rarely`)
+          (type `inline` `called`)
           opt))
       _
       _)
@@ -201,12 +204,7 @@
           `params`
           (type `group`)
           opt)
-        (role
-          _
-          `fails`
-          (type
-            (tagset `tag` `fails`))
-          opt)
+        (role _ `fails` _ opt)
         (role
           _
           `keeps`
@@ -226,7 +224,7 @@
         (role
           _
           `mark`
-          (type `inline` `called` `rarely`)
+          (type `inline` `called`)
           opt))
       _
       _)
@@ -264,16 +262,53 @@
           (type
             (tagset `tag` `unique`))
           opt)
+        (role
+          _
+          `apis`
+          (type `group`)
+          opt)
         (role rest `members` _ _))
       _
       _)
     (kind_decl
-      (kinds `enum` `errors`)
+      (kinds `enum`)
       (roles
         (role
           _
           `name`
           (type `leaf`)
+          _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          opt)
+        (role rest `members` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `errors`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role rest `members` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `error_join`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `parts`
+          (type `group`)
           _)
         (role rest `members` _ _))
       _
@@ -297,6 +332,11 @@
           (type
             (tagset `tag` `unique`))
           opt)
+        (role
+          _
+          `apis`
+          (type `group`)
+          opt)
         (role rest `members` _ _))
       _
       _)
@@ -313,6 +353,11 @@
           `tparams`
           (type `group`)
           _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          opt)
         (role rest `members` _ _))
       _
       _)
@@ -443,7 +488,12 @@
       _
       _)
     (kind_decl
-      (kinds `inline` `called` `rarely`)
+      (kinds `inline` `called`)
+      (roles)
+      _
+      _)
+    (kind_decl
+      (kinds `rarely`)
       (roles)
       _
       _)
@@ -460,6 +510,32 @@
       _)
     (kind_decl
       (kinds `":"`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role _ `type` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `bound`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `once`)
       (roles
         (role
           _
@@ -487,6 +563,22 @@
         (role
           _
           `name`
+          (type `leaf`)
+          _)
+        (role _ `value` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `none_value`)
+      (roles
+        (role
+          _
+          `marker`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `field`
           (type `leaf`)
           _)
         (role _ `value` _ _))
@@ -591,6 +683,18 @@
       _
       _)
     (kind_decl
+      (kinds `as_pattern`)
+      (roles
+        (role _ `value` _ _)
+        (role _ `pattern` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `as_match`)
+      (roles)
+      _
+      wrapper)
+    (kind_decl
       (kinds `while`)
       (roles
         (role _ `cond` _ _)
@@ -668,22 +772,45 @@
       (kinds `range_pattern`)
       (roles
         (role _ `lo` _ _)
-        (role _ `hi` _ _))
+        (role _ `hi` _ _)
+        (role
+          _
+          `inclusive`
+          (type
+            (tagset `tag` `inclusive`))
+          opt))
       _
       _)
     (kind_decl
-      (kinds `variant_pattern`)
+      (kinds `set_pattern`)
       (roles
         (role
           _
           `name`
           (type `leaf`)
           _)
+        (role _ `set` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `variant_pattern`)
+      (roles
+        (role _ `name` _ _)
         (role rest `bindings` _ _))
       _
       _)
     (kind_decl
       (kinds `enum_lit`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `symbol`)
       (roles
         (role
           _
@@ -717,6 +844,12 @@
           `label`
           (type `leaf`)
           opt))
+      _
+      _)
+    (kind_decl
+      (kinds `panic`)
+      (roles
+        (role rest `args` _ _))
       _
       _)
     (kind_decl
@@ -776,12 +909,19 @@
           _
           `name`
           (type `leaf`)
-          _))
+          opt)
+        (role _ `value` _ opt))
       _
       _)
     (kind_decl
       (kinds `call`)
       (roles
+        (role
+          _
+          `task`
+          (type
+            (tagset `tag` `task`))
+          opt)
         (role _ `callee` _ _)
         (role rest `args` _ _))
       _
@@ -809,6 +949,12 @@
       _
       _)
     (kind_decl
+      (kinds `wait`)
+      (roles
+        (role _ `operand` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `index`)
       (roles
         (role _ `object` _ _)
@@ -822,6 +968,13 @@
         (role rest `args` _ _))
       _
       _)
+    (kind_decl
+      (kinds `ct_call`)
+      (roles
+        (role _ `callee` _ _)
+        (role rest `args` _ _))
+      _
+      wrapper)
     (kind_decl
       (kinds `array`)
       (roles
@@ -898,7 +1051,20 @@
       (kinds `".."`)
       (roles
         (role _ `left` _ opt)
-        (role _ `right` _ opt))
+        (role _ `right` _ opt)
+        (role
+          _
+          `inclusive`
+          (type
+            (tagset `tag` `inclusive`))
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `"..="`)
+      (roles
+        (role _ `left` _ _)
+        (role _ `right` _ _))
       _
       _)
     (kind_decl
@@ -914,9 +1080,16 @@
       _
       _)
     (kind_decl
-      (kinds `optional` `error_union` `read_view` `write_view` `shared` `boxed` `slice`)
+      (kinds `optional` `read_view` `write_view` `shared` `boxed` `slice`)
       (roles
         (role _ `type` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `error_union`)
+      (roles
+        (role _ `type` _ _)
+        (role _ `set` _ opt))
       _
       _)
     (kind_decl
@@ -942,12 +1115,7 @@
           (type `group`)
           opt)
         (role _ `returns` _ opt)
-        (role
-          _
-          `fails`
-          (type
-            (tagset `tag` `fails`))
-          opt))
+        (role _ `fails` _ opt))
       _
       _)
     (kind_decl
@@ -979,17 +1147,23 @@
     (name_pair `FROM` `"\`from\`"`)
     (name_pair `STATIC` `"\`static\`"`)
     (name_pair `KEEPS` `"\`keeps\`"`)
+    (name_pair `ONCE` `"\`once\`"`)
     (name_pair `DOTDOT_OPEN` `"\`..\`"`)
     (name_pair `NULLISH_JUMP` `"\`??\`"`)
+    (name_pair `TASK_AMP` `"\`&\`"`)
     (name_pair `STEP_COLON` `"\`:\`"`)
+    (name_pair `SYMBOL_COLON` `"\`:\`"`)
     (name_pair `AS_COMMA` `"\`,\`"`)
-    (name_pair `LABEL_AT` `"\`@\`"`)
+    (name_pair `LABEL` `"\`$\`"`)
+    (name_pair `LABEL_COLON` `"\`:\`"`)
     (name_pair `TRUE` `"\`true\`"`)
     (name_pair `FALSE` `"\`false\`"`)
     (name_pair `AND` `"\`and\`"`)
     (name_pair `AS` `"\`as\`"`)
     (name_pair `BREAK` `"\`break\`"`)
     (name_pair `CATCH` `"\`catch\`"`)
+    (name_pair `CATCH_JUMP` `"\`catch\`"`)
+    (name_pair `CATCH_BLOCK` `"\`catch\`"`)
     (name_pair `CONTINUE` `"\`continue\`"`)
     (name_pair `DEFER` `"\`defer\`"`)
     (name_pair `DROP` `"\`drop\`"`)
@@ -1006,6 +1180,7 @@
     (name_pair `NEW` `"\`new\`"`)
     (name_pair `NOT` `"\`not\`"`)
     (name_pair `OR` `"\`or\`"`)
+    (name_pair `PANIC` `"\`panic\`"`)
     (name_pair `PASS` `"\`pass\`"`)
     (name_pair `PUB` `"\`pub\`"`)
     (name_pair `RAW` `"\`raw\`"`)
@@ -1057,9 +1232,10 @@
     (name_pair `","` `"\`,\`"`)
     (name_pair `"."` `"\`.\`"`)
     (name_pair `".."` `"\`..\`"`)
+    (name_pair `"..="` `"\`..=\`"`)
     (name_pair `"=>"` `"\`=>\`"`)
     (name_pair `"~"` `"\`~\`"`)
-    (name_pair `"@"` `"\`@\`"`)
+    (name_pair `"$"` `"\`$\`"`)
     (name_pair `"=="` `"\`==\`"`)
     (name_pair `"!="` `"\`!=\`"`)
     (name_pair `"<"` `"\`<\`"`)
@@ -1080,6 +1256,7 @@
     (name_pair `"%"` `"\`%\`"`)
     (name_pair `"!"` `"\`!\`"`)
     (name_pair `"?"` `"\`?\`"`))
+  (tags `fails`)
   (errors
     (name_pair `stmt` `"a statement"`)
     (name_pair `block` `"an indented block"`)
@@ -1103,27 +1280,37 @@
     (hl_line `scope-name` `source.rig`)
     (hl_line `extensions` `rig`)
     (hl_line `line-comment` `"#"`)
-    (hl_line `indent` `line-start [ \\t]* ("pub" [ \\t]+)? ("called" | "rarely" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)? line-end`)
+    (hl_line `indent` `line-start [ \\t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \\t]+ ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?)? | ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?) [ \\t]* line-end`)
     (hl_line `dedent` `line-start [ \\t]* "else"`)
     (hl_line `keyword` `("fun" | "sub") [ \\t]+ function:([A-Za-z_] [A-Za-z0-9_]*)`)
     (hl_line `keyword` `("obj" | "enum" | "type") [ \\t]+ type:([A-Za-z_] [A-Za-z0-9_]*)`)
-    (hl_line `keyword` `("called" | "rarely" | "inline") after [ \\t]+ ("fun" | "sub")`)
+    (hl_line `keyword` `("called" | "inline") after [ \\t]+ ("fun" | "sub")`)
+    (hl_line `keyword` `line-start [ \\t]* "rarely" not after [ \\t]* [^ \\t#]`)
     (hl_line `keyword` `line-start [ \\t]* "new" after [ \\t]+ [A-Za-z_]`)
     (hl_line `keyword` `"of" before ' ' after ' '`)
-    (hl_line `keyword.control` `("break" | "continue") [ \\t]+ label:('@' [A-Za-z_] [A-Za-z0-9_]*)`)
-    (hl_line `label` `'@' [A-Za-z_] [A-Za-z0-9_]* after [ \\t]+ ("for" | "while" | "match" | "raw")`)
-    (hl_line `function.builtin` `'@' [a-z_]+ after '('`)
-    (hl_line `storage.modifier` `[*] not before [A-Za-z0-9_)\\]] after '<' [A-Za-z_(\\[]`)
-    (hl_line `storage.modifier` `[<?!+^*~] not before [A-Za-z0-9_)\\]] after [A-Za-z_(\\[]`)
-    (hl_line `storage.modifier` `[!?] before [A-Za-z0-9_)\\]] not after [A-Za-z0-9_(\\[=?]`)
+    (hl_line `keyword` `"from" [ \\t]+ "static" not after [A-Za-z0-9_]`)
+    (hl_line `keyword` `("from" | "keeps") before ' ' after ' ' [A-Za-z_@]`)
+    (hl_line `keyword` `"once" before ': ' after ' ' [?*A-Za-z_(]`)
+    (hl_line `keyword` `"unique" before [A-Za-z0-9_\\]] ' ' not after [ \\t]* [^ \\t#]`)
+    (hl_line `keyword.control` `("break" | "continue") [ \\t]+ label:('$' [A-Za-z_] [A-Za-z0-9_]*)`)
+    (hl_line `label` `'$' [A-Za-z_] [A-Za-z0-9_]* ':'`)
+    (hl_line `function.builtin` `'$' [A-Za-z_]+ after '('`)
+    (hl_line `storage.modifier` `[<?!+^*~] not before [A-Za-z0-9_)\\]@] after [<?!^*~]* [A-Za-z_(\\[@]`)
+    (hl_line `storage.modifier` `'*' not before [A-Za-z0-9_)\\]@] after '|'`)
+    (hl_line `storage.modifier` `[?!~] before ']' after [?!^*~]* [A-Za-z_]`)
+    (hl_line `storage.modifier` `[*^] before ']' after [?!^*~]* ([A-Z] [a-z0-9] | ("fun" | "sub") '(')`)
+    (hl_line `storage.modifier` `'>' not before [A-Za-z0-9_)\\]@=>\\-] after [A-Za-z_]`)
+    (hl_line `storage.modifier` `'&' before ')' not after [^ \\t,)\\]#]`)
+    (hl_line `storage.modifier` `[!?] before [A-Za-z0-9_)\\]@] not after [A-Za-z0-9_(\\[=?@]`)
+    (hl_line `storage.modifier` `'!' before '?' not after [A-Za-z0-9_(\\[=?@]`)
     (hl_line `variable.parameter` `[A-Za-z_] [A-Za-z0-9_]* after ':' not before [A-Za-z0-9_.]`)
     (hl_line `type` `[A-Z] [A-Za-z0-9_]* not before [A-Za-z0-9_]`)
-    (hl_line `keyword.control` `"if" "else" "while" "for" "in" "match" "return" "break" "continue"` `"pass" "defer" "errdefer" "catch" "try" "await" "yield"`)
+    (hl_line `constant.symbol` `':' [A-Za-z_] [A-Za-z0-9_]* (('-' | '.') [A-Za-z0-9_]+)* not before [A-Za-z0-9_)\\]]`)
+    (hl_line `keyword.control` `"if" "else" "while" "for" "in" "match" "return" "break" "continue"` `"pass" "panic" "defer" "errdefer" "catch" "try" "await" "yield"`)
     (hl_line `keyword` `"fun" "sub" "enum" "type" "use" "pub" "const" "extern" "zig" "test"` `"raw" "drop" "error" "as" "async" "impl" "trait" "when" "where"`)
-    (hl_line `keyword` `ctx`)
     (hl_line `keyword.operator` `"and" "or" "not"`)
     (hl_line `constant` `"true" "false" "none"`)
-    (hl_line `variable.special` `"self"`)
+    (hl_line `variable.special` `'@'`)
     (hl_line `constant.numeric` `INTEGER REAL`)
     (hl_line `string` `STRING_DQ STRING_SQ`)
     (hl_line `string.escape` `'\\\\' [^\\x00-\\x1f\\x7f] within STRING_DQ`)
@@ -1132,9 +1319,9 @@
     (hl_line `invalid` `"**" "&&"`)
     (hl_line `invalid` `'=' [!] not after [ \\t]`)
     (hl_line `operator` `"+" "-" "*" "/" "%" "+%" "-%" "*%" "+|" "-|" "==" "!=" "<" ">" "<=" ">="` `"!" "?" "??" "|" "&" "^" "~" "<<" "<<%" ">>" "=" "=!" "+=" "-=" "*=" "/=" "%="` `"&=" "|=" "^=" "<<=" "<<%=" ">>=" "+%=" "-%=" "*%=" "+|=" "-|=" "->" "=>"`)
-    (hl_line `punctuation` `"(" ")" "[" "]" "," ":" "." ".." "@"`))
+    (hl_line `punctuation` `"(" ")" "[" "]" "," ":" "." ".." "..="`))
   (keywords
-    (kw_group `ctx` `unique` `from` `static` `keeps`))
+    (kw_group `ctx` `unique` `from` `static` `keeps` `once`))
   (as
     `IDENT`
     _
@@ -1227,13 +1414,26 @@
       _)
     (alt
       _
-      ((tok `LABEL_AT`)
+      ((tok `LABEL`)
         (label
           `label`
           (ref `name`))
+        (tok `LABEL_COLON`)
         (label
           `stmt`
           (ref `stmt`)))
+      (node `labeled`)
+      _)
+    (alt
+      _
+      ((tok `LABEL`)
+        (label
+          `label`
+          (ref `name`))
+        (tok `LABEL_COLON`)
+        (label
+          `stmt`
+          (ref `block`)))
       (node `labeled`)
       _)
     (alt
@@ -1396,6 +1596,11 @@
       _)
     (alt
       _
+      ((tok `RARELY`))
+      (node `rarely`)
+      _)
+    (alt
+      _
       ((tok `RETURN`)
         (group
           opt
@@ -1494,7 +1699,7 @@
       ((tok `BREAK`)
         (group
           opt
-          ((tok `LABEL_AT`)
+          ((tok `LABEL`)
             (label
               `label`
               (ref `name`))))
@@ -1510,7 +1715,7 @@
       ((tok `CONTINUE`)
         (group
           opt
-          ((tok `LABEL_AT`)
+          ((tok `LABEL`)
             (label
               `label`
               (ref `name`)))))
@@ -1807,11 +2012,6 @@
       _
       ((tok `CALLED`))
       (node `called`)
-      _)
-    (alt
-      _
-      ((tok `RARELY`))
-      (node `rarely`)
       _))
   (rule
     (name `fun`)
@@ -1924,6 +2124,41 @@
         (named
           `fails`
           (tag `fails`)))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `fails`
+          (ref `tname`))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `sub`)
       _))
   (rule
     (name `method`)
@@ -2117,6 +2352,50 @@
         (tok `SUB`)
         (label
           `owner`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `owner_params`
+              (ref `tparams`))))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `fails`
+          (ref `tname`))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `sub`)
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
+        (label
+          `owner`
           (ref `qowner`))
         (lit `"."`)
         (label
@@ -2181,6 +2460,45 @@
         (named
           `fails`
           (tag `fails`)))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
+        (label
+          `owner`
+          (ref `qowner`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `fails`
+          (ref `tname`))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `sub`)
       _))
   (rule
     (name `qowner`)
@@ -2311,6 +2629,50 @@
           `type`
           (ref `type`)))
       (node `:`)
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis2`)))
+      (node `bound`)
+      _))
+  (rule
+    (name `apis`)
+    (alt
+      _
+      ((ref `tname`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `apis2`))
+      _
+      _))
+  (rule
+    (name `apis2`)
+    (alt
+      _
+      ((ref `tname`)
+        (lit `"+"`)
+        (ref `tname`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `apis2`)
+        (lit `"+"`)
+        (ref `tname`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `fields`)
@@ -2346,6 +2708,18 @@
           `type`
           (ref `type`)))
       (node `:`)
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `fname`))
+        (lit `":"`)
+        (tok `ONCE`)
+        (label
+          `type`
+          (ref `type`)))
+      (node `once`)
       _)
     (alt
       _
@@ -2419,9 +2793,46 @@
         (label
           `name`
           (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `enum`)
+      _)
+    (alt
+      _
+      ((tok `ENUM`)
+        (label
+          `name`
+          (ref `name`))
         (label
           `tparams`
           (ref `tparams`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `generic_enum`)
+      _)
+    (alt
+      _
+      ((tok `ENUM`)
+        (label
+          `name`
+          (ref `name`))
+        (label
+          `tparams`
+          (ref `tparams`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
         (tok `INDENT`)
         (label
           `members`
@@ -2443,6 +2854,52 @@
           (ref `members`))
         (tok `OUTDENT`))
       (node `errors`)
+      _)
+    (alt
+      _
+      ((tok `ERROR`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `"="`)
+        (label
+          `parts`
+          (ref `eparts`)))
+      (node `error_join`)
+      _)
+    (alt
+      _
+      ((tok `ERROR`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `"="`)
+        (label
+          `parts`
+          (ref `eparts`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `error_join`)
+      _))
+  (rule
+    (name `eparts`)
+    (alt
+      _
+      ((ref `tname`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `eparts`)
+        (lit `"|"`)
+        (ref `tname`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `struct`)
@@ -2465,7 +2922,46 @@
         (label
           `name`
           (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `struct`)
+      _)
+    (alt
+      _
+      ((tok `OBJ`)
+        (label
+          `name`
+          (ref `name`))
         (tok `UNIQUE`)
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node
+        `struct`
+        (named
+          `unique`
+          (tag `unique`)))
+      _)
+    (alt
+      _
+      ((tok `OBJ`)
+        (label
+          `name`
+          (ref `name`))
+        (tok `UNIQUE`)
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
         (tok `INDENT`)
         (label
           `members`
@@ -2502,7 +2998,52 @@
         (label
           `tparams`
           (ref `tparams`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `generic_struct`)
+      _)
+    (alt
+      _
+      ((tok `OBJ`)
+        (label
+          `name`
+          (ref `name`))
+        (label
+          `tparams`
+          (ref `tparams`))
         (tok `UNIQUE`)
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node
+        `generic_struct`
+        (named
+          `unique`
+          (tag `unique`)))
+      _)
+    (alt
+      _
+      ((tok `OBJ`)
+        (label
+          `name`
+          (ref `name`))
+        (label
+          `tparams`
+          (ref `tparams`))
+        (tok `UNIQUE`)
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
         (tok `INDENT`)
         (label
           `members`
@@ -2568,6 +3109,20 @@
           `value`
           (ref `expr`)))
       (node `valued`)
+      _)
+    (alt
+      _
+      ((label
+          `marker`
+          (ref `name`))
+        (label
+          `field`
+          (ref `name`))
+        (lit `"=="`)
+        (label
+          `value`
+          (ref `expr`)))
+      (node `none_value`)
       _)
     (alt
       _
@@ -2913,6 +3468,38 @@
         (named
           `fails`
           (tag `fails`)))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `fails`
+          (ref `tname`))
+        (group
+          opt
+          ((label
+              `keeps`
+              (ref `keeps`)))))
+      (node `sub`)
       _))
   (rule
     (name `type`)
@@ -3018,6 +3605,24 @@
       _)
     (alt
       _
+      ((tok `SUB`)
+        (lit `"("`)
+        (group
+          opt
+          ((label
+              `params`
+              (list_req
+                `L`
+                (plain `type`)))))
+        (lit `")"`)
+        (lit `"!"`)
+        (label
+          `fails`
+          (ref `tname`)))
+      (node `fun_type`)
+      _)
+    (alt
+      _
       ((lit `"*"`)
         (label
           `type`
@@ -3075,6 +3680,17 @@
       _)
     (alt
       _
+      ((label
+          `type`
+          (ref `tsuffix`))
+        (lit `"!"`)
+        (label
+          `set`
+          (ref `tname`)))
+      (node `error_union`)
+      _)
+    (alt
+      _
       ((ref `thandle`))
       _
       _))
@@ -3123,19 +3739,8 @@
       _)
     (alt
       _
-      ((label
-          `name`
-          (ref `tname`))
-        (lit `"["`)
-        (label
-          `args`
-          (ref `types`))
-        (skip
-          (group
-            opt
-            ((lit `","`))))
-        (lit `"]"`))
-      (node `generic_inst`)
+      ((ref `ccall`))
+      _
       _)
     (alt
       _
@@ -3264,6 +3869,17 @@
       _)
     (alt
       _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `value`
+          (ref `targ`)))
+      (node `kwarg`)
+      _)
+    (alt
+      _
       ((tok `INTEGER`))
       _
       _)
@@ -3334,8 +3950,58 @@
       _)
     (alt
       _
+      ((ref `ccall`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `ccall`)
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
       ((ref `cexp`))
       _
+      _))
+  (rule
+    (name `ccall`)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `"["`)
+        (label
+          `args`
+          (ref `types`))
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `"]"`))
+      (node `generic_inst`)
+      _)
+    (alt
+      _
+      ((ref `name`)
+        (lit `"."`)
+        (ref `name`)
+        (lit `"["`)
+        (ref `types`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `"]"`))
+      (node
+        `generic_inst`
+        (node
+          `member`
+          (pos `1`)
+          (pos `3`))
+        (spread `5`))
       _))
   (rule
     (name `cexp`)
@@ -3464,6 +4130,11 @@
       _)
     (alt
       _
+      ((ref `ccall`))
+      _
+      _)
+    (alt
+      _
       ((lit `"("`)
         (ref `cexp`)
         (lit `")"`))
@@ -3513,7 +4184,7 @@
       ((label
           `value`
           (ref `logic`))
-        (tok `CATCH`)
+        (tok `CATCH_BLOCK`)
         (tok `BAR_CAPTURE`)
         (label
           `name`
@@ -3551,25 +4222,7 @@
       ((label
           `value`
           (ref `logic`))
-        (tok `CATCH`)
-        (group
-          opt
-          ((tok `BAR_CAPTURE`)
-            (label
-              `name`
-              (ref `name`))
-            (tok `BAR_CAPTURE`)))
-        (label
-          `handler`
-          (ref `value`)))
-      (node `catch`)
-      _)
-    (alt
-      _
-      ((label
-          `value`
-          (ref `logic`))
-        (tok `CATCH`)
+        (tok `CATCH_JUMP`)
         (group
           opt
           ((tok `BAR_CAPTURE`)
@@ -3615,7 +4268,7 @@
       ((tok `BREAK`)
         (group
           opt
-          ((tok `LABEL_AT`)
+          ((tok `LABEL`)
             (label
               `label`
               (ref `name`))))
@@ -3631,7 +4284,7 @@
       ((tok `CONTINUE`)
         (group
           opt
-          ((tok `LABEL_AT`)
+          ((tok `LABEL`)
             (label
               `label`
               (ref `name`)))))
@@ -3687,7 +4340,7 @@
       _
       ((label
           `value`
-          (at_ref `infix`))
+          (ref `cmp`))
         (tok `AS`)
         (label
           `name`
@@ -3698,7 +4351,7 @@
       _
       ((label
           `value`
-          (at_ref `infix`))
+          (ref `cmp`))
         (tok `AS`)
         (label
           `names`
@@ -3707,8 +4360,165 @@
       _)
     (alt
       _
+      ((label
+          `value`
+          (ref `cmp`))
+        (tok `AS`)
+        (label
+          `pattern`
+          (ref `aspat`)))
+      (node `as_pattern`)
+      _)
+    (alt
+      _
+      ((ref `cmp`))
+      _
+      _))
+  (rule
+    (name `cmp`)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `"=="`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `==`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `"!="`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `!=`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `"<"`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `<`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `">"`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `>`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `"<="`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `<=`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `">="`)
+        (label
+          `right`
+          (ref `fall`)))
+      (node `>=`)
+      _)
+    (alt
+      _
+      ((ref `fall`))
+      _
+      _))
+  (rule
+    (name `fall`)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `fall`))
+        (lit `"??"`)
+        (label
+          `right`
+          (at_ref `infix`)))
+      (node `??`)
+      _)
+    (alt
+      _
+      ((label
+          `value`
+          (ref `fall`))
+        (tok `CATCH`)
+        (group
+          opt
+          ((tok `BAR_CAPTURE`)
+            (label
+              `name`
+              (ref `name`))
+            (tok `BAR_CAPTURE`)))
+        (label
+          `handler`
+          (at_ref `infix`)))
+      (node `catch`)
+      _)
+    (alt
+      _
       ((at_ref `infix`))
       _
+      _))
+  (rule
+    (name `aspat`)
+    (alt
+      _
+      ((lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `enum_lit`)
+      _)
+    (alt
+      _
+      ((lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `"("`)
+        (lit `")"`))
+      (node `variant_pattern`)
+      _)
+    (alt
+      _
+      ((lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `"("`)
+        (label
+          `bindings`
+          (ref `pbinds`))
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node `variant_pattern`)
       _))
   (rule
     (name `anames`)
@@ -4057,6 +4867,32 @@
           `hi`
           (ref `patatom`)))
       (node `range_pattern`)
+      _)
+    (alt
+      _
+      ((label
+          `lo`
+          (ref `patatom`))
+        (lit `"..="`)
+        (label
+          `hi`
+          (ref `patatom`)))
+      (node
+        `range_pattern`
+        (named
+          `inclusive`
+          (tag `inclusive`)))
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `set`
+          (ref `tname`)))
+      (node `set_pattern`)
       _))
   (rule
     (name `patatom`)
@@ -4089,6 +4925,74 @@
       _)
     (alt
       _
+      ((ref `name`)
+        (lit `"."`)
+        (ref `name`)
+        (lit `"("`)
+        (lit `")"`))
+      (node
+        `variant_pattern`
+        (node
+          `member`
+          (pos `1`)
+          (pos `3`)))
+      _)
+    (alt
+      _
+      ((ref `name`)
+        (lit `"."`)
+        (ref `name`)
+        (lit `"("`)
+        (ref `pbinds`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node
+        `variant_pattern`
+        (node
+          `member`
+          (pos `1`)
+          (pos `3`))
+        (spread `5`))
+      _)
+    (alt
+      _
+      ((ref `pqual`)
+        (lit `"."`)
+        (ref `name`)
+        (lit `"("`)
+        (lit `")"`))
+      (node
+        `variant_pattern`
+        (node
+          `member`
+          (pos `1`)
+          (pos `3`)))
+      _)
+    (alt
+      _
+      ((ref `pqual`)
+        (lit `"."`)
+        (ref `name`)
+        (lit `"("`)
+        (ref `pbinds`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `")"`))
+      (node
+        `variant_pattern`
+        (node
+          `member`
+          (pos `1`)
+          (pos `3`))
+        (spread `5`))
+      _)
+    (alt
+      _
       ((tok `INTEGER`))
       _
       _)
@@ -4099,6 +5003,16 @@
           `operand`
           (tok `INTEGER`)))
       (node `neg`)
+      _)
+    (alt
+      _
+      ((tok `STRING_DQ`))
+      _
+      _)
+    (alt
+      _
+      ((tok `STRING_SQ`))
+      _
       _)
     (alt
       _
@@ -4117,6 +5031,14 @@
           `name`
           (ref `name`)))
       (node `enum_lit`)
+      _)
+    (alt
+      _
+      ((tok `SYMBOL_COLON`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `symbol`)
       _)
     (alt
       _
@@ -4323,40 +5245,40 @@
       _
       ((lit `"+"`)
         (label
-          `name`
-          (ref `name`)))
+          `value`
+          (ref `postfix`)))
       (node `cap_clone`)
       _)
     (alt
       _
       ((lit `"<"`)
         (label
-          `name`
-          (ref `name`)))
+          `value`
+          (ref `postfix`)))
       (node `cap_move`)
       _)
     (alt
       _
       ((lit `"~"`)
         (label
-          `name`
-          (ref `name`)))
+          `value`
+          (ref `postfix`)))
       (node `cap_weak`)
       _)
     (alt
       _
       ((lit `"?"`)
         (label
-          `name`
-          (ref `name`)))
+          `value`
+          (ref `postfix`)))
       (node `cap_read`)
       _)
     (alt
       _
       ((lit `"!"`)
         (label
-          `name`
-          (ref `name`)))
+          `value`
+          (ref `postfix`)))
       (node `cap_write`)
       _))
   (rule
@@ -4482,6 +5404,18 @@
     (alt
       _
       ((label
+          `object`
+          (ref `postfix`))
+        (lit `"["`)
+        (label
+          `index`
+          (ref `fallarg`))
+        (lit `"]"`))
+      (node `index`)
+      _)
+    (alt
+      _
+      ((label
           `callee`
           (ref `postfix`))
         (lit `"("`)
@@ -4490,6 +5424,23 @@
           (ref `args`))
         (lit `")"`))
       (node `call`)
+      _)
+    (alt
+      _
+      ((label
+          `callee`
+          (ref `postfix`))
+        (lit `"("`)
+        (label
+          `args`
+          (ref `args`))
+        (lit `")"`)
+        (tok `TASK_AMP`))
+      (node
+        `call`
+        (named
+          `task`
+          (tag `task`)))
       _)
     (alt
       _
@@ -4529,6 +5480,18 @@
           `right`
           (ref `expr`)))
       (node `..`)
+      _)
+    (alt
+      _
+      ((lit `"..="`)
+        (label
+          `right`
+          (ref `expr`)))
+      (node
+        `..`
+        (named
+          `inclusive`
+          (tag `inclusive`)))
       _)
     (alt
       _
@@ -4572,28 +5535,86 @@
     (name `targs`)
     (alt
       _
-      ((ref `expr`)
+      ((ref `targ1`)
         (lit `","`))
       (list
         (pos `1`))
       _)
     (alt
       _
-      ((ref `expr`)
+      ((ref `targ1`)
         (lit `","`)
-        (ref `expr`))
+        (ref `targ1`))
       (list
         (pos `1`)
         (pos `3`))
       _)
     (alt
       _
-      ((ref `expr`)
+      ((ref `targ1`)
         (lit `","`)
         (ref `targs`))
       (list
         (pos `1`)
         (spread `3`))
+      _)
+    (alt
+      _
+      ((ref `targ1`)
+        (lit `","`)
+        (ref `tkwarg`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `targ1`)
+    (alt
+      _
+      ((ref `expr`))
+      _
+      _)
+    (alt
+      _
+      ((ref `fallarg`))
+      _
+      _))
+  (rule
+    (name `fallarg`)
+    (alt
+      _
+      ((label
+          `type`
+          (ref `postfix`))
+        (lit `"!"`)
+        (label
+          `set`
+          (ref `name`)))
+      (node `error_union`)
+      _)
+    (alt
+      _
+      ((label
+          `type`
+          (ref `postfix`))
+        (lit `"!"`)
+        (label
+          `set`
+          (ref `pqual`)))
+      (node `error_union`)
+      _))
+  (rule
+    (name `tkwarg`)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `value`
+          (ref `expr`)))
+      (node `kwarg`)
       _))
   (rule
     (name `callargs`)
@@ -4636,6 +5657,14 @@
       _
       ((ref `name`))
       _
+      _)
+    (alt
+      _
+      ((lit `">"`)
+        (label
+          `operand`
+          (ref `name`)))
+      (node `wait`)
       _)
     (alt
       _
@@ -4682,7 +5711,15 @@
       _)
     (alt
       _
-      ((lit `"@"`)
+      ((tok `SYMBOL_COLON`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `symbol`)
+      _)
+    (alt
+      _
+      ((lit `"$"`)
         (label
           `name`
           (ref `name`))
@@ -4692,6 +5729,16 @@
           (ref `args`))
         (lit `")"`))
       (node `builtin`)
+      _)
+    (alt
+      _
+      ((tok `PANIC`)
+        (lit `"("`)
+        (label
+          `args`
+          (ref `args`))
+        (lit `")"`))
+      (node `panic`)
       _)
     (alt
       _
@@ -4760,16 +5807,8 @@
   (infix
     `unary`
     (level
-      (infix_op `"=="` `none`)
-      (infix_op `"!="` `none`)
-      (infix_op `"<"` `none`)
-      (infix_op `">"` `none`)
-      (infix_op `"<="` `none`)
-      (infix_op `">="` `none`))
-    (level
-      (infix_op `"??"` `right`))
-    (level
-      (infix_op `".."` `none`))
+      (infix_op `".."` `none`)
+      (infix_op `"..="` `none`))
     (level
       (infix_op `"|"` `left`))
     (level

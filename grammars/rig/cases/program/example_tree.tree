@@ -1,0 +1,243 @@
+(module
+  (generic_struct
+    `Node`
+    (`T`)@374..377
+    _
+    _
+    (: `key` `T`)@380..386
+    (: `count` `Int`)@389..399
+    (: `left` (optional (boxed (generic_inst `Node` `T`)@409..416)@408..416)@408..417)@402..417
+    (: `right` (optional (boxed (generic_inst `Node` `T`)@428..435)@427..435)@427..436)@420..436)@366..438
+  (generic_struct
+    `Tree`
+    (`T`)@446..449
+    _
+    _
+    (: `root` (optional (boxed (generic_inst `Node` `T`)@459..466)@458..466)@458..467)@452..467
+    (: `size` `Int`)@470..479
+    (sub
+      `add`
+      _
+      ((write `@`)@491..493 (: `key` `T`)@495..501)@490..502
+      _
+      _
+      (block
+        (if
+          (call _ `place` (write (member `@` `root`)@517..522)@516..522 `key`)@510..528
+          (block (set += (member `@` `size`)@535..540 _ `1`)@535..545)@535..549
+          _)@507..549)@507..549
+      _
+      _
+      _)@483..549
+    (fun
+      `has`
+      _
+      ((read `@`)@557..559 (: `key` `T`)@561..567)@556..568
+      `Bool`
+      _
+      _
+      (block
+        (!=
+          (call _ `find` (read (member `@` `root`)@587..592)@586..592 `key`)@581..598
+          `none`)@581..606)@581..610
+      _
+      _
+      _)@549..610
+    (fun
+      `height`
+      _
+      ((read `@`)@621..623)@620..624
+      `Int`
+      _
+      _
+      (block (call _ `depth` (read (member `@` `root`)@643..648)@642..648)@636..649)@636..712
+      _
+      _
+      _)@610..712)@438..712
+  (fun
+    `place`
+    (`T`)@721..724
+    ((:
+       `slot`
+       (write_view (optional (boxed (generic_inst `Node` `T`)@733..740)@732..740)@732..741)@731..741)@725..741
+      (: `key` `T`)@743..749)@724..750
+    `Bool`
+    _
+    _
+    (block
+      (if
+        (as (write `slot`)@764..769 `n`)@764..774
+        (block
+          (if
+            (== `key` (member `n` `key`)@789..794)@782..794
+            (block
+              (set += (member `n` `count`)@801..808 _ `1`)@801..813
+              (return `false`)@820..832)@801..837
+            _)@779..837
+          (if
+            (< `key` (member `n` `key`)@846..851)@840..851
+            (block
+              (return
+                (call _ `place` (write (member `n` `left`)@872..878)@871..878 `key`)@865..884)@858..884)@858..889
+            _)@837..889
+          (return
+            (call _ `place` (write (member `n` `right`)@903..910)@902..910 `key`)@896..916)@889..916)@779..919
+        _)@761..919
+      (set
+        _
+        `slot`
+        _
+        (box
+          (call
+            _
+            `Node`
+            (kwarg `key` `key`)@932..940
+            (kwarg `count` `1`)@942..950
+            (kwarg `left` `none`)@952..962
+            (kwarg `right` `none`)@964..975)@927..976)@926..976)@919..976
+      `true`)@761..985
+    _
+    _
+    _)@712..985
+  (fun
+    `find`
+    (`T`)@993..996
+    ((:
+       `slot`
+       (read_view
+         (optional (boxed (generic_inst `Node` `T`)@1005..1012)@1004..1012)@1004..1013)@1003..1013)@997..1013
+      (: `key` `T`)@1015..1021)@996..1022
+    (optional `Int`)@1026..1030
+    _
+    _
+    (block
+      (if
+        (as `slot` `n`)@1036..1045
+        (block
+          (if
+            (== `key` (member `n` `key`)@1060..1065)@1053..1065
+            (block (return (member `n` `count`)@1079..1086)@1072..1086)@1072..1091
+            _)@1050..1091
+          (if
+            (< `key` (member `n` `key`)@1100..1105)@1094..1105
+            (block
+              (return
+                (call _ `find` (read (member `n` `left`)@1125..1131)@1124..1131 `key`)@1119..1137)@1112..1137)@1112..1142
+            _)@1091..1142
+          (return
+            (call _ `find` (read (member `n` `right`)@1155..1162)@1154..1162 `key`)@1149..1168)@1142..1168)@1050..1171
+        _)@1033..1171
+      `none`)@1033..1177
+    _
+    _
+    _)@985..1177
+  (fun
+    `depth`
+    (`T`)@1186..1189
+    ((:
+       `slot`
+       (read_view
+         (optional (boxed (generic_inst `Node` `T`)@1198..1205)@1197..1205)@1197..1206)@1196..1206)@1190..1206)@1189..1207
+    `Int`
+    _
+    _
+    (block
+      (if
+        (as `slot` `n`)@1220..1229
+        (block
+          (set
+            _
+            `l`
+            _
+            (call _ `depth` (read (member `n` `left`)@1245..1251)@1244..1251)@1238..1252)@1234..1252
+          (set
+            _
+            `r`
+            _
+            (call _ `depth` (read (member `n` `right`)@1268..1275)@1267..1275)@1261..1276)@1257..1276
+          (+ `1` (if (> `l` `r`)@1291..1296 `l` `r`)@1286..1303)@1281..1304)@1234..1307
+        (block `0`)@1316..1319)@1217..1319)@1217..1319
+    _
+    _
+    _)@1177..1319
+  (sub
+    `show`
+    (`T`)@1327..1330
+    ((:
+       `slot`
+       (read_view
+         (optional (boxed (generic_inst `Node` `T`)@1339..1346)@1338..1346)@1338..1347)@1337..1347)@1331..1347)@1330..1348
+    _
+    _
+    (block
+      (if
+        (as `slot` `n`)@1354..1363
+        (block
+          (call _ `show` (read (member `n` `left`)@1374..1380)@1373..1380)@1368..1381
+          (call _ `print` (member `n` `key`)@1392..1397 (member `n` `count`)@1399..1406)@1386..1407
+          (call _ `show` (read (member `n` `right`)@1418..1425)@1417..1425)@1412..1426)@1368..1428
+        _)@1351..1428)@1351..1428
+    _
+    _
+    _)@1319..1428
+  (sub
+    `main`
+    _
+    ()@1436..1438
+    _
+    _
+    (block
+      (set
+        _
+        `words`
+        _
+        (call
+          _
+          (index `Tree` (read `String`)@1454..1461)@1449..1462
+          (kwarg `root` `none`)@1463..1473
+          (kwarg `size` `0`)@1475..1482)@1449..1483)@1441..1483
+      (for
+        iter
+        `w`
+        _
+        (array `"the"` `"quick"` `"fox"` `"jumps"` `"over"` `"the"` `"lazy"` `"fox"`)@1495..1557
+        (block
+          (call _ (member (write `words`)@1562..1568 `add`)@1563..1572 `w`)@1563..1575)@1562..1578
+        _)@1486..1578
+      (call _ `show` (read (member `words` `root`)@1584..1594)@1583..1594)@1578..1595
+      (call
+        _
+        `print`
+        (member `words` `size`)@1604..1614
+        (call _ (member `words` `height`)@1616..1628)@1616..1630
+        (call _ (member `words` `has`)@1632..1641 `"fox"`)@1632..1648
+        (call _ (member `words` `has`)@1650..1659 `"cat"`)@1650..1666)@1598..1667
+      (set
+        _
+        `nums`
+        _
+        (call
+          _
+          (index `Tree` `Int`)@1678..1687
+          (kwarg `root` `none`)@1688..1698
+          (kwarg `size` `0`)@1700..1707)@1678..1708)@1671..1708
+      (for
+        iter
+        `i`
+        _
+        (.. `0` `1000` _)@1720..1727
+        (block
+          (call
+            _
+            (member (write `nums`)@1732..1737 `add`)@1733..1741
+            (% (* `i` `7919`)@1743..1751 `1000`)@1742..1759)@1733..1760)@1732..1763
+        _)@1711..1763
+      (call
+        _
+        `print`
+        (member `nums` `size`)@1769..1778
+        (call _ (member `nums` `has`)@1780..1788 `500`)@1780..1793
+        (< (call _ (member `nums` `height`)@1795..1806)@1795..1808 `40`)@1795..1813)@1763..1814)@1441..1914
+    _
+    _
+    _)@1428..1914)@366..1914

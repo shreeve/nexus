@@ -1,0 +1,9 @@
+enum Color
+  red
+  blue
+
+sub main()
+  c = Color.red
+  match c
+    .red a + 1
+    .blue => 2
