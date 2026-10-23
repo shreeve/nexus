@@ -832,6 +832,7 @@ test "expected sets name @errors nonterminals, then remaining terminals" {
     try testing.expect(b.tbl.expected.numLists() < b.auto.states.items.len);
     // Start markers never appear.
     for (b.tbl.expected.symbols) |s| try testing.expect(!table.isStartMarker(&b.g, s));
+    try testing.expectEqualSlices(u16, &.{sym(&b.g, "expr")}, b.tbl.expected.namedRules);
 }
 
 fn sortedCopy(a: Allocator, xs: []const u16) []u16 {

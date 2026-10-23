@@ -20,8 +20,8 @@
 //!              hasRepair, asGroups, numSymbols, endSymbol, errorSymbol,
 //!              xExcludes, maxExpected
 //!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
-//!              expectedSymbols, expectedOffsets, expectedOf, repairTokens,
-//!              repairOffsets
+//!              expectedSymbols, expectedOffsets, expectedOf, namedRules,
+//!              repairTokens, repairOffsets
 //!   functions  startState, startMarker, tokenToSymbol, promote,
 //!              executeAction, symbolName, isTrivia, repairClass,
 //!              ruleSideLabels, slotOf, restSlotOf, roleAt, restRoleOf
@@ -428,10 +428,92 @@ const SideLabel = struct { role: Role, pass: u16 };
 /// A parse error: the offending token and the state that rejected it.
 pub const Failure = struct {
     span: Span,
+    /// Where the error is reported: the offending token's start, or, when
+    /// that token starts on a later line than the end of the token before
+    /// it, that end (an error at the end of a line, zero width).
+    at: u32,
     /// Grammar symbol of the offending token.
     symbol: u16,
     cat: TokenCat,
     state: u16,
+};
+
+/// What a failed parse expected: the states of its reduction chain from the
+/// anchor on, whose shifts it lists, and the `@errors`-named rule it
+/// follows (see `BaseParser.recordFailure`).
+const Expectation = struct {
+    states: [chainLimit]u16 = undefined,
+    len: u8 = 0,
+    /// The named rule completed just before the error, or `noSymbol`.
+    after: u16 = noSymbol,
+    /// Whether only what the states take is listed; false for a chain too
+    /// long to follow, which lists the failure state's whole set.
+    takenOnly: bool = true,
+
+    /// The longest reduction chain followed.
+    const chainLimit = 64;
+};
+
+/// No grammar symbol.
+const noSymbol: u16 = std.math.maxInt(u16);
+
+/// A parse stack on the error path: states pushed over the part of the
+/// real stack not popped, for following reductions without changing the
+/// parser.
+const VirtualStack = struct {
+    real: []const u16,
+    /// The states of `real` in view.
+    depth: usize,
+    pushed: [capacity]u16 = undefined,
+    len: usize = 0,
+
+    const capacity = 64;
+
+    fn top(self: *const VirtualStack) u16 {
+        return if (self.len > 0) self.pushed[self.len - 1] else self.real[self.depth - 1];
+    }
+
+    /// Reduce by `rule`: pop its elements and push the goto. False when
+    /// the stack is too short or too deep for it.
+    fn reduce(self: *VirtualStack, rule: u16) bool {
+        const n = ruleLen[rule];
+        const fromPushed = @min(n, self.len);
+        self.len -= fromPushed;
+        if (n - fromPushed >= self.depth) return false;
+        self.depth -= n - fromPushed;
+        const next = getAction(self.top(), ruleLhs[rule]);
+        if (next <= 0 or self.len == capacity) return false;
+        self.pushed[self.len] = @intCast(next);
+        self.len += 1;
+        return true;
+    }
+
+    /// Whether the parser on this stack goes on with `sym`, shifting it
+    /// or accepting after the reductions it makes on it: how far out it
+    /// takes it then, or null.
+    fn goesOn(self: *const VirtualStack, sym: u16) ?Reach {
+        var v = self.*;
+        for (0..capacity) |i| {
+            const action = getAction(v.top(), sym);
+            if (action > 0 or action == -1 or action == hinted) return .{ .height = v.depth + v.len, .reductions = i };
+            if (action == 0 or !v.reduce(@intCast(-action - 2))) return null;
+        }
+        return null;
+    }
+
+    /// Where a token is taken: the height of the stack, and the reductions
+    /// made before.
+    const Reach = struct {
+        height: usize,
+        reductions: usize,
+
+        /// Whether `a` takes its token further out than `b`: on a shorter
+        /// stack, or on one as high after more reductions (a chain of
+        /// one-element rules).
+        fn outside(a: Reach, b: Reach) bool {
+            return a.height < b.height or (a.height == b.height and a.reductions > b.reductions);
+        }
+    };
 };
 
 /// Result of `parseTolerant`.
@@ -540,6 +622,8 @@ pub const BaseParser = struct {
 
     triviaTokens: std.ArrayList(Token) = .empty,
     failure: ?Failure = null,
+    /// What `failure` expected (see `recordFailure`).
+    expectation: Expectation = .{},
     scratch: std.ArrayList(u16) = .empty,
     /// With `longTokens`: the start and end of every token over 65534
     /// bytes read from this source, in source order (see `tokenEnd`).
@@ -1574,14 +1658,158 @@ pub const BaseParser = struct {
     // Diagnostics
     // -------------------------------------------------------------------------
 
+    /// Record the error at the current token, `sym`, rejected by `state`
+    /// (the top of the stack). It is reported from the reduction chain:
+    /// from `state`, the reductions the parser would make without the
+    /// token, each the one of its state that completes the most
+    /// (`chainRule`), to a state that makes none. The anchor is
+    /// the state entered by the chain's last goto on an `@errors`-named
+    /// rule, else `state`; the error lists what the states from the anchor
+    /// on take (shifts, and end of input where one accepts), after that
+    /// rule (or after the named rule `state` was entered on). So what an
+    /// operand could still take, an operator or a suffix, is left out once
+    /// it completes a named rule. Only a failed parse runs this.
     fn recordFailure(self: *BaseParser, state: u16, sym: u16) void {
         const tok = self.current;
         self.failure = .{
             .span = .{ .start = tok.pos, .end = self.tokenEnd(tok) },
+            .at = self.reportedAt(tok),
             .symbol = sym,
             .cat = tok.cat,
             .state = state,
         };
+        self.expectation = expectationOf(self.stateStack.items);
+    }
+
+    /// The expectation of a parse that fails in the top state of `stack`.
+    fn expectationOf(stack: []const u16) Expectation {
+        const limit = Expectation.chainLimit;
+        var v: VirtualStack = .{ .real = stack, .depth = stack.len };
+        const first = v.top();
+        var chain: [limit]u16 = undefined;
+        chain[0] = first;
+        var n: usize = 1;
+        var anchor: usize = 0;
+        var after: u16 = if (stack.len >= 2) namedGoto(stack[stack.len - 2], first) else noSymbol;
+        while (chainRule(&v)) |rule| {
+            if (n == limit or !v.reduce(rule)) {
+                var whole: Expectation = .{ .len = 1, .takenOnly = false };
+                whole.states[0] = first;
+                return whole;
+            }
+            chain[n] = v.top();
+            n += 1;
+            if (isNamed(ruleLhs[rule])) {
+                anchor = n - 1;
+                after = ruleLhs[rule];
+            }
+        }
+        var e: Expectation = .{ .len = @intCast(n - anchor), .after = after };
+        @memcpy(e.states[0..e.len], chain[anchor..n]);
+        return e;
+    }
+
+    /// The reduction the chain makes on `v`, of those of its top state on
+    /// a token the parser goes on with (`goesOn`): the one on a token it
+    /// takes furthest out (`Reach.outside`), so that the chain leaves the
+    /// constructs that are complete (an operand, rather than reaching for
+    /// an operator); then the one on the most such tokens; then the lowest
+    /// rule. Null when the state reduces on no such token.
+    fn chainRule(v: *const VirtualStack) ?u16 {
+        const state = v.top();
+        var best: ?u16 = null;
+        var bestReach: VirtualStack.Reach = undefined;
+        var bestCount: u32 = 0;
+        var tried: [16]u16 = undefined;
+        var numTried: usize = 0;
+        for (0..numSymbols) |t| {
+            const rule = reductionOn(state, @intCast(t)) orelse continue;
+            if (std.mem.findScalar(u16, tried[0..numTried], rule) != null) continue;
+            if (numTried < tried.len) {
+                tried[numTried] = rule;
+                numTried += 1;
+            }
+            var reach: VirtualStack.Reach = undefined;
+            var count: u32 = 0;
+            for (0..numSymbols) |u| {
+                if (reductionOn(state, @intCast(u)) != rule) continue;
+                const r = v.goesOn(@intCast(u)) orelse continue;
+                if (count == 0 or r.outside(reach)) reach = r;
+                count += 1;
+            }
+            if (count == 0) continue;
+            const same = best != null and !reach.outside(bestReach) and !bestReach.outside(reach);
+            if (best == null or reach.outside(bestReach) or
+                (same and (count > bestCount or (count == bestCount and rule < best.?))))
+            {
+                best = rule;
+                bestReach = reach;
+                bestCount = count;
+            }
+        }
+        return best;
+    }
+
+    /// The rule `state` reduces on `sym` (the table's reduction, for a
+    /// `hinted` cell), or null.
+    fn reductionOn(state: u16, sym: u16) ?u16 {
+        var action = getAction(state, sym);
+        if (xExcludes.len > 0 and action == hinted) action = hintedAction(state, sym, false);
+        return if (action <= -2) @intCast(-action - 2) else null;
+    }
+
+    /// The `@errors`-named rule whose goto from `below` is `state`, else
+    /// `noSymbol`.
+    fn namedGoto(below: u16, state: u16) u16 {
+        for (namedRules) |r| if (getAction(below, r) == state) return r;
+        return noSymbol;
+    }
+
+    fn isNamed(sym: u16) bool {
+        return std.mem.findScalar(u16, &namedRules, sym) != null;
+    }
+
+    /// Whether `state` takes `sym`: shifts it (goes to it, for a rule), or
+    /// accepts.
+    fn takes(state: u16, sym: u16) bool {
+        const action = getAction(state, sym);
+        return action > 0 or action == -1 or action == hinted;
+    }
+
+    /// Where an error at `tok` is reported: its start, or the end of the
+    /// token before it when that token ends on an earlier line.
+    fn reportedAt(self: *BaseParser, tok: Token) u32 {
+        const before = self.endBefore(tok) orelse return tok.pos;
+        if (before > tok.pos or std.mem.findScalar(u8, self.source[before..tok.pos], '\n') == null) return tok.pos;
+        return before;
+    }
+
+    /// The end of the last token the parser consumed before `tok`, the
+    /// current token; null when it consumed none.
+    fn endBefore(self: *BaseParser, tok: Token) ?u32 {
+        if (nodeStore) return if (self.lastEnd == 0) null else self.lastEnd;
+        return self.endBeforeRead(tok);
+    }
+
+    /// `endBefore` without a node store: the end of the last token before
+    /// `tok` (trivia aside), read again from the start of the input.
+    fn endBeforeRead(self: *BaseParser, tok: Token) ?u32 {
+        var lexer = Lexer.init(self.source);
+        var end: ?u32 = null;
+        while (true) {
+            const t = lexer.next();
+            if (t.pos > tok.pos or (t.pos == tok.pos and t.cat == tok.cat) or t.cat == .eof) return end;
+            if (isTrivia(t.cat)) continue;
+            end = if (longTokens and t.len == std.math.maxInt(u16)) self.keptEnd(t.pos) orelse return null else t.pos + t.len;
+        }
+    }
+
+    /// The kept end of the token over 65534 bytes at `pos`, if this parser
+    /// read one there.
+    fn keptEnd(self: *const BaseParser, pos: u32) ?u32 {
+        const ends = self.longTokenEnds.items;
+        const i = self.tokenEndIndex(pos);
+        return if (i < ends.len and ends[i].pos == pos) ends[i].end else null;
     }
 
     /// The error of the last failed parse (the first one, for
@@ -1604,21 +1832,75 @@ pub const BaseParser = struct {
         return .{ .line = line, .col = @intCast(end - lineStart + 1) };
     }
 
-    /// `line:col: expected A, B or C, got D` for the last error.
+    /// `line:col: expected A, B or C after R, got D` for the last error, at
+    /// its `at`: what the reduction chain takes (see `recordFailure`),
+    /// after the `@errors` name of the rule it completed (no `after R` when
+    /// it completed none), and the offending token by its name, or by its
+    /// text when it is not a token of the grammar (`got '?'`).
     pub fn writeError(self: *const BaseParser, w: *std.Io.Writer) std.Io.Writer.Error!void {
         const f = self.failure orelse return;
-        const at = self.lineCol(f.span.start);
+        const at = self.lineCol(f.at);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
         var buf: [maxExpected][]const u8 = undefined;
-        const want = expectedNames(f.state, &buf);
+        const want = self.failureNames(&buf);
         for (want, 0..) |name, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
             try w.writeAll(name);
         }
         if (want.len == 0) try w.writeAll("nothing");
+        if (self.expectation.after != noSymbol) try w.print(" after {s}", .{symbolName(self.expectation.after)});
         try w.writeAll(", got ");
         const got = symbolName(f.symbol);
-        try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
+        if (f.symbol == errorSymbol and shownText(f.span.text(self.source))) {
+            try w.print("'{s}'", .{f.span.text(self.source)});
+        } else try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
+    }
+
+    /// The reader names of what the last error expected, each once: the
+    /// `@errors` rules the chain's states take, in chain order, then the
+    /// tokens, ascending; the failure state's whole set when the chain
+    /// takes nothing or more than `buf` holds.
+    fn failureNames(self: *const BaseParser, buf: [][]const u8) []const []const u8 {
+        const e = &self.expectation;
+        const whole = self.failure.?.state;
+        if (!e.takenOnly) return expectedNames(whole, buf);
+        var tokens: [maxExpected]u16 = undefined;
+        var numTokens: usize = 0;
+        var n: usize = 0;
+        for (e.states[0..e.len]) |state| for (expectedIn(state)) |sym| {
+            if (!takes(state, sym)) continue;
+            if (!isNamed(sym)) {
+                if (std.mem.findScalar(u16, tokens[0..numTokens], sym) != null) continue;
+                if (numTokens == tokens.len) return expectedNames(whole, buf);
+                tokens[numTokens] = sym;
+                numTokens += 1;
+            } else if (!addName(buf, &n, symbolName(sym))) return expectedNames(whole, buf);
+        };
+        std.mem.sort(u16, tokens[0..numTokens], {}, std.sort.asc(u16));
+        for (tokens[0..numTokens]) |sym| {
+            if (!addName(buf, &n, symbolName(sym))) return expectedNames(whole, buf);
+        }
+        if (n == 0) return expectedNames(whole, buf);
+        return buf[0..n];
+    }
+
+    /// Add `name` to `buf[0..n.*]` unless it is empty or there; false when
+    /// `buf` is full.
+    fn addName(buf: [][]const u8, n: *usize, name: []const u8) bool {
+        if (name.len == 0) return true;
+        for (buf[0..n.*]) |seen| if (std.mem.eql(u8, seen, name)) return true;
+        if (n.* == buf.len) return false;
+        buf[n.*] = name;
+        n.* += 1;
+        return true;
+    }
+
+    /// Whether a token's text is shown in a message: one to 32 bytes of
+    /// UTF-8, no control character.
+    fn shownText(text: []const u8) bool {
+        if (text.len == 0 or text.len > 32) return false;
+        for (text) |c| if (c < 0x20 or c == 0x7f) return false;
+        return std.unicode.utf8ValidateSlice(text);
     }
 
     /// The source line holding `at_span.start`, then a line marking the span
@@ -1978,7 +2260,14 @@ const BaseLexer = struct {
 
     fn next(self: *BaseLexer) Token {
         const start0 = self.pos;
-        while (self.pos < self.source.len and self.source[self.pos] == ' ') self.pos += 1;
+        // Blanks, and a line continued by `\` at its end.
+        while (self.pos < self.source.len) {
+            if (self.source[self.pos] == ' ') {
+                self.pos += 1;
+            } else if (std.mem.startsWith(u8, self.source[self.pos..], "\\\n")) {
+                self.pos += 2;
+            } else break;
+        }
         const pre: u8 = @intCast(self.pos - start0);
         const start = self.pos;
         if (self.pos >= self.source.len) return .{ .pos = start, .len = 0, .cat = .eof, .pre = pre };
@@ -2060,10 +2349,11 @@ const parseTable = blk: {
 
 // Expected lists, hand-built from the table with `expr` named "an
 // expression": {}, {expr}, {IDENT "("}, {$end NEWLINE},
-// {$end NEWLINE "=" "+"}, {$end NEWLINE "+"}, {"+" ")"}.
-const expectedSymbols = [_]u16{ 6, 9, 12, 1, 8, 1, 8, 10, 11, 1, 8, 11, 11, 13 };
-const expectedOffsets = [_]u32{ 0, 0, 1, 3, 5, 9, 12, 14 };
-const expectedOf = [_]u16{ 0, 0, 1, 0, 3, 5, 4, 0, 5, 1, 1, 2, 1, 6, 0, 5, 0, 5, 0 };
+// {$end NEWLINE "=" "+"}, {$end NEWLINE "+"}, {"+" ")"}, {$end}.
+const expectedSymbols = [_]u16{ 6, 9, 12, 1, 8, 1, 8, 10, 11, 1, 8, 11, 11, 13, 1 };
+const expectedOffsets = [_]u32{ 0, 0, 1, 3, 5, 9, 12, 14, 15 };
+const expectedOf = [_]u16{ 0, 7, 1, 7, 3, 5, 4, 0, 5, 1, 1, 2, 1, 6, 0, 5, 0, 5, 0 };
+const namedRules = [_]u16{6};
 
 fn startState(_: Start) u16 {
     return 0;
@@ -2436,17 +2726,69 @@ test "parse errors carry the token span and the expected set" {
     try testing.expectEqual(@as(usize, 1), want.len);
     try testing.expectEqualStrings("an expression", want[0]);
 
-    var q = BaseParser.init(testing.allocator, "a b");
-    defer q.deinit();
-    try testing.expectError(error.ParseError, q.parse(.prog));
-    try testing.expectEqualStrings("1:3: expected end of input, newline, \"=\" or \"+\", got identifier", try errorText(&q));
-
+    // A token that is not the grammar's is shown by its text.
     var r = BaseParser.init(testing.allocator, "a + ?");
     defer r.deinit();
     try testing.expectError(error.ParseError, r.parse(.prog));
-    try testing.expectEqualStrings("1:5: expected identifier or \"(\", got err", try errorText(&r));
+    try testing.expectEqualStrings("1:5: expected identifier or \"(\", got '?'", try errorText(&r));
     // printError writes the same text to standard error.
     _ = &BaseParser.printError;
+}
+
+test "a parse error lists what the reduction chain takes, after the named rule it completes" {
+    // After `a`, the chain completes `term`, `expr` (named), `stmt`,
+    // `stmts` and `prog`: "=" (an `a = ...` statement) is not on it, and
+    // the operand's "+" is, from the state after the expression.
+    var q = BaseParser.init(testing.allocator, "a b");
+    defer q.deinit();
+    try testing.expectError(error.ParseError, q.parse(.prog));
+    try testing.expectEqualStrings("1:3: expected end of input, newline or \"+\" after an expression, got identifier", try errorText(&q));
+    // The state that rejected the token keeps its whole set.
+    var names: [maxExpected][]const u8 = undefined;
+    try testing.expectEqual(@as(usize, 4), BaseParser.expectedNames(q.lastError().?.state, &names).len);
+
+    // Inside parentheses the chain stops at `(` expr • `)`.
+    var p = BaseParser.init(testing.allocator, "(a");
+    defer p.deinit();
+    try testing.expectError(error.ParseError, p.parse(.prog));
+    try testing.expectEqualStrings("1:3: expected \"+\" or \")\" after an expression, got end of input", try errorText(&p));
+}
+
+test "a parse error on a later line than the token before is reported at that token's end" {
+    // `\` continues the line: end of input is on line 2, after `=`.
+    var p = BaseParser.init(testing.allocator, "a =\\\n");
+    defer p.deinit();
+    try testing.expectError(error.ParseError, p.parse(.prog));
+    const f = p.lastError().?;
+    try testing.expectEqual(Span{ .start = 5, .end = 5 }, f.span);
+    try testing.expectEqual(@as(u32, 3), f.at);
+    try testing.expectEqualStrings("1:4: expected an expression, got end of input", try errorText(&p));
+
+    // On the same line the error is at the token.
+    var q = BaseParser.init(testing.allocator, "a = )");
+    defer q.deinit();
+    try testing.expectError(error.ParseError, q.parse(.prog));
+    try testing.expectEqual(@as(u32, 4), q.lastError().?.at);
+    try testing.expectEqualStrings("1:5: expected an expression, got \")\"", try errorText(&q));
+
+    // A token the parser shifted, on line 1, before the error on line 2.
+    var r = BaseParser.init(testing.allocator, "a + b\\\n)");
+    defer r.deinit();
+    try testing.expectError(error.ParseError, r.parse(.prog));
+    try testing.expectEqual(@as(u32, 5), r.lastError().?.at);
+    try testing.expectEqualStrings("1:6: expected end of input, newline or \"+\" after an expression, got \")\"", try errorText(&r));
+}
+
+test "without a node store, the token before an error is found by reading the input again" {
+    var p = BaseParser.init(testing.allocator, "a #c\n= b #d");
+    defer p.deinit();
+    const eq: Token = .{ .pos = 5, .len = 1, .cat = .eq, .pre = 0 };
+    try testing.expectEqual(@as(?u32, 5), p.endBeforeRead(eq));
+    // Trivia is not a token the parser consumed.
+    const end: Token = .{ .pos = 11, .len = 0, .cat = .eof, .pre = 0 };
+    try testing.expectEqual(@as(?u32, 8), p.endBeforeRead(end));
+    const first: Token = .{ .pos = 0, .len = 1, .cat = .ident, .pre = 0 };
+    try testing.expectEqual(@as(?u32, null), p.endBeforeRead(first));
 }
 
 test "an excerpt shows the line and marks the span to its end" {
@@ -2706,7 +3048,7 @@ test "reset parses new input in the memory the parser holds" {
     try testing.expectEqual(capacity, p.arena.queryCapacity());
     p.reset("a b");
     try testing.expectError(error.ParseError, p.parse(.prog));
-    try testing.expectEqualStrings("1:3: expected end of input, newline, \"=\" or \"+\", got identifier", try errorText(&p));
+    try testing.expectEqualStrings("1:3: expected end of input, newline or \"+\" after an expression, got identifier", try errorText(&p));
 }
 
 test "an allocation failure fails the parse with error.OutOfMemory" {

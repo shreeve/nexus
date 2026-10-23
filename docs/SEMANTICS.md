@@ -272,7 +272,7 @@ The module exports:
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()`, `text(source)` (the source it covers, clamped to the source, so a span past its end gives what remains of it or the empty string) |
 | `NodeId` | a node's id (`u32`; 0 is none) |
-| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, and the `state` that rejected it (`lastError()`) |
+| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, the `state` that rejected it, and `at`, where the error is reported (`lastError()`; see [Syntax errors](#syntax-errors)) |
 | `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
 | `ir.rest(node, role)` | a rest role's children |
@@ -763,16 +763,43 @@ tools. A rule may not use a trivia token.
 ## Syntax errors
 
 A failed parse returns `error.ParseError`; `lastError()` gives the
-offending token's span, category and state, and `writeError(w)` writes
-`line:col: expected X, Y or Z, got W`. `writeExcerpt(w, span)` writes the
-source line holding a span and a line marking it with `^~~` (tabs kept,
-one column per character), for a diagnostic under that message. The expected set is computed per
-state at generation time: the `@errors`-named rules the state is waiting
-for, then the tokens none of them can begin with. Tokens print with their
-`@display` names, else as their literal or their name in lower case.
-`BaseParser.expectedNames(state, &buf)` gives those names, each once (two
-tokens with one `@display` name are named once), for a consumer that
-words its own message; `buf` is a `[parser.maxExpected][]const u8`.
+offending token's span, category and state, and `at`, and `writeError(w)`
+writes `line:col: expected X, Y or Z after R, got W` at `at`.
+`writeExcerpt(w, span)` writes the source line holding a span and a line
+marking it with `^~~` (tabs kept, one column per character), for a
+diagnostic under that message.
+
+- **What was expected.** From the state that rejected the token, the
+  parser makes the reductions it would make without it, on a copy of its
+  stack, until a state that makes none. Of a state's reductions it makes
+  one on a token the parser could then go on with (shift, or accept),
+  preferring the token taken furthest out (on the shortest stack, then
+  after the most reductions), then the reduction on the most such
+  tokens, then the lowest rule. The message lists what the states from
+  the last `@errors`-named rule this chain completes onward take: the
+  named rules they wait for, then their tokens (shifts, and end of input
+  where one accepts) in symbol order. `after R` names that rule by its
+  `@errors` name (or the named rule the rejecting state was entered on);
+  without one there is no `after`, and the list starts at the rejecting
+  state. So after a complete operand the message names what may follow
+  the expression or statement, not every operator that could extend it:
+  `expected ';' after an expression, got 'pub'`. Only a failed parse
+  does this.
+- **Where.** When the offending token starts on a later line than the
+  end of the token before it, `at` is that end, so a missing terminator
+  is reported at the end of its line, zero width; otherwise `at` is the
+  token's start. The message still names the token it got.
+- **Got.** The token by its `@display` name, else its literal or its
+  name in lower case; a token that is not one of the grammar's (the
+  `error` symbol, such as a lexer's `err`) by its text, `got '?'`, when
+  that is a short line of UTF-8.
+
+The expected set of each state is computed at generation time: the
+`@errors`-named rules the state is waiting for, then the tokens none of
+them can begin with. `BaseParser.expectedNames(state, &buf)` gives those
+names for a state, each once (two tokens with one `@display` name are
+named once), for a consumer that words its own message; `buf` is a
+`[parser.maxExpected][]const u8`.
 
 ## Tolerant parsing
 

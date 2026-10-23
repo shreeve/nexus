@@ -1,5 +1,6 @@
 //! @lang module of the list grammar: its tags and a pass-through Lexer
-//! wrapper. Its test parses long lists within a fixed memory budget.
+//! wrapper. Its tests parse long lists within a fixed memory budget, and
+//! place syntax errors without a node store.
 const std = @import("std");
 const parser = @import("parser.zig");
 
@@ -73,4 +74,29 @@ test "a list passed on by a rule and extended grows in place" {
     // (top (grow (a b b ...)))
     const list = tree.list.items()[1].list.items()[1];
     try testing.expectEqual(@as(usize, n + 1), list.list.items().len);
+}
+
+fn errorOf(text: []const u8) ![]const u8 {
+    var p = parser.Parser.init(testing.allocator, text);
+    defer p.deinit();
+    try testing.expectError(error.ParseError, p.parseTop());
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try p.writeError(&out.writer);
+    return out.toOwnedSlice();
+}
+
+// Without a node store the parser reads the input again to find the
+// token before a syntax error.
+test "a syntax error on a later line than the token before is at that token's end" {
+    const later = try errorOf("* a b\n\n+ c;");
+    defer testing.allocator.free(later);
+    try testing.expectEqualStrings("1:6: expected ident or \";\", got \"+\"", later);
+    const same = try errorOf("* a b + c;");
+    defer testing.allocator.free(same);
+    try testing.expectEqualStrings("1:7: expected ident or \";\", got \"+\"", same);
+    // A token that is not the grammar's is shown by its text.
+    const stray = try errorOf("* a ~;");
+    defer testing.allocator.free(stray);
+    try testing.expectEqualStrings("1:5: expected ident or \";\", got '~'", stray);
 }

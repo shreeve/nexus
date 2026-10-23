@@ -132,48 +132,50 @@ and its token stream in `cases/tokens/`).
 ## Syntax errors
 
 A Nexus parser stops at the first syntax error and reports
-`line:col: expected X, Y or Z, got W`, the expected set computed per LR
-state at generation time. The grammar names tokens as
-`std.zig.Token.Tag.symbol()` does (`';'`, `'fn'`, `an identifier`, `EOF`)
-and the places that wait for an expression, a type expression, a
-statement, a block, a declaration or a parameter by that name
-(`@display`, `@errors`). Side by side with Ast's message, for inputs
-of `messages_test.zig`:
+`line:col: expected X, Y or Z after R, got W`
+([SEMANTICS.md, "Syntax errors"](../../docs/SEMANTICS.md#syntax-errors)):
+what the parser can take once the constructs before the error are
+complete, after the last one the grammar names, at the end of the line
+before when the offending token starts a later line. The grammar names
+tokens as `std.zig.Token.Tag.symbol()` does (`';'`, `'fn'`, `an
+identifier`, `EOF`) and the places that wait for an expression, a type
+expression, a statement, a block, a declaration or a parameter by that
+name (`@display`, `@errors`). Side by side with Ast's message, for inputs
+of `messages_test.zig`, which checks that each is at Ast's line and
+column:
 
 ```text
 const x = ;
   nexus  1:11: expected an expression, got ';'
   zig    1:11: expected expression, found ';'
-const T = *:0 u8;
-  nexus  1:12: expected a type expression, 'const', 'align', 'volatile', 'allowzero' or 'addrspace', got ':'
-  zig    1:12: expected type expression, found ':'
-fn f() void
-  nexus  1:12: expected ';' or '{', got EOF
-  zig    1:12: expected ';' or block after function prototype
+const std = @import("std")
+pub fn main() void {}
+  nexus  1:27: expected ';' after an expression, got 'pub'
+  zig    1:27: expected ';' after declaration
 test {
-    if (a);
+    f(a b);
 }
-  nexus  2:11: expected a block, an assignment or '|', got ';'
-  zig    2:11: expected block or assignment, found ';'
+  nexus  2:9: expected ',' or ')' after an expression, got an identifier
+  zig    2:9: expected ',' after argument
+fn f() void
+  nexus  1:12: expected ';' or '{' after a type expression, got EOF
+  zig    1:12: expected ';' or block after function prototype
 ```
 
 Over the 98 inputs both parsers reject (39 corpus files and 59 inline
-sources), `compare-accept --messages` prints both messages: 47 of Nexus's
-name at most six expected items, and 62 are at the line and column Ast
+sources), `compare-accept --messages` prints both messages: 89 of Nexus's
+name at most six expected items, and 88 are at the line and column Ast
 reports. The rest fall short of Ast's in three ways that the grammar
 cannot change:
 
-- **The whole lookahead set.** When the offending token comes where a rule
-  could end (after an operand, a closing `)` or a payload's `|`), the
-  state that finds the error is one that would only reduce, and its
-  expected set is every token that may follow, often fifty or more,
-  where Parse.zig says `expected ';' after statement` or `expected ','
-  after argument`. Reporting the expectations of the state reached after
-  the pending reductions, as a parser with default reductions does, could
-  make these short; that is a change to Nexus, not to the grammar.
-- **Position.** For a missing `;` Ast points just after the previous
-  token; Nexus points at the token it could not take, often on the next
-  line.
+- **Constructs that go on.** After an expression statement the parser
+  may still take an assignment, so it lists `';'` with `','` and every
+  assignment operator, where Ast says `expected ';' after statement`;
+  a chained comparison, which the grammar rejects by the shape of its
+  operator levels, ends in `expected 'or' after an expression`.
+- **Position.** Ast reports some mistakes at an earlier token than the
+  one the parser cannot take (a declaration between container fields, a
+  doc comment on a `comptime` block, an `extern` function with a body).
 - **Specific diagnoses.** Ast has messages for particular mistakes
   (`declarations are not allowed between container fields`, `extern
   functions have no body`, `comparison operators cannot be chained`,

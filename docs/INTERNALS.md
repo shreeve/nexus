@@ -271,7 +271,9 @@ and a shortest symbol path from a start state (breadth-first over the
 automaton), then the whole actual manifest. It also fails `X "c"` hints
 that decide nothing. `expected.zig`
 computes each state's expected list (the `@errors`-named rules it waits
-for, then the terminals none of them starts), and `repair.zig` ranks the
+for, then the terminals none of them starts) and the list of named
+rules, from which a generated parser words a syntax error
+([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)), and `repair.zig` ranks the
 `@repair` insertion candidates per state by class and by the minimum
 number of further tokens the item needs.
 
