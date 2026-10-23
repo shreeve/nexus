@@ -1,6 +1,6 @@
-# when takes a role and a string.
-# error: lsp_when_short.grammar:46:31:
-# error: `when` takes a role and a string: when ROLE "text"
+# when takes a role.
+# error: lsp_when_short.grammar:46:37:
+# error: `when` takes a role, and the text it must have: when [^KIND.]ROLE ["text"]
 @lexer
 
 tokens
@@ -43,7 +43,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    define   fn.name function when name
+    define   fn.name function outer when
 
 prog!  = body                               → (prog ...1)
 

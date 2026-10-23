@@ -79,7 +79,7 @@ pub const names: scopes.Table = .{
         .{ .at = .{ .kind = .use, .slot = ir.slot(.use, .name) }, .symbol = .module },
     },
     .skips = &.{
-        .{ .kind = .member, .slot = ir.slot(.member, .name) },
+        .{ .at = .{ .kind = .member, .slot = ir.slot(.member, .name) } },
     },
     .uses = &.{.ident},
     .builtins = &.{

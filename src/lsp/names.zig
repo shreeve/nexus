@@ -7,11 +7,11 @@
 //! The lines are those of lexical names:
 //!
 //!   scope     KIND ... [unordered]
-//!   define    KIND.ROLE SYMBOLKIND [when ROLE "text"] [outer] [member|lexical]
+//!   define    KIND.ROLE SYMBOLKIND [when [^KIND.]ROLE ["text"] ...] [outer] [member|lexical]
 //!             [value:ROLE] [type:ROLE] [doc:ROLE|doc:leading]
 //!             [export:ROLE|export:^KIND] [detail|detail:..ROLE]
 //!   use       TOKEN ...
-//!   skip      KIND.ROLE ...
+//!   skip      KIND.ROLE ... | KIND.ROLE when ...
 //!   builtin   "name" ... | TOKEN
 //!   doc       TOKEN [strip "text"]
 //!   undefined error|warning
@@ -38,8 +38,10 @@ pub const Define = struct {
     /// LSP's symbol kind, as the server's `SymbolKind` names it.
     symbol: []const u8,
     /// `when ROLE "text"`: the definition is made only when that leaf's
-    /// text is `text`.
-    when: ?struct { role: []const u8, text: []const u8 } = null,
+    /// text is `text` (empty when the role is absent); `when ROLE`, only
+    /// when the role is present; `when ^KIND.ROLE ...`, the same of a role
+    /// of the node's parent, which is a KIND. Every `when` of a line holds.
+    when: []const When = &.{},
     outer: bool = false,
     visibility: Visibility = .both,
     value: ?[]const u8 = null,
@@ -48,6 +50,8 @@ pub const Define = struct {
     @"export": Export = .none,
     detail: Detail = .none,
 
+    /// The role's text, or with no text its presence.
+    pub const When = struct { parent: ?[]const u8 = null, role: []const u8, text: ?[]const u8 };
     pub const Doc = union(enum) { none, role: RoleRef, leading };
     pub const Export = union(enum) { none, role: []const u8, parent: []const u8 };
     pub const Detail = union(enum) { none, whole, upto: []const u8 };
@@ -61,7 +65,9 @@ pub const Lsp = struct {
     defines: []const Define,
     /// Token names, as the lexer spec names them.
     uses: []const []const u8,
-    skips: []const RoleRef,
+    /// Each with its conditions: one with `when` takes a leaf before any
+    /// `define` line; one without, a leaf no `define` line takes.
+    skips: []const Skip,
     builtins: []const []const u8,
     builtinTokens: []const []const u8,
     docToken: ?[]const u8 = null,
@@ -69,6 +75,7 @@ pub const Lsp = struct {
     undefined: ?Severity = null,
 
     pub const Scope = struct { kind: []const u8, unordered: bool };
+    pub const Skip = struct { role: RoleRef, when: []const Define.When = &.{} };
 };
 
 /// LSP's symbol kinds, as the server's `SymbolKind` names them.
@@ -112,7 +119,7 @@ const Reader = struct {
     definePos: std.ArrayList(DefinePos) = .empty,
     uses: std.ArrayList([]const u8) = .empty,
     usePos: std.ArrayList(u32) = .empty,
-    skips: std.ArrayList(RoleRef) = .empty,
+    skips: std.ArrayList(Lsp.Skip) = .empty,
     skipPos: std.ArrayList(u32) = .empty,
     builtins: std.ArrayList([]const u8) = .empty,
     builtinTokens: std.ArrayList([]const u8) = .empty,
@@ -181,9 +188,11 @@ const Reader = struct {
         }
         if (self.leadingPos) |pos| if (self.docToken == null)
             return self.fail(pos, "doc:leading reads the doc tokens before a definition: name them with a `doc TOKEN` line", .{});
+        // A skip takes the leaves of a role no `define` line takes: none,
+        // when a line without `when` defines the role.
         for (self.skips.items, self.skipPos.items) |s, pos| for (self.defines.items) |d| {
-            if (eql(d.role.kind, s.kind) and eql(d.role.role, s.role))
-                return self.fail(pos, "{s}.{s} is both defined and skipped", .{ s.kind, s.role });
+            if (eql(d.role.kind, s.role.kind) and eql(d.role.role, s.role.role) and d.when.len == 0 and s.when.len == 0)
+                return self.fail(pos, "{s}.{s} is both defined and skipped", .{ s.role.kind, s.role.role });
         };
         for (self.builtinTokens.items, self.builtinTokenPos.items) |t, pos| if (!contains(self.uses.items, t))
             return self.fail(pos, "builtin {s}: {s} is no `use` token, so its leaves are never looked up", .{ upper(self.allocator, t), upper(self.allocator, t) });
@@ -211,14 +220,14 @@ const Reader = struct {
         const words = line.words;
         if (words.len == 0) return self.fail(line.key.pos, "a define line names a role and a symbol kind: define KIND.ROLE SYMBOLKIND", .{});
         const role = try self.roleOf(words[0], "define");
-        const kindRole = self.roleIn(role.kind, role.role).?;
-        if (kindRole.type != .leaf) return self.fail(words[0].pos, "define {s}.{s}: the role is not leaf-typed (a definition is a token: declare it `{s}:leaf`)", .{ role.kind, role.role, role.role });
+        if (!holdsLeaf(self.roleIn(role.kind, role.role).?)) return self.fail(words[0].pos, "define {s}.{s}: the role holds no token, and a definition is a token", .{ role.kind, role.role });
         if (words.len < 2) return self.fail(line.key.pos, "define {s}.{s} needs a symbol kind ({s})", .{ role.kind, role.role, symbolList });
         const symbol = words[1].text;
         if (!contains(&symbol_kinds, symbol)) return self.fail(words[1].pos, "unknown symbol kind '{s}' (LSP's: {s})", .{ symbol, symbolList });
         var d: Define = .{ .role = role, .symbol = symbol };
         var at: DefinePos = .{ .line = line.key.pos, .outer = null, .parent = null };
         var seen: std.StringHashMapUnmanaged(void) = .empty;
+        var whens: std.ArrayList(Define.When) = .empty;
         var i: usize = 2;
         while (i < words.len) : (i += 1) {
             const w = words[i];
@@ -228,7 +237,7 @@ const Reader = struct {
             const option = std.meta.stringToEnum(Option, name) orelse
                 return self.fail(w.pos, "unknown option '{s}' of define (when, outer, member, lexical, value:, type:, doc:, export:, detail:)", .{w.text});
             const group = option.group();
-            if ((try seen.fetchPut(self.allocator, group, {})) != null) {
+            if (option != .when and (try seen.fetchPut(self.allocator, group, {})) != null) {
                 if (eql(group, "member or lexical") and !eql(name, if (d.visibility == .member) "member" else "lexical"))
                     return self.fail(w.pos, "a definition is `member` or `lexical`, not both", .{});
                 return self.fail(w.pos, "define {s}.{s} has {s} twice", .{ role.kind, role.role, name });
@@ -237,12 +246,7 @@ const Reader = struct {
             switch (option) {
                 .when => {
                     if (arg != null) return self.fail(w.pos, "write `when ROLE \"text\"`, not `{s}`", .{w.text});
-                    if (i + 2 >= words.len) return self.fail(w.pos, "`when` takes a role and a string: when ROLE \"text\"", .{});
-                    const whenRole = words[i + 1];
-                    const r = try self.slotRole(role.kind, whenRole.text, whenRole.pos, "when ");
-                    if (r.type != .leaf) return self.fail(whenRole.pos, "when {s}: the role is not leaf-typed, so it has no text", .{whenRole.text});
-                    d.when = .{ .role = whenRole.text, .text = try self.stringOf(words[i + 2], "when's text") };
-                    i += 2;
+                    i = try self.whenAt(words, i, role.kind, &whens);
                 },
                 .outer, .member, .lexical => {
                     if (arg != null) return self.fail(w.pos, "`{s}` takes no argument", .{name});
@@ -292,14 +296,40 @@ const Reader = struct {
                 },
             }
         }
-        // Two lines for one role are told apart by their `when`.
+        d.when = try whens.toOwnedSlice(self.allocator);
+        // Two lines for one role are told apart by their `when`s.
         for (self.defines.items) |o| {
             if (!eql(o.role.kind, role.kind) or !eql(o.role.role, role.role)) continue;
-            const same = if (o.when) |ow| if (d.when) |dw| eql(ow.role, dw.role) and eql(ow.text, dw.text) else true else true;
-            if (same) return self.fail(words[0].pos, "{s}.{s} is defined twice: give each line a different `when`", .{ role.kind, role.role });
+            if (sameWhens(o.when, d.when)) return self.fail(words[0].pos, "{s}.{s} is defined twice: give each line a different `when`", .{ role.kind, role.role });
         }
         try self.defines.append(self.allocator, d);
         try self.definePos.append(self.allocator, at);
+    }
+
+    /// The condition `when` at `words[i]` starts, of a node of `kind`;
+    /// the index of its last word.
+    fn whenAt(self: *Reader, words: []const Word, i: usize, kind: []const u8, whens: *std.ArrayList(Define.When)) Error!usize {
+        if (i + 1 >= words.len) return self.fail(words[i].pos, "`when` takes a role, and the text it must have: when [^KIND.]ROLE [\"text\"]", .{});
+        const whenRole = words[i + 1];
+        // With a string, the role's text; without, its presence.
+        const text: ?[]const u8 = if (i + 2 < words.len and words[i + 2].text[0] == '"') try self.stringOf(words[i + 2], "when's text") else null;
+        var of = kind;
+        var roleName = whenRole.text;
+        var pos = whenRole.pos;
+        var parent: ?[]const u8 = null;
+        if (whenRole.text.len > 0 and whenRole.text[0] == '^') {
+            // A role of the parent: ^KIND.ROLE.
+            const p = try self.roleOf(.{ .text = whenRole.text[1..], .pos = whenRole.pos + 1 }, "when ^");
+            if (!self.holds(p.kind, kind)) return self.fail(whenRole.pos + 1, "when ^{s}: no role of '{s}' holds a '{s}' node, so it is never its parent", .{ whenRole.text[1..], p.kind, kind });
+            of = p.kind;
+            roleName = p.role;
+            pos = whenRole.pos + 1;
+            parent = p.kind;
+        }
+        const r = try self.slotRole(of, roleName, pos, if (parent != null) "when ^" else "when ");
+        if (text != null and r.type != .leaf) return self.fail(whenRole.pos, "when {s}: the role is not leaf-typed, so it has no text", .{whenRole.text});
+        try whens.append(self.allocator, .{ .parent = parent, .role = roleName, .text = text });
+        return i + @as(usize, if (text != null) 2 else 1);
     }
 
     const Option = enum {
@@ -336,13 +366,26 @@ const Reader = struct {
 
     fn skipLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
         if (line.words.len == 0) return self.fail(line.key.pos, "a skip line names at least one role: skip KIND.ROLE ...", .{});
-        for (line.words) |w| {
+        // Roles, then the conditions of a line that names one role.
+        var roles = line.words;
+        var whens: std.ArrayList(Define.When) = .empty;
+        for (line.words, 0..) |w, i| if (eql(w.text, "when")) {
+            roles = line.words[0..i];
+            if (roles.len != 1) return self.fail(w.pos, "a skip line with `when` names one role", .{});
+            var j = i;
+            while (j < line.words.len) : (j += 1) {
+                if (!eql(line.words[j].text, "when")) return self.fail(line.words[j].pos, "after a skip line's role come its `when`s, not '{s}'", .{line.words[j].text});
+                j = try self.whenAt(line.words, j, (try self.roleOf(roles[0], "skip")).kind, &whens);
+            }
+            break;
+        };
+        for (roles) |w| {
             const role = try self.roleOf(w, "skip");
-            if (self.roleIn(role.kind, role.role).?.type != .leaf)
-                return self.fail(w.pos, "skip {s}.{s}: the role is not leaf-typed, and skip names tokens", .{ role.kind, role.role });
-            for (self.skips.items) |s| if (eql(s.kind, role.kind) and eql(s.role, role.role))
+            if (!holdsLeaf(self.roleIn(role.kind, role.role).?))
+                return self.fail(w.pos, "skip {s}.{s}: the role holds no token, and skip names tokens", .{ role.kind, role.role });
+            for (self.skips.items) |s| if (eql(s.role.kind, role.kind) and eql(s.role.role, role.role) and sameWhens(s.when, whens.items))
                 return self.fail(w.pos, "{s}.{s} is skipped already", .{ role.kind, role.role });
-            try self.skips.append(self.allocator, role);
+            try self.skips.append(self.allocator, .{ .role = role, .when = whens.items });
             try self.skipPos.append(self.allocator, w.pos);
         }
     }
@@ -473,6 +516,28 @@ const Reader = struct {
         return false;
     }
 };
+
+/// Whether a role can hold a token: a leaf role, or an untyped one.
+fn holdsLeaf(r: Schema.Role) bool {
+    return switch (r.type) {
+        .leaf, .any, .node => true,
+        .tag, .group, .kinds => false,
+    };
+}
+
+/// Whether two lists of `when`s are the same conditions.
+fn sameWhens(a: []const Define.When, b: []const Define.When) bool {
+    if (a.len != b.len) return false;
+    for (a) |x| {
+        const found = for (b) |y| {
+            const parents = if (x.parent) |xp| (if (y.parent) |yp| eql(xp, yp) else false) else y.parent == null;
+            const texts = if (x.text) |xt| (if (y.text) |yt| eql(xt, yt) else false) else y.text == null;
+            if (parents and eql(x.role, y.role) and texts) break true;
+        } else false;
+        if (!found) return false;
+    }
+    return true;
+}
 
 const symbolList = blk: {
     var s: []const u8 = "";

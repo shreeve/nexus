@@ -35,13 +35,15 @@ pub const Slot = struct { kind: Tag, slot: u16, rest: bool = false };
 
 pub const ScopeKind = struct { kind: Tag, unordered: bool = false };
 
+pub const Skip = struct { at: Slot, when: []const Define.When = &.{} };
+
 pub const Visibility = enum { both, member, lexical };
 
 pub const Define = struct {
     at: Slot,
     symbol: lsp.SymbolKind,
-    /// The definition is made only when the leaf in slot `slot` is `text`.
-    when: ?When = null,
+    /// The definition is made only when each of these holds.
+    when: []const When = &.{},
     outer: bool = false,
     visibility: Visibility = .both,
     /// The slot of the definition's value, whose scope is its members in
@@ -53,7 +55,10 @@ pub const Define = struct {
     @"export": Export = .none,
     detail: Detail = .none,
 
-    pub const When = struct { slot: u16, text: []const u8 };
+    /// The leaf in slot `slot` of the node (of its parent, when the parent
+    /// is a `parent`) is `text`, an absent one's text being empty; without
+    /// `text`, the slot is not empty.
+    pub const When = struct { parent: ?Tag = null, slot: u16, text: ?[]const u8 = null };
     /// `doc:ROLE`: the tokens of a role; `doc:leading`: the doc tokens on
     /// the lines just before the definition's node.
     pub const Doc = union(enum) { none, role: Slot, leading };
@@ -72,7 +77,10 @@ pub const Table = struct {
     /// whole: the order of the kind the start symbol builds.
     file_unordered: bool = false,
     defines: []const Define = &.{},
-    skips: []const Slot = &.{},
+    /// Leaves that are neither definitions nor uses: a skip with `when`
+    /// takes a leaf before any define does; one without, a leaf no define
+    /// takes.
+    skips: []const Skip = &.{},
     uses: []const TokenCat = &.{},
     builtins: []const []const u8 = &.{},
     builtin_tokens: []const TokenCat = &.{},
@@ -462,7 +470,7 @@ const Builder = struct {
     /// A value to visit: the node or leaf, the node of a kind whose child
     /// it is (in slot `slot`), that node's parent's kind, and the scope
     /// around the owner's children.
-    const Item = struct { value: Sexp, owner: Sexp, parent: ?Tag, slot: u16, scope: u32 };
+    const Item = struct { value: Sexp, owner: Sexp, parent: Sexp, slot: u16, scope: u32 };
 
     fn walk(b: *Builder) error{OutOfMemory}!void {
         const p = try b.arena.create(parser.BaseParser);
@@ -501,7 +509,7 @@ const Builder = struct {
         var i = roots.len;
         while (i > 0) {
             i -= 1;
-            try stack.append(b.arena, .{ .value = roots[i], .owner = .nil, .parent = null, .slot = 0, .scope = 0 });
+            try stack.append(b.arena, .{ .value = roots[i], .owner = .nil, .parent = .nil, .slot = 0, .scope = 0 });
         }
         while (stack.pop()) |item| switch (item.value) {
             .src => |leaf| try b.classify(item, leaf),
@@ -534,7 +542,7 @@ const Builder = struct {
                     try stack.append(b.arena, .{
                         .value = items[n],
                         .owner = item.value,
-                        .parent = if (item.owner == .nil) null else item.owner.kind(),
+                        .parent = item.owner,
                         .slot = @intCast(n),
                         .scope = scope,
                     });
@@ -553,16 +561,16 @@ const Builder = struct {
         const end = b.p.leafEnd(leafv);
         const ownerKind = item.owner.kind();
         if (ownerKind) |k| {
-            var named = false;
+            for (table.skips) |s| if (s.when.len > 0 and s.at.kind == k and slotMatches(s.at, item.slot) and b.holds(item, s.when))
+                return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
             for (table.defines, 0..) |d, line| {
                 if (d.at.kind != k or !slotMatches(d.at, item.slot)) continue;
-                named = true;
-                if (d.when) |w| if (!std.mem.eql(u8, b.childText(item.owner, w.slot), w.text)) continue;
-                if (start == end) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+                if (!b.holds(item, d.when)) continue;
+                // A hole, and a builtin's name, which is never defined.
+                if (start == end or b.builtinAt(start, end)) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
                 return b.define(item, @intCast(line), start, end);
             }
-            if (named) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
-            for (table.skips) |s| if (s.kind == k and slotMatches(s, item.slot))
+            for (table.skips) |s| if (s.when.len == 0 and s.at.kind == k and slotMatches(s.at, item.slot))
                 return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
         }
         // A hole the tolerant parse inserted has no token of its own.
@@ -598,7 +606,7 @@ const Builder = struct {
             .exported = switch (d.@"export") {
                 .none => scope == 0,
                 .slot => |s| s < items.len and items[s] != .nil,
-                .parent => |parent| item.parent != null and item.parent.? == parent,
+                .parent => |parent| item.parent.kind() == parent,
             },
         };
         switch (d.detail) {
@@ -640,6 +648,27 @@ const Builder = struct {
             .list => for (v.items()) |x| if (x == .src) try out.append(b.arena, .{ x.src.pos, b.p.leafEnd(x.src) }),
             else => {},
         }
+    }
+
+    /// Whether every condition holds of the node `item` is a child of.
+    fn holds(b: *Builder, item: Item, when: []const Define.When) bool {
+        for (when) |w| {
+            const node = if (w.parent) |p| (if (item.parent.kind() == p) item.parent else return false) else item.owner;
+            if (w.text) |t| {
+                if (!std.mem.eql(u8, b.childText(node, w.slot), t)) return false;
+            } else {
+                const items = node.items();
+                if (w.slot >= items.len or items[w.slot] == .nil) return false;
+            }
+        }
+        return true;
+    }
+
+    fn builtinAt(b: *Builder, start: u32, end: u32) bool {
+        if (isBuiltin(b.text[start..end])) return true;
+        const t = b.tokenOf(start) orelse return false;
+        for (table.builtin_tokens) |bt| if (bt == t.cat) return true;
+        return false;
     }
 
     fn childText(b: *Builder, node: Sexp, slot: u16) []const u8 {

@@ -1,6 +1,6 @@
-# skip names leaf-typed roles.
+# skip names roles that hold tokens.
 # error: lsp_skip_not_leaf.grammar:47:14:
-# error: skip let.value: the role is not leaf-typed, and skip names tokens
+# error: skip fn.params: the role holds no token, and skip names tokens
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    skip     let.value
+    skip     fn.params
 
 prog!  = body                               → (prog ...1)
 

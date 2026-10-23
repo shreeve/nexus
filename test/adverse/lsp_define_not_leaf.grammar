@@ -1,6 +1,6 @@
-# A definition is a token: its role is leaf-typed.
+# A definition is a token: its role holds one.
 # error: lsp_define_not_leaf.grammar:47:14:
-# error: define let.value: the role is not leaf-typed (a definition is a token: declare it `value:leaf`)
+# error: define fn.params: the role holds no token, and a definition is a token
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    define   let.value variable
+    define   fn.params variable
 
 prog!  = body                               → (prog ...1)
 

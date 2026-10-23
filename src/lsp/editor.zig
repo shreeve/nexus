@@ -226,7 +226,7 @@ fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
         try w.writeAll("\n        .{ .at = ");
         try slotOf(w, d.role);
         try w.print(", .symbol = .{f}", .{std.zig.fmtIdPU(d.symbol)});
-        if (d.when) |wh| try w.print(", .when = .{{ .slot = ir.slot(.{f}, .{f}), .text = \"{f}\" }}", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(wh.role), std.zig.fmtString(wh.text) });
+        try whenList(w, k, d.when);
         if (d.outer) try w.writeAll(", .outer = true");
         if (d.visibility != .both) try w.print(", .visibility = .{s}", .{@tagName(d.visibility)});
         if (d.value) |r| try w.print(", .value = ir.slot(.{f}, .{f})", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) });
@@ -254,9 +254,10 @@ fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
     }
     try w.writeAll("\n    },\n    .skips = &.{");
     for (l.skips) |sk| {
-        try w.writeAll("\n        ");
-        try slotOf(w, sk);
-        try w.writeAll(",");
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, sk.role);
+        try whenList(w, sk.role.kind, sk.when);
+        try w.writeAll(" },");
     }
     try w.writeAll(if (l.skips.len > 0) "\n    },\n" else "},\n");
     try catList(w, "uses", l.uses);
@@ -268,6 +269,21 @@ fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
     if (l.docStrip.len > 0) try w.print("    .doc_strip = \"{f}\",\n", .{std.zig.fmtString(l.docStrip)});
     if (l.undefined) |sev| try w.print("    .undefined = .{f},\n", .{std.zig.fmtIdPU(@tagName(sev))});
     try w.writeAll("};\n");
+}
+
+/// `, .when = &.{ ... }`: the conditions of a line on a `kind` node.
+fn whenList(w: *Writer, kind: []const u8, when: []const names.Define.When) Writer.Error!void {
+    if (when.len == 0) return;
+    try w.writeAll(", .when = &.{");
+    for (when, 0..) |wh, n| {
+        const of = wh.parent orelse kind;
+        try w.print("{s}.{{ ", .{if (n > 0) ", " else " "});
+        if (wh.parent) |p| try w.print(".parent = .{f}, ", .{std.zig.fmtIdPU(p)});
+        try w.print(".slot = ir.slot(.{f}, .{f})", .{ std.zig.fmtIdPU(of), std.zig.fmtIdPU(wh.role) });
+        if (wh.text) |t| try w.print(", .text = \"{f}\"", .{std.zig.fmtString(t)});
+        try w.writeAll(" }");
+    }
+    try w.writeAll(" }");
 }
 
 /// `.{ .kind = .k, .slot = ir.slot(.k, .r) }`, or `ir.restSlot` for a
