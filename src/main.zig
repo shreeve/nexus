@@ -38,6 +38,7 @@ const highlight = @import("highlight/highlight.zig");
 const emit = @import("highlight/emit.zig");
 const describe = @import("describe.zig");
 const editor = @import("lsp/editor.zig");
+const identity = @import("lsp/identity.zig");
 
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 /// An alternative that expands into this many rules or more is named in
@@ -303,15 +304,37 @@ fn writeEditor(allocator: Allocator, io: Io, opts: Options, built: *const Built)
         }
     } else if (opts.langModule) |module| usageError("--lang {s}: the grammar has no @lang", .{module});
 
+    // The extension's identity: the language's own file, read before
+    // anything is written, else the defaults, written once below.
+    const cwd = std.Io.Dir.cwd();
+    const identityPath = try std.fs.path.join(allocator, &.{ opts.outputFile, "vscode/identity.json" });
+    const base = try identity.defaults(allocator, h);
+    var id = base;
+    const identityText: ?[]const u8 = cwd.readFileAlloc(io, identityPath, allocator, .limited(1 << 20)) catch |err| switch (err) {
+        // No identity.json yet; or no directory for it, which the writing
+        // below reports.
+        error.FileNotFound, error.NotDir => null,
+        else => {
+            diag.err("cannot read {s}: {s}", .{ identityPath, @errorName(err) });
+            fail();
+        },
+    };
+    if (identityText) |text| id = identity.parse(allocator, identityPath, text, base) catch |err| switch (err) {
+        error.Reported => fail(),
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+
     const name = std.fs.path.basename(opts.grammarFile);
-    const in: editor.Input = .{ .h = h, .g = g, .spec = &built.spec, .keywordGroups = built.ir.keywordGroups, .grammarName = name, .version = version };
+    const in: editor.Input = .{ .h = h, .g = g, .spec = &built.spec, .keywordGroups = built.ir.keywordGroups, .grammarName = name, .version = version, .identity = id };
     const File = struct { path: []const u8, bytes: []const u8 };
     var files: std.ArrayList(File) = .empty;
     for (std.enums.values(emit.Target)) |t|
         try files.append(allocator, .{ .path = try emit.layoutPath(allocator, h, t), .bytes = try emit.emit(allocator, h, t, name, version) });
     try files.append(allocator, .{ .path = "vscode/package.json", .bytes = try editor.packageJson(allocator, in) });
     try files.append(allocator, .{ .path = "vscode/extension.js", .bytes = try editor.extensionJs(allocator, in) });
-    try files.append(allocator, .{ .path = "vscode/.gitignore", .bytes = "node_modules/\nbin/\n*.vsix\n" });
+    try files.append(allocator, .{ .path = "vscode/README.md", .bytes = try editor.readme(allocator, in) });
+    try files.append(allocator, .{ .path = "vscode/.vscodeignore", .bytes = try editor.vscodeIgnore(allocator, in) });
+    try files.append(allocator, .{ .path = "vscode/.gitignore", .bytes = "node_modules/\nbin/\n*.vsix\n.vscode-test/\n" });
     try files.append(allocator, .{ .path = "server/build.zig", .bytes = try editor.buildZig(allocator, in) });
     try files.append(allocator, .{ .path = "server/.gitignore", .bytes = ".zig-cache/\nzig-out/\n" });
     try files.append(allocator, .{ .path = "server/src/main.zig", .bytes = try editor.mainZig(allocator, in) });
@@ -320,14 +343,19 @@ fn writeEditor(allocator: Allocator, io: Io, opts: Options, built: *const Built)
     try files.append(allocator, .{ .path = "server/src/language.zig", .bytes = try editor.languageZig(allocator, in) });
     for (copied) |c| try files.append(allocator, .{ .path = try std.fs.path.join(allocator, &.{ "server/src", c.path }), .bytes = c.text });
 
-    const cwd = std.Io.Dir.cwd();
     for (files.items) |f| {
         const path = try std.fs.path.join(allocator, &.{ opts.outputFile, f.path });
         makeParent(io, path);
         try writeOutput(io, path, f.bytes);
         diag.info("Wrote {s}", .{path});
     }
-    // The language's own functions: written once, never replaced.
+    // The language's own files: written once, never replaced.
+    if (identityText != null) {
+        diag.info("Kept {s}", .{identityPath});
+    } else {
+        try writeOutput(io, identityPath, try identity.write(allocator, base));
+        diag.info("Wrote {s}", .{identityPath});
+    }
     const hooks = try std.fs.path.join(allocator, &.{ opts.outputFile, "server/src/hooks.zig" });
     if (cwd.statFile(io, hooks, .{})) |_| {
         diag.info("Kept {s}", .{hooks});

@@ -12,10 +12,11 @@ test/bench/run              # generation time and parse throughput
 The summary line reads `N passed, M failed, K known`. The suite is green
 when nothing fails and no known-failing test has started passing. It
 always rebuilds `bin/nexus` first (`zig build`), so a stale binary is never
-tested. `zig build test` runs it too. It needs bash, perl, python3 (for
-`tools/lexfuzz` and the `highlight/*` checks), Vim with `+syntax` (for
-`highlight/*`) and Zig 0.17, and runs on macOS and Linux with the
-systems' own tools.
+tested. `zig build test` runs it too. It needs bash, perl, Node (for
+the VS Code extension's checks, `test/lib/vscode`), python3 (for
+`tools/lexfuzz`, the `highlight/*` checks and the language-server
+sessions), Vim with `+syntax` (for `highlight/*`) and Zig 0.17, and runs
+on macOS and Linux with the systems' own tools.
 
 ## What is checked
 
@@ -33,9 +34,10 @@ systems' own tools.
 | `describe/<grammar>` | `nexus --describe` equals `test/golden/<grammar>.describe.json`; every grammar file has one, under the first suite that uses it |
 | `highlight/<grammar>/files` | for a grammar with `@highlight`: `nexus --highlight all` writes exactly its four files, each equal to `--highlight <target>` and to its golden (`test/golden/<grammar>.tmLanguage.json`, `.language-configuration.json`, `.hljs.js`, `.vim`), and the grammar without `@highlight` generates the same parser |
 | `highlight/<grammar>/<sample>` | the grammar's TextMate grammar, highlight.js language and Vim syntax file colour `<suite>/highlight/<sample>` as `<sample>.hl` says (`test/lib/highlight`, see "Highlight checks") |
-| `editor/<grammar>/files` | for a grammar with `@highlight`: `nexus --editor` (with the suite's lang module) writes exactly its files: the highlighting files equal to `--highlight all`'s, `parser.zig` equal to `--spans` output, `lsp.zig` the server template under its header, the lang module and its imports equal to their sources, and `language.zig` and `package.json` equal to their goldens (`test/golden/<grammar>.language.zig`, `.package.json`; for `editor`, `extension.js`, `build.zig`, `main.zig` and `hooks.zig` too); a second run keeps an edited `hooks.zig` (`Kept`) and writes every other file the same |
+| `editor/<grammar>/files` | for a grammar with `@highlight`: `nexus --editor` (with the suite's lang module) writes exactly its files: the highlighting files equal to `--highlight all`'s, `parser.zig` equal to `--spans` output, `lsp.zig` the server template under its header, the lang module and its imports equal to their sources, and `language.zig` and `package.json` equal to their goldens (`test/golden/<grammar>.language.zig`, `.package.json`; for `editor`, `extension.js`, `identity.json`, `README.md`, `.vscodeignore`, `build.zig`, `main.zig` and `hooks.zig` too); `package.json`'s semantic token types agree with the server's legend (`test/lib/vscode legend`, see "The VS Code client"); a second run keeps an edited `hooks.zig` and `identity.json` (`Kept`) and writes every other file the same |
 | `editor/<grammar>/server` | that server type checks (`zig build-exe -fno-emit-bin src/main.zig`) with the stub `hooks.zig` |
 | `<grammar>/<dir>/<session>` | the language server built from `<suite>/<dir>/` (its `hooks.zig`, else the stub) answers `<suite>/<dir>/<session>.session` as `<session>.out` says (`test/lib/lsp`, see "Language-server sessions") |
+| `<grammar>/client/<scenario>` | the extension `--editor` writes (with `<scenario>.identity.json` as its `identity.json` when there is one, and then `package.json`, `README.md` and `.vscodeignore` equal to `<scenario>.package.json`, `.readme.txt` and `.vscodeignore`), its `extension.js` run under Node against stubs of VS Code as `<suite>/client/<scenario>.js` says, makes the calls `<scenario>.out` lists (`test/lib/vscode client`, see "The VS Code client") |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
@@ -45,7 +47,7 @@ systems' own tools.
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
 | `tools/messages` | every error the generator's source can print is printed by `nexus check` on some grammar under `grammars/` or `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
 | `tools/readme` | `docs/index.html` shows README.md's tested `calc.grammar`, and every number in README.md's validated-languages table (lines, LR states, declared conflicts and cells, suite cases, mode) is this checkout's (`test/lib/readme`) |
-| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`, a missing or unknown `--highlight` target, `--highlight all` without a directory), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp`, `--describe`, `--highlight` (one file, `all`, a grammar without `@highlight`), `--editor` and `--lang` (their usage errors, a grammar without `@highlight`, without parser rules, or with `@lang` and no `--lang`, a lang module that cannot be read, imports a file from outside its directory or brings a file the server has, and a lang module copied with its import), and the `Expanded:` progress line for an alternative of 32 rules and none for one of 16 (`test/cli/`) |
+| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`, a missing or unknown `--highlight` target, `--highlight all` without a directory), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp`, `--describe`, `--highlight` (one file, `all`, a grammar without `@highlight`), `--editor` and `--lang` (their usage errors, a grammar without `@highlight`, without parser rules, or with `@lang` and no `--lang`, a lang module that cannot be read, imports a file from outside its directory or brings a file the server has, and a lang module copied with its import), each mistake in the extension's `identity.json` (located, nothing written) and one that cannot be read, and the `Expanded:` progress line for an alternative of 32 rules and none for one of 16 (`test/cli/`) |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
 | `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
@@ -106,7 +108,7 @@ The suites under `test/`:
 | `word_chars` | Mint, a small M-like language whose `@highlight` sets `word-chars [%A-Za-z0-9]` (`_` an operator, `%` part of a name) and puts contexts around `@keywords` groups and a `line-start` alternation | `highlight/sample.mint`, coloured |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
-| `editor` | Tally, a small language with `@schema`, `@repair` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; two parse cases |
+| `editor` | Tally, a small language with `@schema`, `@repair` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:
@@ -281,6 +283,26 @@ command a line (`initialize`; `open`, with the file's text or, for an
 `rename FILE L:C NAME`; ...; `test/lib/lsp` lists them all), and its `.out` is each command after `> `, then what
 the server answered or published, ranges as `L:C-L:C` and semantic tokens
 as `L:C len scope`. `--update` writes the `.out` file.
+
+## The VS Code client
+
+`test/lib/vscode` checks the extension without VS Code, under Node.
+`legend PACKAGE_JSON SERVER_TEMPLATE` (in every `editor/<grammar>/files`)
+checks that `package.json`'s semantic token types agree with the legend
+in `src/lsp/server_template.zig`: each type of the legend is one of VS
+Code's standard types or one `package.json` declares, it declares no
+other and no standard one, each `superType` is a standard type, and
+`semanticTokenScopes` gives a scope to exactly the legend's types.
+`client VSCODE_DIR SCENARIO` loads `extension.js` with stub `vscode` and
+`vscode-languageclient/node` modules and runs a scenario, a CommonJS
+module of steps (settings at user or workspace level, a trusted or
+untrusted workspace, its folders, a bundled server, a start that fails or
+waits, activation); it prints each call the extension makes, paths under
+`<ext>` (the extension) and `<ws>` (the workspace). The stub gives
+settings as VS Code does: a `machine` setting, and in an untrusted
+workspace a restricted one, takes no workspace value. A setting the
+extension reads that `package.json` does not declare fails the scenario.
+`--update` writes the `.out` file.
 
 ## Lexer fuzzing
 

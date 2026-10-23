@@ -1,0 +1,281 @@
+#!/usr/bin/env node
+// Check the VS Code extension `nexus --editor` writes, without VS Code.
+//
+// Usage:
+//   test/lib/vscode legend PACKAGE_JSON SERVER_TEMPLATE
+//   test/lib/vscode client VSCODE_DIR SCENARIO
+//
+// `legend`: package.json's semantic token types agree with the server's
+// `legend` (in SERVER_TEMPLATE, src/lsp/server_template.zig): every type
+// of the legend is a standard type of VS Code's or one package.json
+// declares, package.json declares no type the legend lacks and no
+// standard type, every `superType` is a standard type, and
+// `semanticTokenScopes` gives a TextMate scope to exactly the legend's
+// types. Prints each disagreement; exit status 1 if there is one.
+//
+// `client`: runs VSCODE_DIR/extension.js under Node with a stub `vscode`
+// module and a stub `vscode-languageclient/node`, as the scenario
+// SCENARIO says, and prints every call the extension makes into them, one
+// a line. The extension runs from a copy in a temporary directory, shown
+// as <ext>; the workspace folders are under <ws>. A setting the extension
+// reads that package.json does not declare is an error. SCENARIO is a
+// CommonJS module exporting `async (t) => ...`; `t` has:
+//
+//   t.id, t.prefix          the language id and the settings prefix
+//   t.set(level, key, v)    a setting before activation; level is "user"
+//                             or "workspace", key without the prefix
+//   t.change(level, key, v) a setting changed: VS Code's event, then settle
+//   t.elsewhere(full)       the event for a setting of another extension
+//   t.folders(names)        the workspace folders (default: one, "app")
+//   t.trust(bool)           whether the workspace is trusted (default true)
+//   t.bundle()              put a server at <ext>/bin/<id>-lsp
+//   t.failStart(message)    the next client's start() rejects with it
+//   t.hold()                the next start()s wait; returns the release
+//   t.activate()            activate(context), awaited by the caller
+//   t.deactivate()          deactivate(), then dispose the subscriptions
+//   t.settle()              let pending promises run
+//   t.note(text)            print a line
+//
+// The first line printed names the package and what it contributes.
+"use strict";
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const Module = require("module");
+
+/** The token types VS Code knows without a declaration. */
+const standardTypes = new Set([
+  "comment", "string", "keyword", "number", "regexp", "operator", "namespace", "type", "struct", "class",
+  "interface", "enum", "typeParameter", "function", "method", "decorator", "macro", "variable", "parameter",
+  "property", "enumMember", "event", "label",
+]);
+
+function legend(pkgPath, templatePath) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  const template = fs.readFileSync(templatePath, "utf8");
+  const m = /pub const legend = \[_\]\[\]const u8\{([^}]*)\};/.exec(template);
+  if (!m) return fail(`${templatePath}: no legend`);
+  const types = [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+  const problems = [];
+  const declared = new Map();
+  for (const t of (pkg.contributes && pkg.contributes.semanticTokenTypes) || []) {
+    if (declared.has(t.id)) problems.push(`semanticTokenTypes declares ${t.id} twice`);
+    declared.set(t.id, t);
+    if (standardTypes.has(t.id)) problems.push(`semanticTokenTypes declares ${t.id}, a standard type`);
+    if (!types.includes(t.id)) problems.push(`semanticTokenTypes declares ${t.id}, which the server's legend lacks`);
+    if (t.superType !== undefined && !standardTypes.has(t.superType)) problems.push(`the superType of ${t.id}, ${t.superType}, is not a standard type`);
+  }
+  for (const t of types) {
+    if (!standardTypes.has(t) && !declared.has(t)) problems.push(`the server's legend has ${t}, which package.json does not declare`);
+  }
+  const scopes = (pkg.contributes.semanticTokenScopes || []).flatMap((s) => Object.keys(s.scopes || {}));
+  for (const t of types) if (!scopes.includes(t)) problems.push(`semanticTokenScopes gives ${t} no scope`);
+  for (const s of scopes) if (!types.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, which the server's legend lacks`);
+  for (const p of problems) console.log(p);
+  process.exit(problems.length > 0 ? 1 : 0);
+}
+
+async function client(dir, scenarioPath) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+  const props = pkg.contributes.configuration.properties;
+  const restricted = new Set(
+    (pkg.capabilities && pkg.capabilities.untrustedWorkspaces && pkg.capabilities.untrustedWorkspaces.restrictedConfigurations) || [],
+  );
+  const id = pkg.activationEvents[0].replace(/^onLanguage:/, "");
+  const prefix = Object.keys(props)[0].replace(/\.server\.path$/, "");
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nexus-vscode-")));
+  const ext = path.join(tmp, "ext");
+  const ws = path.join(tmp, "ws");
+  fs.mkdirSync(ext);
+  fs.mkdirSync(ws);
+  fs.copyFileSync(path.join(dir, "extension.js"), path.join(ext, "extension.js"));
+
+  const lines = [];
+  const show = (x) =>
+    typeof x === "string"
+      ? x
+      : JSON.stringify(x, (k, v) => (v && typeof v === "object" && v.__channel ? `<channel ${v.__channel}>` : v));
+  const say = (...parts) => lines.push(parts.map(show).join(" ").split(ext).join("<ext>").split(ws).join("<ws>"));
+
+  const state = { user: {}, workspace: {}, folders: ["app"], trusted: true, listeners: [], failures: [], hold: null };
+  const declared = (full) => {
+    if (!(full in props)) throw new Error(`the extension reads ${full}, which package.json does not declare`);
+    return props[full];
+  };
+  // As VS Code does: a machine setting, and in an untrusted workspace a
+  // restricted one, takes no workspace value.
+  const workspaceValue = (full) => {
+    if (declared(full).scope === "machine") return undefined;
+    if (!state.trusted && restricted.has(full)) return undefined;
+    return state.workspace[full];
+  };
+  const vscode = {
+    workspace: {
+      get isTrusted() {
+        return state.trusted;
+      },
+      get workspaceFolders() {
+        if (state.folders.length === 0) return undefined;
+        return state.folders.map((f, index) => ({ uri: { scheme: "file", fsPath: path.join(ws, f) }, name: f, index }));
+      },
+      getConfiguration(section) {
+        return {
+          get(key, fallback) {
+            const full = `${section}.${key}`;
+            const p = declared(full);
+            const w = workspaceValue(full);
+            if (w !== undefined) return w;
+            if (state.user[full] !== undefined) return state.user[full];
+            return p.default !== undefined ? p.default : fallback;
+          },
+          inspect(key) {
+            const full = `${section}.${key}`;
+            return {
+              key: full,
+              defaultValue: declared(full).default,
+              globalValue: state.user[full],
+              workspaceValue: state.workspace[full],
+            };
+          },
+        };
+      },
+      onDidChangeConfiguration(listener) {
+        state.listeners.push(listener);
+        return { dispose: () => state.listeners.splice(state.listeners.indexOf(listener), 1) };
+      },
+    },
+    window: {
+      createOutputChannel(name) {
+        say("createOutputChannel", name);
+        return {
+          __channel: name,
+          name,
+          appendLine: (line) => say(`output: ${line}`),
+          dispose: () => say(`dispose channel ${name}`),
+        };
+      },
+      showWarningMessage(message) {
+        say(`warning: ${message}`);
+        return Promise.resolve(undefined);
+      },
+    },
+  };
+  let clients = 0;
+  class LanguageClient {
+    constructor(clientId, name, serverOptions, clientOptions) {
+      this.n = ++clients;
+      say(`client ${this.n}: new`, clientId, name);
+      say(`  server`, serverOptions);
+      say(`  options`, clientOptions);
+    }
+    async start() {
+      say(`client ${this.n}: start`);
+      if (state.hold) await state.hold;
+      const failure = state.failures.shift();
+      if (failure !== undefined) {
+        say(`client ${this.n}: start fails`);
+        throw new Error(failure);
+      }
+      say(`client ${this.n}: running`);
+    }
+    async stop() {
+      say(`client ${this.n}: stop`);
+    }
+    async dispose() {
+      say(`client ${this.n}: dispose`);
+    }
+  }
+  const load = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === "vscode") return vscode;
+    if (request === "vscode-languageclient/node") return { LanguageClient };
+    return load.call(this, request, parent, isMain);
+  };
+
+  const c = pkg.contributes;
+  say(`package ${pkg.publisher}.${pkg.name} "${pkg.displayName}" ${pkg.version}; contributes ${Object.keys(c).join(", ")}`);
+  const extension = require(path.join(ext, "extension.js"));
+  const context = { subscriptions: [], extensionPath: ext, asAbsolutePath: (p) => path.join(ext, p) };
+  const settle = async () => {
+    for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+  };
+  const key = (k) => `${prefix}.${k}`;
+  const t = {
+    id,
+    prefix,
+    set(level, k, v) {
+      state[level][key(k)] = v;
+    },
+    async change(level, k, v) {
+      say(`${level} setting ${key(k)} = ${JSON.stringify(v)}`);
+      state[level][key(k)] = v;
+      const e = { affectsConfiguration: (s) => key(k) === s || key(k).startsWith(s + ".") };
+      for (const l of [...state.listeners]) l(e);
+      await settle();
+    },
+    async elsewhere(full) {
+      say(`setting ${full} changed`);
+      const e = { affectsConfiguration: (s) => full === s || full.startsWith(s + ".") };
+      for (const l of [...state.listeners]) l(e);
+      await settle();
+    },
+    folders(names) {
+      state.folders = names;
+    },
+    trust(trusted) {
+      state.trusted = trusted;
+    },
+    bundle() {
+      fs.mkdirSync(path.join(ext, "bin"), { recursive: true });
+      fs.writeFileSync(path.join(ext, "bin", `${id}-lsp`), "");
+    },
+    failStart(message) {
+      state.failures.push(message);
+    },
+    hold() {
+      let release;
+      state.hold = new Promise((r) => (release = r));
+      return () => {
+        say("release");
+        state.hold = null;
+        release();
+      };
+    },
+    async activate() {
+      say("activate");
+      await extension.activate(context);
+      say("activated");
+    },
+    async deactivate() {
+      say("deactivate");
+      await extension.deactivate();
+      for (const s of context.subscriptions) s.dispose();
+      say("deactivated");
+    },
+    settle,
+    note(text) {
+      say(`# ${text}`);
+    },
+  };
+  let status = 0;
+  try {
+    await require(path.resolve(scenarioPath))(t);
+    await settle();
+  } catch (err) {
+    say(`!! ${err.message}`);
+    status = 1;
+  }
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log(lines.join("\n"));
+  process.exit(status);
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(2);
+}
+
+const [command, a, b] = process.argv.slice(2);
+if (command === "legend" && a && b) legend(a, b);
+else if (command === "client" && a && b) client(a, b);
+else fail("usage: test/lib/vscode legend PACKAGE_JSON SERVER_TEMPLATE | client VSCODE_DIR SCENARIO");

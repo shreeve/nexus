@@ -39,10 +39,13 @@ module"](SEMANTICS.md#the-lang-module)), and `--lang` names its file.
 ```text
 editors/
 ├── vscode/
+│   ├── identity.json                   the extension's name and mode: written once
 │   ├── package.json                    the extension: the language, its grammar, its settings
 │   ├── extension.js                    the client: starts the server
+│   ├── README.md                       the extension's page: its settings, building it
 │   ├── language-configuration.json     comments, brackets, indentation
 │   ├── syntaxes/LANG.tmLanguage.json   the TextMate grammar
+│   ├── .vscodeignore                   what `vsce package` leaves out
 │   └── .gitignore
 ├── vim/syntax/LANG.vim
 ├── highlightjs/LANG.js
@@ -58,11 +61,12 @@ editors/
         └── lang.zig ...                with --lang, the lang module and the files it imports
 ```
 
-Every file but `hooks.zig` belongs to Nexus. Running the command again
-writes each of them again from the grammar, so a change to the grammar
-reaches every editor file. `hooks.zig` belongs to the language: the
-command writes it when it is missing and never again. It prints `Wrote`
-for each file it writes and `Kept` for a `hooks.zig` it leaves.
+Every file but `hooks.zig` and `identity.json` belongs to Nexus. Running
+the command again writes each of them again from the grammar, so a change
+to the grammar reaches every editor file. `hooks.zig` and `identity.json`
+belong to the language: the command writes each when it is missing and
+never again. It prints `Wrote` for each file it writes and `Kept` for a
+`hooks.zig` or `identity.json` it leaves.
 
 - The highlighting files are those of `nexus --highlight all`
   ([GRAMMAR.md, "The files"](GRAMMAR.md#the-files)).
@@ -79,7 +83,87 @@ for each file it writes and `Kept` for a `hooks.zig` it leaves.
   read, and a file named like one of the server's own (`main.zig`,
   `lsp.zig`, `parser.zig`, `language.zig`, `hooks.zig`) are errors.
 
-### Build and install
+### The extension's identity
+
+`vscode/identity.json` names the extension. The command writes it with
+the defaults, which name no official extension, so that the generated one
+installs beside the language's own extension without clashing:
+
+```json
+{
+  "name": "nexus-LANG",
+  "displayName": "Language (Nexus)",
+  "description": "Language: highlighting and its language server.",
+  "publisher": "nexus-local",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "repository": "",
+  "settings": "nexus-LANG",
+  "mode": "standalone"
+}
+```
+
+Every key is optional; one left out takes its default. `settings` is the
+prefix of the extension's settings (`PREFIX` below); `repository`, a URL,
+is left out of `package.json` when it is empty. Every run reads the file
+before it writes anything, and a mistake in it is an error at its line
+and column, after which nothing is written: a file that is not a JSON
+object of strings, an unknown or repeated key, and a value that breaks
+its key's rule:
+
+| Key | Rule |
+|---|---|
+| `name` | lowercase letters, digits and `-`, starting with a letter or digit |
+| `publisher` | letters, digits and `-`, starting with a letter or digit |
+| `displayName`, `license` | not empty |
+| `version` | three numbers joined by dots |
+| `settings` | names of letters, digits, `_` and `-`, joined by dots |
+| `mode` | `standalone` or `companion` |
+
+`mode` says what the extension contributes. `standalone` contributes the
+language (its id, file extensions and language configuration), the
+TextMate grammar and the client. `companion` contributes the client
+alone, for a language another extension already contributes: the other
+extension keeps the language and its colouring, and this one adds the
+server. Both activate on the language's files and declare the semantic
+token types and the settings.
+
+### The extension
+
+The extension's `package.json` declares its identity, the language and
+grammar (in `standalone` mode), the semantic token types the server sends
+(each mapped to its TextMate scope, and each type VS Code does not know
+given a standard `superType`, so a theme colours it either way:
+`keywordControl`, `keywordOperator` and `storageModifier` are keywords,
+`constantNumeric` a number, `constant` and `constantSymbol` enum members,
+`stringEscape` a string, `functionBuiltin` a function,
+`variableParameter` a parameter and `variableSpecial` a variable;
+`punctuation` and `invalid` have none), and two settings:
+
+| Setting | Meaning |
+|---|---|
+| `PREFIX.server.path` | the server: a path, or a name on `PATH`; empty means the extension's `bin/LANG-lsp`, else `LANG-lsp` on `PATH` |
+| `PREFIX.server.root` | the file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder; empty means each file's own program ([The analysis](#the-analysis)) |
+
+`server.path` names a program to run, so only the user's own settings
+give it: it has `"scope": "machine"`, `package.json` lists it among the
+settings an untrusted workspace may not set, and `extension.js` reads
+only its user-level value. A workspace's `.vscode/settings.json` never
+chooses the server, trusted or not.
+
+`extension.js` starts the server with `vscode-languageclient` for the
+language's documents of the `file` and `untitled` schemes (not the
+`git:` or diff views of them), and passes `server.root` as the
+`root` option, absolute. A relative root with no folder open is left
+out, and the extension says so. A change to a `PREFIX.server` setting
+restarts the server: one restart at a time, each after the one before
+has finished, and changes that come before a restart begins share it,
+so two changes in a row start one server. Every server writes to one
+output channel. When the server does not start, the extension disposes
+of the client and says how to set `server.path`; in `standalone` mode
+the TextMate grammar colours the files anyway.
+
+### Build, package and install
 
 ```bash
 cd editors/server && zig build --prefix ../vscode
@@ -87,26 +171,23 @@ cd editors/server && zig build --prefix ../vscode
 
 builds the server into `editors/vscode/bin/LANG-lsp`, inside the
 extension. A plain `zig build` puts it in `editors/server/zig-out/bin/`.
-
-The extension's `package.json` declares the language, its file
-extensions, the TextMate grammar and language configuration, the semantic
-token types the server sends (each mapped to its TextMate scope, so a
-theme colours them), and two settings:
-
-| Setting | Meaning |
-|---|---|
-| `LANG.server.path` | the server: a path, or a name on `PATH`; empty means the extension's `bin/LANG-lsp`, else `LANG-lsp` on `PATH` |
-| `LANG.server.root` | the file the program starts from, which the server analyzes; empty means each file's own program ([The analysis](#the-analysis)) |
-
-`extension.js` starts the server for the language's files with
-`vscode-languageclient` and restarts it when a setting changes. When the
-server does not start, it says so, and the TextMate grammar colours the
-files anyway. VS Code's own tools package and install it:
+VS Code's own tools package and install the extension:
 
 ```bash
-cd editors/vscode && npm install && npx @vscode/vsce package
-code --install-extension vscode-LANG-0.1.0.vsix
+cd editors/vscode && npm install
+npx @vscode/vsce package --skip-license --allow-missing-repository
+code --install-extension nexus-LANG-0.1.0.vsix
 ```
+
+`.vscodeignore` packages `extension.js`, the TextMate grammar and
+language configuration (in `standalone` mode), `bin/`, the dependencies
+and a `LICENSE` file; `vsce` adds `package.json` and `README.md`. `vsce`
+asks before it packages an extension without a `LICENSE` file or a
+`repository`; the two flags answer for it. A language that sets
+`repository` in `identity.json` and puts its `LICENSE` in `vscode/`
+(the command never writes or removes it) packages with plain `npx
+@vscode/vsce package`. Commit `package-lock.json`, which `npm install`
+writes, so that the client's own dependencies stay fixed.
 
 ## What the grammar gives
 
@@ -213,7 +294,7 @@ pub fn analyze(arena: Allocator, root: []const u8, overlay: lsp.Overlay) !lsp.An
 
 `analyze` checks a program as a whole and keeps what the other functions
 need in `Analysis`, a type the language declares. `root` is the file the
-program starts from: the client's `root` option (`LANG.server.root`) when
+program starts from: the client's `root` option (`PREFIX.server.root`) when
 it gives one; else the root of the newest analysis that covers the file
 opened or saved (its root, a file it read, or a file its diagnostics
 name); else that file itself. `overlay.read(arena, path)`
@@ -331,3 +412,18 @@ line:
 `@highlight`, the suite runs `--editor` and checks the files it writes
 against the highlighting files, the parser and the goldens, and checks
 that the server compiles.
+
+The suite checks the extension under Node, without VS Code
+(`test/lib/vscode`). For every grammar, `package.json`'s semantic token
+types must agree with the server's legend: each type the server sends is
+standard or declared, each declared type is one it sends, each
+`superType` is standard, and each type has a TextMate scope. The
+scenarios of `test/editor/client/` run `extension.js` against stub
+`vscode` and `vscode-languageclient` modules and compare every call it
+makes with a golden: the server it runs (bundled, on `PATH`, from user
+settings, never from a workspace's, trusted or not), the root it passes,
+the document selector, one output channel, restarts that wait for each
+other and share a change, a server that does not start, and a
+`companion` extension with an identity of its own. `tools/cli` checks
+each mistake `identity.json` can have. Nothing in the suite runs VS Code
+itself or `vsce`.

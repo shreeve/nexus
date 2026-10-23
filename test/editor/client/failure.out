@@ -1,0 +1,21 @@
+package nexus-local.nexus-tally "Tally (Nexus)" 0.1.0; contributes languages, grammars, configuration, semanticTokenTypes, semanticTokenScopes
+activate
+createOutputChannel Tally (Nexus)
+client 1: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":""},"outputChannel":"<channel Tally (Nexus)>"}
+client 1: start
+client 1: start fails
+client 1: dispose
+warning: Tally (Nexus): the language server did not start (`tally-lsp`: spawn tally-lsp ENOENT). Set nexus-tally.server.path in your user settings to it.
+activated
+user setting nexus-tally.server.path = "/opt/tally-lsp"
+client 2: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"/opt/tally-lsp","args":[]},"debug":{"command":"/opt/tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":""},"outputChannel":"<channel Tally (Nexus)>"}
+client 2: start
+client 2: running
+deactivate
+client 2: stop
+dispose channel Tally (Nexus)
+deactivated

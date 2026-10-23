@@ -436,8 +436,10 @@ check_highlight_all() {
 # those of `--highlight all`, parser.zig the module `--spans` generates,
 # lsp.zig src/lsp/server_template.zig under a header; language.zig and
 # package.json equal their goldens, and so (for the editor suite) do
-# extension.js, build.zig, main.zig and the stub hooks.zig. A second run
-# writes the same bytes and keeps a hooks.zig that was changed.
+# extension.js, identity.json, README.md, .vscodeignore, build.zig,
+# main.zig and the stub hooks.zig; package.json's semantic token types
+# agree with the server's legend (test/lib/vscode). A second run writes
+# the same bytes and keeps a hooks.zig that was changed, and identity.json.
 check_editor_files() {
     local dir=$1 name=$2 out="$WORK/out/editor_$2" id gd gn
     suite_conf "$dir"
@@ -448,8 +450,9 @@ check_editor_files() {
     in_gd --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$gn" "$out/a" || { REASON="--editor failed"; return 1; }
     local want got f extra=""
     want=$(printf '%s\n' "highlightjs/$id.js" server/.gitignore server/build.zig server/src/hooks.zig server/src/language.zig \
-        server/src/lsp.zig server/src/main.zig server/src/parser.zig "vim/syntax/$id.vim" vscode/.gitignore vscode/extension.js \
-        vscode/language-configuration.json vscode/package.json "vscode/syntaxes/$id.tmLanguage.json")
+        server/src/lsp.zig server/src/main.zig server/src/parser.zig "vim/syntax/$id.vim" vscode/.gitignore vscode/.vscodeignore \
+        vscode/README.md vscode/extension.js vscode/identity.json vscode/language-configuration.json vscode/package.json \
+        "vscode/syntaxes/$id.tmLanguage.json")
     got=$(cd "$out/a" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
     while IFS= read -r f; do
         grep -qxF "$f" <<<"$got" || { REASON="--editor did not write $f"; return 1; }
@@ -481,8 +484,15 @@ check_editor_files() {
     tail -n +2 "$out/a/server/src/lsp.zig" | cmp -s - src/lsp/server_template.zig || { REASON="server/src/lsp.zig is not src/lsp/server_template.zig"; return 1; }
     golden "$out/a/server/src/language.zig" "test/golden/$name.language.zig" || return 1
     golden "$out/a/vscode/package.json" "test/golden/$name.package.json" || return 1
+    command -v node >/dev/null || { REASON="node not found"; return 1; }
+    local legend
+    legend=$(node "$LIB/vscode" legend "$out/a/vscode/package.json" src/lsp/server_template.zig 2>&1) ||
+        { REASON="package.json and the server's legend disagree: $(head -1 <<<"$legend")"; return 1; }
     if [[ $name == editor ]]; then
         golden "$out/a/vscode/extension.js" test/golden/editor.extension.js || return 1
+        golden "$out/a/vscode/identity.json" test/golden/editor.identity.json || return 1
+        golden "$out/a/vscode/README.md" test/golden/editor.readme.txt || return 1
+        golden "$out/a/vscode/.vscodeignore" test/golden/editor.vscodeignore || return 1
         golden "$out/a/server/build.zig" test/golden/editor.build.zig || return 1
         golden "$out/a/server/src/main.zig" test/golden/editor.main.zig || return 1
         golden "$out/a/server/src/hooks.zig" test/golden/editor.hooks.zig || return 1
@@ -491,6 +501,7 @@ check_editor_files() {
     echo "// changed" >>"$out/b/server/src/hooks.zig"
     in_gd --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$gn" "$out/b" || { REASON="the second --editor failed"; return 1; }
     grep -qF "Kept $out/b/server/src/hooks.zig" "$LOG" || { REASON="the second run does not say it kept hooks.zig"; return 1; }
+    grep -qF "Kept $out/b/vscode/identity.json" "$LOG" || { REASON="the second run does not say it kept identity.json"; return 1; }
     [[ $(tail -1 "$out/b/server/src/hooks.zig") == "// changed" ]] || { REASON="the second run replaced a changed hooks.zig"; return 1; }
     echo "// changed" >>"$out/a/server/src/hooks.zig"
     diff -r "$out/a" "$out/b" >>"$LOG" 2>&1 || { REASON="the second run wrote different files"; return 1; }
@@ -529,6 +540,36 @@ check_editor_session() {
         return 1
     fi
     golden "$got" "${session%.session}.out"
+}
+
+# check_editor_client <suite dir> <scenario>: the extension `--editor`
+# writes (with <scenario>.identity.json as its identity.json, if there is
+# one, and then package.json, README.md and .vscodeignore equal to
+# <scenario>.package.json, .readme.txt and .vscodeignore), run under Node
+# with stubs of VS Code (test/lib/vscode), prints <scenario>.out.
+check_editor_client() {
+    local dir=$1 scenario=$2 base out rc
+    base=${scenario%.js}
+    out="$WORK/out/client_$(basename "$base")"
+    suite_conf "$dir"
+    lang_args
+    command -v node >/dev/null || { REASON="node not found"; return 1; }
+    mkdir -p "$out/vscode"
+    [[ -f $base.identity.json ]] && cp "$base.identity.json" "$out/vscode/identity.json"
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$(basename "$GRAMMAR")" "$out") >>"$LOG" 2>&1 ||
+        { REASON="--editor failed"; return 1; }
+    if [[ -f $base.identity.json ]]; then
+        golden "$out/vscode/package.json" "$base.package.json" || return 1
+        golden "$out/vscode/README.md" "$base.readme.txt" || return 1
+        golden "$out/vscode/.vscodeignore" "$base.vscodeignore" || return 1
+    fi
+    with_timeout "$TIMEOUT" node "$LIB/vscode" client "$out/vscode" "$scenario" >"$out.out" 2>>"$LOG"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        REASON="the scenario failed (exit $rc): $(grep -m1 '^!! ' "$out.out" || tail -1 "$out.out")"
+        return 1
+    fi
+    golden "$out.out" "$base.out"
 }
 
 # check_highlight <suite dir> <sample>: the editor files colour the sample
@@ -686,6 +727,30 @@ check_cli() {
     expect 0 "Wrote ed/server/src/names.zig" --editor --lang pal.zig pal.grammar ed || return 1
     cmp -s test/cli/pal.zig "$dir/ed/server/src/pal.zig" && cmp -s test/cli/names.zig "$dir/ed/server/src/names.zig" || { REASON="--editor --lang did not copy the lang module and its import"; return 1; }
     rm -rf "$dir/ed"
+    # A mistake in the extension's identity.json is a located error, and
+    # the run writes nothing.
+    identity() { # identity <json> <located error>
+        rm -rf "$dir/id" && mkdir -p "$dir/id/vscode" && printf '%s\n' "$1" >"$dir/id/vscode/identity.json"
+        expect 1 "id/vscode/identity.json:$2" --editor highlight.grammar id || return 1
+        [[ $(cd "$dir/id" && find . -type f) == ./vscode/identity.json ]] || { REASON="a refused identity.json left files: $1"; return 1; }
+    }
+    identity '{"name": "x", "bogus": "y"}' '1:15: error: unknown key "bogus"; the keys are name, displayName, description, publisher, version, license, repository, settings, mode' || return 1
+    identity '["name"]' '1:1: error: the identity is not a JSON object of strings' || return 1
+    identity '{"name": "x",' '2:1: error: the identity is not valid JSON' || return 1
+    identity '{"name": "x"} {}' '1:15: error: the identity is not valid JSON' || return 1
+    identity '{"mode": "companion",
+  "mode": "standalone"}' '2:3: error: "mode" is given twice' || return 1
+    identity '{"version": 1}' '1:13: error: the value of "version" is not a string' || return 1
+    identity '{"name": "Lamp"}' "1:10: error: \"name\": \"Lamp\" is not valid: it must be lowercase letters, digits and '-', starting with a letter or digit" || return 1
+    identity '{"publisher": "-me"}' "1:15: error: \"publisher\": \"-me\" is not valid: it must be letters, digits and '-', starting with a letter or digit" || return 1
+    identity '{"displayName": ""}' '1:17: error: "displayName": "" is not valid: it must not be empty' || return 1
+    identity '{"license": ""}' '1:13: error: "license": "" is not valid: it must not be empty' || return 1
+    identity '{"version": "1.0"}' '1:13: error: "version": "1.0" is not valid: it must be three numbers joined by dots, such as 0.1.0' || return 1
+    identity '{"settings": "lamp..x"}' "1:14: error: \"settings\": \"lamp..x\" is not valid: it must be names of letters, digits, '_' and '-', joined by dots" || return 1
+    identity '{"mode": "solo"}' '1:10: error: "mode": "solo" is not valid: it must be standalone or companion' || return 1
+    rm -rf "$dir/id" && mkdir -p "$dir/id/vscode/identity.json"
+    expect 1 "error: cannot read id/vscode/identity.json" --editor highlight.grammar id || return 1
+    rm -rf "$dir/id"
     expect 0 '"format": 1' --describe no_lang.grammar || return 1
     expect 0 "Wrote the description to d.json" --describe no_lang.grammar d.json || return 1
     expect 0 "Wrote the vim file to h.vim" --highlight vim highlight.grammar h.vim || return 1
@@ -815,6 +880,7 @@ worker() {
         editor-files)  check_editor_files "$a" "$b"; ok=$? ;;
         editor-server) check_editor_server "$a" "$b"; ok=$? ;;
         session)     check_editor_session "$a" "$b"; ok=$? ;;
+        client)      check_editor_client "$a" "$b"; ok=$? ;;
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         wasm32)      check_wasm32 "$a"; ok=$? ;;
@@ -992,6 +1058,12 @@ for dir in grammars/*/ test/*/; do
             rel=$(basename "$f")
             add "$name/$(basename "$sub")/${rel%.session}" session "$sub" "$f" && need_build "$sub" build-server
         done
+    done
+    # The VS Code client: each scenario of client/, run under Node.
+    for f in "$dir"/client/*.js; do
+        [[ -f $f ]] || continue
+        rel=$(basename "$f")
+        add "$name/client/${rel%.js}" client "$dir" "$f"
     done
     SEXP_SEEN="$SEXP_SEEN|$GRAMMAR|"
     for f in "$dir"/highlight/*; do

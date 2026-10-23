@@ -90,6 +90,31 @@
   (`storage.modifier '*' not before … after …` beside `operator "*"`);
   only entries without contexts claim a target. Rig's workaround of
   writing `[*]` (a pattern) keeps working.
+- The VS Code extension of `nexus --editor` has an identity of the
+  language's own, `vscode/identity.json` (written with the defaults when
+  missing, then `Kept` like `hooks.zig`; every mistake in it a located
+  error): `name`, `displayName`, `description`, `publisher`, `version`,
+  `license`, `repository`, the settings prefix `settings`, and `mode`.
+  The defaults clash with no official extension: `nexus-LANG`,
+  `Language (Nexus)`, publisher `nexus-local`, settings
+  `nexus-LANG.server.*`. `mode: "companion"` contributes no language and
+  no grammar, only the client, beside another extension that contributes
+  the language ([LSP.md](docs/LSP.md#the-extensions-identity)).
+- The extension's client: `server.path` comes from user settings only
+  (`"scope": "machine"`, restricted in untrusted workspaces, and read at
+  user level), so a workspace never chooses the program that runs; a
+  relative `server.root` is relative to the first workspace folder; the
+  documents are those of the `file` and `untitled` schemes; restarts
+  share one output channel, dispose of a client that did not start, and
+  run one at a time, changes that come together sharing one. Each
+  semantic token type VS Code does not know has a standard `superType`
+  (`keywordControl` a keyword, `constantNumeric` a number, ...), so
+  themes colour it. `vscode/` gets a `README.md`, a `.vscodeignore`
+  and a `license` (and, when set, `repository`) in `package.json`, for
+  `vsce package`.
+- The suite needs Node: it checks every grammar's `package.json` against
+  the server's legend, and runs `extension.js` against stub `vscode`
+  modules (`test/lib/vscode`, `test/editor/client/`).
 
 ### Fixed
 
@@ -121,7 +146,17 @@ Additive: no migration required. Downstream:
 - em, nexis: optional; the same when wanted.
 - Rig, em, nexis: optional; `nexus --editor` writes a VS Code extension
   and a language server (Rig: `--lang rig.zig`, em: `--lang mumps.zig`).
-  A project that keeps one checks in `hooks.zig` and regenerates the rest.
+  A project that keeps one checks in `hooks.zig` and
+  `vscode/identity.json` and regenerates the rest.
+- Rig, em, nexis, with an `editors/` written by an earlier `--editor` of
+  this release: run `--editor` again; it writes `vscode/identity.json`.
+  The extension is then `nexus-local.nexus-LANG` and its settings
+  `nexus-LANG.server.path` and `nexus-LANG.server.root`: uninstall the
+  old `LANG.vscode-LANG`, and move `LANG.server.path` to user settings
+  (a workspace's is ignored) under the new name. To keep a project's own
+  names, set `name`, `publisher`, `displayName` and `settings` in
+  `identity.json` (Rig: `"settings": "rig"`); beside an extension that
+  already gives the language (Zig's), set `"mode": "companion"`.
 
 ## 2.3.0 — 2026-10-15
 

@@ -1,0 +1,10 @@
+{
+  "name": "tally-lsp-client",
+  "displayName": "Tally Server",
+  "publisher": "Example",
+  "version": "1.2.3",
+  "license": "MIT",
+  "repository": "https://example.com/tally.git",
+  "settings": "tally",
+  "mode": "companion"
+}
