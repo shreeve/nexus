@@ -1,6 +1,6 @@
-# words lines (completion words, a later step) are an error that says so.
-# error: lsp_later_words.grammar:47:5:
-# error: `words` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal
+# A completion word is named once.
+# error: lsp_words_twice.grammar:47:24:
+# error: "it" is a completion word already
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    words    "obj" "of"
+    words    "it" "is" "it"
 
 prog!  = body                               → (prog ...1)
 

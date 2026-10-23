@@ -512,19 +512,19 @@
       {"kind": "catch", "unordered": false}
     ],
     "defines": [
-      {"kind": "var_decl", "role": "name", "rest": false, "symbol": "constant", "when": [{"parent": null, "role": "mut", "text": "const"}], "outer": false, "visibility": "both", "value": "init", "type": "type", "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": {"upto": "init"}},
-      {"kind": "var_decl", "role": "name", "rest": false, "symbol": "variable", "when": [{"parent": null, "role": "mut", "text": "var"}], "outer": false, "visibility": "both", "value": null, "type": "type", "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": null},
-      {"kind": "fn_proto", "role": "name", "rest": false, "symbol": "function", "when": [{"parent": "fn_decl", "role": "body", "text": null}], "outer": true, "visibility": "both", "value": null, "type": null, "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": "whole"},
+      {"kind": "var_decl", "role": "name", "rest": false, "symbol": "constant", "when": [{"parent": null, "role": "mut", "text": "const", "kind": null}], "outer": false, "visibility": "both", "value": "init", "type": "type", "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": {"upto": "init"}},
+      {"kind": "var_decl", "role": "name", "rest": false, "symbol": "variable", "when": [{"parent": null, "role": "mut", "text": "var", "kind": null}], "outer": false, "visibility": "both", "value": null, "type": "type", "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": null},
+      {"kind": "fn_proto", "role": "name", "rest": false, "symbol": "function", "when": [{"parent": "fn_decl", "role": "body", "text": null, "kind": null}], "outer": true, "visibility": "both", "value": null, "type": null, "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": "whole"},
       {"kind": "fn_proto", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": {"role": "doc"}, "export": {"role": "visib"}, "detail": "whole"},
-      {"kind": "param", "role": "name", "rest": false, "symbol": "variable", "when": [{"parent": "fn_proto", "role": "name", "text": null}], "outer": false, "visibility": "both", "value": null, "type": "type", "doc": null, "export": null, "detail": null},
+      {"kind": "param", "role": "name", "rest": false, "symbol": "variable", "when": [{"parent": "fn_proto", "role": "name", "text": null, "kind": null}], "outer": false, "visibility": "both", "value": null, "type": "type", "doc": null, "export": null, "detail": null},
       {"kind": "capture", "role": "name", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
       {"kind": "catch", "role": "payload", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
       {"kind": "if", "role": "else_capture", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
       {"kind": "while", "role": "else_capture", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
       {"kind": "switch_case", "role": "index", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
       {"kind": "container_field", "role": "name", "rest": false, "symbol": "field", "when": [], "outer": false, "visibility": "member", "value": null, "type": "type", "doc": {"role": "doc"}, "export": null, "detail": null},
-      {"kind": "container_field", "role": "type", "rest": false, "symbol": "enum_member", "when": [{"parent": "container_decl", "role": "kind", "text": "enum"}], "outer": false, "visibility": "member", "value": null, "type": null, "doc": {"role": "doc"}, "export": null, "detail": null},
-      {"kind": "container_field", "role": "type", "rest": false, "symbol": "field", "when": [{"parent": null, "role": "name", "text": ""}, {"parent": "container_decl", "role": "kind", "text": "union"}], "outer": false, "visibility": "member", "value": null, "type": null, "doc": {"role": "doc"}, "export": null, "detail": null},
+      {"kind": "container_field", "role": "type", "rest": false, "symbol": "enum_member", "when": [{"parent": "container_decl", "role": "kind", "text": "enum", "kind": null}], "outer": false, "visibility": "member", "value": null, "type": null, "doc": {"role": "doc"}, "export": null, "detail": null},
+      {"kind": "container_field", "role": "type", "rest": false, "symbol": "field", "when": [{"parent": null, "role": "name", "text": "", "kind": null}, {"parent": "container_decl", "role": "kind", "text": "union", "kind": null}], "outer": false, "visibility": "member", "value": null, "type": null, "doc": {"role": "doc"}, "export": null, "detail": null},
       {"kind": "error_name", "role": "name", "rest": false, "symbol": "enum_member", "when": [], "outer": false, "visibility": "member", "value": null, "type": null, "doc": {"role": "doc"}, "export": null, "detail": null}
     ],
     "uses": ["identifier"],
@@ -538,19 +538,32 @@
       {"kind": "break", "role": "label", "rest": false, "when": []},
       {"kind": "continue", "role": "label", "rest": false, "when": []},
       {"kind": "param", "role": "name", "rest": false, "when": []},
-      {"kind": "param", "role": "name", "rest": false, "when": [{"parent": "fn_proto", "role": "modifier", "text": "extern"}]}
+      {"kind": "param", "role": "name", "rest": false, "when": [{"parent": "fn_proto", "role": "modifier", "text": "extern", "kind": null}]}
     ],
     "builtins": ["u8", "u16", "u32", "u64", "usize", "isize", "bool", "void", "type", "anytype", "true", "false", "null", "undefined", "i8", "i16", "i32", "i64", "i128", "u1", "u128", "f16", "f32", "f64", "f80", "f128", "anyerror", "anyframe", "anyopaque", "noreturn", "comptime_int", "comptime_float", "c_char", "c_short", "c_ushort", "c_int", "c_uint", "c_long", "c_ulong", "c_longlong", "c_ulonglong", "c_longdouble", "_"],
     "builtin_tokens": [],
     "doc": {"token": "doc_comment", "strip": "///"},
     "undefined": null,
     "imports": [
-      {"kind": "builtin_call", "role": "args", "rest": true, "when": [{"parent": null, "role": "name", "text": "@import"}], "file": null}
+      {"kind": "builtin_call", "role": "args", "rest": true, "when": [{"parent": null, "role": "name", "text": "@import", "kind": null}], "file": null}
     ],
     "members": [
       {"kind": "field_access", "role": "name", "rest": false, "of": "operand"}
     ],
     "qualifies": [],
-    "nominals": []
+    "nominals": [],
+    "binds": [],
+    "colors": [
+      {"kind": "fn_proto", "role": "name", "edge": null, "scope": "function", "modifiers": ["declaration"], "when": []},
+      {"kind": "param", "role": "name", "edge": null, "scope": "variable.parameter", "modifiers": ["declaration"], "when": []},
+      {"kind": "var_decl", "role": "name", "edge": null, "scope": "type", "modifiers": ["declaration"], "when": [{"parent": null, "role": "init", "text": null, "kind": "container_decl"}]},
+      {"kind": "var_decl", "role": "name", "edge": null, "scope": "type", "modifiers": ["declaration"], "when": [{"parent": null, "role": "init", "text": null, "kind": "error_set_decl"}]},
+      {"kind": "var_decl", "role": "name", "edge": null, "scope": "constant", "modifiers": ["declaration", "readonly"], "when": [{"parent": null, "role": "mut", "text": "const", "kind": null}]},
+      {"kind": "container_field", "role": "type", "edge": null, "scope": "constant", "modifiers": ["declaration"], "when": [{"parent": "container_decl", "role": "kind", "text": "enum", "kind": null}]},
+      {"kind": "error_name", "role": "name", "edge": null, "scope": "constant", "modifiers": ["declaration"], "when": []},
+      {"kind": "enum_literal", "role": "name", "edge": null, "scope": "constant", "modifiers": [], "when": []},
+      {"kind": "error_value", "role": "name", "edge": null, "scope": "constant", "modifiers": [], "when": []}
+    ],
+    "words": []
   }
 }

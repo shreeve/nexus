@@ -17,9 +17,10 @@ const parser = @import("parser.zig");
 /// pub fn parseDiagnostics(arena: std.mem.Allocator, path: []const u8, text: []const u8) ![]const lsp.Diagnostic
 pub const parseDiagnostics = lsp.todo;
 
-/// The semantic tokens of a file, in order, in place of each token's
-/// `@highlight` scope.
-/// pub fn tokens(arena: std.mem.Allocator, path: []const u8, text: []const u8) ![]const lsp.Token
+/// The semantic tokens of a file, in order, in place of the grammar's:
+/// `grammar`, each token's `@highlight` scope, and the scopes and
+/// modifiers of `@lsp`'s `color` lines.
+/// pub fn tokens(arena: std.mem.Allocator, path: []const u8, text: []const u8, grammar: []const lsp.Token) ![]const lsp.Token
 pub const tokens = lsp.todo;
 
 /// The outline of a file. Turns on the outline and breadcrumbs.

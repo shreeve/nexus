@@ -19,8 +19,7 @@
   token uses; `skip KIND.ROLE ... [when ...]`, `builtin "name" ... |
   TOKEN`, `doc TOKEN [strip "text"]`, and `undefined error|warning`,
   diagnostics at the names nothing defines. Every mistake is a located
-  error; the lines of a later step (`bind`, `color`, `words`) are an
-  error that says so. With
+  error. With
   `@lsp`, `--editor` writes `server/src/scopes.zig`, the names engine,
   and the tables in `language.zig`; the server indexes each open file's
   current text, after every change.
@@ -73,6 +72,41 @@
   the files are indexed (safe mode); the first that reads std.zig and
   mem.zig, 7 ms. Rote (`test/rote`) is the language of the sessions of
   `qualify` and `nominal`.
+- `@lsp`'s lines of assignment, colours and words
+  ([GRAMMAR.md, "Assignment, colours and words"](docs/GRAMMAR.md#assignment-colours-and-words)):
+  `bind KIND.ROLE SYMBOLKIND [when ...]` (an assignment's target defines
+  its name unless a definition of it is in sight there, which it then
+  uses; the binds resolve in the order of the text, after the walk);
+  `color KIND.ROLE SCOPE [MODIFIER ...] [when ...]` and `color KIND
+  start|end SCOPE ...` (the semantic token of a role's leaf, and of every
+  name of the definition it makes, or of a node's first or last token;
+  SCOPE one of `@highlight`'s, MODIFIER one of LSP's ten); `words "lit"
+  ...` (completion words beside the grammar's, for the keywords a lang
+  Lexer makes). `when ROLE:KIND` (the role holds a KIND node) joins the
+  conditions of every line that takes `when`. Every mistake is a located
+  error, each with an adverse test. The server's semantic tokens carry
+  the colours, a use and a member (in another file too) its
+  definition's, without `declaration` and `definition`; the legend has
+  LSP's token modifiers. Jot (`test/jot`) is the language of the
+  sessions of `bind`, `color` and `words`, with a lang Lexer that reads
+  `loop` as a keyword where it starts a line and `local` before a name;
+  Tally colours its
+  functions and parameters, and the Zig grammar its functions,
+  parameters, constants (`readonly`), the types it defines (`const S =
+  struct {...}`, by `when init:container_decl`), enum fields, error
+  names, enum literals and error values (`grammars/zig/server/`).
+- Keyword completion parses once to the cursor, then tests each word
+  against a copy of the parse stack: the generated server's `parser.zig`
+  is the module `--spans` generates followed by the runtime's `complete`
+  section (`pauseAt`, `takesAt`, written only there). The lexer reads
+  each word from where the parse left off, through the lang module's
+  `Lexer` and `Parser` when it has them, followed by the text after the
+  cursor or by a name. On Zig 0.17.0's lib/std/zig/Parse.zig (safe
+  mode) a completion takes 1.8 ms where it took 36 ms, and on
+  src/Sema.zig 17 ms where it took 509 ms; over 1,732 positions of the
+  two files the keywords are the same but in comments, where none are
+  offered now, and at one position after a binary operator at the end of
+  a line.
 - `nexus --describe` writes `@lsp` as read (`lsp`, null without it;
   [GRAMMAR.md, "Describing a grammar"](docs/GRAMMAR.md#describing-a-grammar)).
   `format` stays 1: a key is added.
@@ -205,6 +239,17 @@
   server without `@lsp` answers as before. `scopes.zig` is a file of the
   server, so a lang module named so (or importing one) is not copied
   into it.
+- `hooks.tokens` takes the grammar's tokens to adjust:
+  `tokens(arena, path, text, grammar: []const lsp.Token)`; one with three
+  parameters is a compile error that says so. `lsp.Token` has
+  `modifiers` (`lsp.Modifiers`, LSP's ten, all off by default), which the
+  server sends; its legend lists them (`modifier_legend`).
+- Keyword completion offers a word where the parser takes it as other
+  than a name: a contextual keyword (`@as ... [ctx!]`) the parser takes
+  at the cursor only as a name is no longer offered there, nor is any
+  word inside a comment or a string.
+- `--describe`'s `lsp` has `binds`, `colors` and `words`, and each
+  `when` a `kind` (null but for `ROLE:KIND`). `format` stays 1.
 - Syntax errors of every generated parser are short and placed where a
   reader looks ([SEMANTICS.md, "Syntax errors"](docs/SEMANTICS.md#syntax-errors)).
   `writeError` lists what the parser can take after the reductions it
@@ -266,7 +311,8 @@
   `line-start ([a-z]+ | [0-9]+)` is `^(?:[a-z]+|[0-9]+)`, where the
   number matched anywhere.
 
-Additive: no migration required. Downstream:
+Additive, but for the fourth parameter of a `hooks.zig`'s `tokens`.
+Downstream:
 - Rig, em, nexis: `@lsp` is new syntax (`@lsp` was an error), so no
   grammar changes meaning, and generated parsers are byte for byte the
   same; a server written by `--editor` without `@lsp` answers as before.
@@ -284,8 +330,7 @@ Additive: no migration required. Downstream:
   - Rig: `member member.name of:object` for `a.b`, `import use.name`
     (with `file "{}.rig"`) for `use`, and `type:` on the definitions
     whose declared type gives their members; methods resolve through a
-    receiver's declared type, not its inferred one. Binding by
-    assignment waits for `bind`.
+    receiver's declared type, not its inferred one.
   - em (MUMPS): `scope routine unordered`, `define label.name function
     doc:leading`, `import ref.routine file "{}.m"` and `qualify
     ref.label in:routine` for `DO LABEL^ROUTINE` (a `ref` without a
@@ -302,6 +347,36 @@ Additive: no migration required. Downstream:
     `pub const resolveImport = lsp.todo;` to keep the stub's list whole.
     A `PREFIX.server.modules` setting appears in `package.json` once
     the grammar has an `import` line.
+- Rig, em, nexis: `bind`, `color`, `words` and `when ROLE:KIND` are new
+  syntax (each was an error), so no grammar changes meaning, and
+  generated parsers are byte for byte the same (only the server's
+  `parser.zig` has the `complete` section). A `hooks.zig` that writes
+  `tokens` adds the fourth parameter, `grammar: []const lsp.Token`
+  (return it to keep the grammar's tokens). Optional, each in its own
+  repository:
+  - Rig: `bind set.target variable` for its assignments (a shadowing
+    `set` binds as another does: its `op` is a tag, and `when` reads a
+    leaf's text); `color` lines for the roles its classifier
+    (src/editor.zig) colours: `color fun.name function declaration`
+    and the same of `sub.name`, `variable.parameter declaration` for
+    parameters and captures, `type declaration` for the names of
+    `struct`, `enum` and `type`, `constant` for enum literals and
+    symbols, `label` for labels, `function.builtin` for builtins, and
+    `color KIND start|end storage.modifier` for its sigils (`move
+    start`, `propagate end`, ...); a method, a property and the
+    `control` modifier have no `@highlight` scope and stay with the
+    `tokens` hook, which now gets the grammar's tokens to adjust. And
+    `words "obj" "rarely" "new" "of" "called" "inline"` (`else` is a
+    word of the grammar already): checked on a copy of Rig's grammar,
+    the server offers `obj`, `new` and `rarely` at the start of a
+    statement and none of them inside an expression, and stops offering
+    `from`, `keeps`, `once`, `static` and `unique` where they would be
+    names.
+  - em (MUMPS): `color` for labels (`color label.name label
+    declaration`) and for the name of a `DO`'s routine; `words` for any
+    command the lang Lexer makes from a name.
+  - nexis: with a `@schema`, `bind` for its assignments and `color` for
+    its functions and parameters.
 - Rig, em, nexis: `@messages` is new syntax (`@messages` was an error),
   so no grammar changes meaning, and a grammar without it generates the
   same parser. Optional: write the messages a language words by hand in

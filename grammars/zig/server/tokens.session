@@ -1,0 +1,10 @@
+# Semantic tokens from the grammar's `color` lines: functions, parameters,
+# constants (`readonly`), types (a constant whose value is a container or
+# an error set), an enum's fields, error names, enum literals and error
+# values, each with `declaration` where it is defined, and each name and
+# member of them (`p.sum`) as its definition; fields and `var`s keep the
+# colour of their tokens. With the server the hooks.zig `--editor` writes,
+# on project/colors.zig.
+initialize quiet
+open colors.zig
+tokens colors.zig

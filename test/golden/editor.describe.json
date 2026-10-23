@@ -62,15 +62,15 @@
     "dedent": "^[\\x09 ]*\\}",
     "word_chars": "[0-9A-Z_a-z]",
     "entries": [
-      {"line": 96, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "\"fn\" [ \\t]+ function:([a-z_] [a-z_0-9]*)", "regex": "(fn[\\x09 ]+)([_a-z][0-9_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "fn[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[_a-z][0-9_a-z]*"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 97, "scope": "keyword", "literals": ["fn", "let", "use"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 98, "scope": "keyword.control", "literals": ["return"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 99, "scope": "operator", "literals": ["=", "+", "-", "*"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 100, "scope": "punctuation", "literals": ["(", ")", "{", "}", ",", "."], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 101, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 102, "scope": "string", "literals": [], "tokens": ["STRING"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 103, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 104, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+      {"line": 100, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "\"fn\" [ \\t]+ function:([a-z_] [a-z_0-9]*)", "regex": "(fn[\\x09 ]+)([_a-z][0-9_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "fn[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[_a-z][0-9_a-z]*"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 101, "scope": "keyword", "literals": ["fn", "let", "use"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 102, "scope": "keyword.control", "literals": ["return"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 103, "scope": "operator", "literals": ["=", "+", "-", "*"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 104, "scope": "punctuation", "literals": ["(", ")", "{", "}", ",", "."], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 105, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 106, "scope": "string", "literals": [], "tokens": ["STRING"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 107, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 108, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
     ]
   },
   "schema": {"kinds": [
@@ -115,6 +115,12 @@
       {"kind": "member", "role": "name", "rest": false, "of": "object"}
     ],
     "qualifies": [],
-    "nominals": []
+    "nominals": [],
+    "binds": [],
+    "colors": [
+      {"kind": "fn", "role": "name", "edge": null, "scope": "function", "modifiers": ["declaration"], "when": []},
+      {"kind": "params", "role": "names", "edge": null, "scope": "variable.parameter", "modifiers": ["declaration"], "when": []}
+    ],
+    "words": []
   }
 }

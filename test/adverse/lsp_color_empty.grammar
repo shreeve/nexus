@@ -1,6 +1,6 @@
-# A line of a later step of @lsp is an error that says so.
-# error: lsp_later.grammar:47:5:
-# error: `bind` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal
+# A color line names what it colours and the scope.
+# error: lsp_color_empty.grammar:47:5:
+# error: a color line names a role, or a kind and `start` or `end`, then a scope: color KIND.ROLE SCOPE, color KIND start|end SCOPE
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    bind     let.name variable
+    color
 
 prog!  = body                               → (prog ...1)
 

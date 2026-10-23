@@ -96,5 +96,9 @@ pub const names: scopes.Table = .{
     .qualifies = &.{},
     .nominals = &.{},
     .namespaces = &.{},
+    .colors = &.{
+        .{ .at = .{ .kind = .@"fn", .slot = ir.slot(.@"fn", .name) }, .scope = .function, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .params, .slot = ir.restSlot(.params, .names), .rest = true }, .scope = .variable_parameter, .modifiers = .{ .declaration = true } },
+    },
     .extensions = &.{"tally"},
 };

@@ -1,0 +1,8 @@
+# Semantic tokens by meaning (`color`): a def's name is a function and
+# each parameter a parameter, with `declaration` where they are defined;
+# each use of them takes their colour without it. The `loop` that starts
+# a loop is a keyword (the one on line 14 is a name), and the `!` that
+# ends a `force` node is a modifier.
+initialize
+open main.jot
+tokens main.jot

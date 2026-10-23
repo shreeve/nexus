@@ -326,5 +326,16 @@ pub const names: scopes.Table = .{
     .qualifies = &.{},
     .nominals = &.{},
     .namespaces = &.{},
+    .colors = &.{
+        .{ .at = .{ .kind = .fn_proto, .slot = ir.slot(.fn_proto, .name) }, .scope = .function, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .param, .slot = ir.slot(.param, .name) }, .scope = .variable_parameter, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .init), .kind = .container_decl } }, .scope = .type, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .init), .kind = .error_set_decl } }, .scope = .type, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .mut), .text = "const" } }, .scope = .constant, .modifiers = .{ .declaration = true, .readonly = true } },
+        .{ .at = .{ .kind = .container_field, .slot = ir.slot(.container_field, .type) }, .when = &.{ .{ .parent = .container_decl, .slot = ir.slot(.container_decl, .kind), .text = "enum" } }, .scope = .constant, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .error_name, .slot = ir.slot(.error_name, .name) }, .scope = .constant, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .enum_literal, .slot = ir.slot(.enum_literal, .name) }, .scope = .constant },
+        .{ .at = .{ .kind = .error_value, .slot = ir.slot(.error_value, .name) }, .scope = .constant },
+    },
     .extensions = &.{"zig", "zon"},
 };

@@ -140,6 +140,20 @@ pub const LexerGenerator = struct {
         return error.LexerGenerationError;
     }
 
+    /// The token the scanner reads `text` as, whole, in some configuration
+    /// of its state variables (after `generateDecls`); null when it reads
+    /// it as no one token.
+    pub fn oneToken(self: *const LexerGenerator, text: []const u8) ?[]const u8 {
+        const rules = self.spec.rules.items;
+        for (self.startOfMask) |start| {
+            if (start == automaton.none) continue;
+            const m = self.dfa.longestMatchFrom(start, text) orelse continue;
+            const rule = rules[self.consuming[m.rule]];
+            if (m.len == text.len and self.ends[m.rule] == .whole and !rule.isSkip) return rule.token;
+        }
+        return null;
+    }
+
     /// Whether the scanner gives token `cat` the text `text`, whole, in
     /// some configuration of its state variables (after `generateDecls`);
     /// null when no lexer rule makes `cat` (a lang Lexer does).

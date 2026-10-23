@@ -1,0 +1,60 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"definitionProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","definition","readonly","static","deprecated","abstract","async","modification","documentation","defaultLibrary"],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"jot-lsp"}}
+> open main.jot
+diagnostics main.jot
+  {"message":"'early' is not defined","range":"2:7-2:12","severity":2,"source":"jot"}
+  {"message":"'loop' is not defined","range":"14:20-14:24","severity":2,"source":"jot"}
+  {"message":"'step' is not defined","range":"16:17-16:21","severity":2,"source":"jot"}
+> tokens main.jot
+  1:1 25 comment
+  2:6 1 punctuation
+  2:12 1 punctuation
+  3:7 1 operator
+  3:9 1 constantNumeric
+  4:7 1 operator
+  4:9 1 constantNumeric
+  5:1 3 keyword
+  5:5 3 function declaration
+  5:8 1 punctuation
+  5:9 1 variableParameter declaration
+  5:10 1 punctuation
+  5:12 1 punctuation
+  6:11 1 operator
+  6:19 1 operator
+  6:21 1 variableParameter
+  7:10 1 operator
+  7:12 1 variableParameter
+  8:10 1 operator
+  8:17 1 operator
+  8:19 1 constantNumeric
+  9:5 6 keywordControl
+  9:16 1 storageModifier
+  10:1 1 punctuation
+  11:7 1 operator
+  11:9 3 function
+  11:12 1 punctuation
+  11:13 1 constantNumeric
+  11:14 1 punctuation
+  12:1 4 keyword
+  12:6 1 punctuation
+  13:11 1 operator
+  13:19 1 operator
+  13:21 1 constantNumeric
+  14:10 1 operator
+  14:18 1 operator
+  15:1 1 punctuation
+  16:7 1 operator
+  16:15 1 operator
+  17:1 3 keyword
+  17:5 5 function declaration
+  17:10 1 punctuation
+  17:11 1 variableParameter declaration
+  17:12 1 punctuation
+  17:14 1 punctuation
+  18:5 5 keyword
+  18:17 1 operator
+  18:19 1 variableParameter
+  18:21 1 operator
+  18:23 1 variableParameter
+  19:5 6 keywordControl
+  20:1 1 punctuation

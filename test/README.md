@@ -114,6 +114,7 @@ The suites under `test/`:
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
 | `editor` | Tally, a small language with `@schema`, `@repair`, `@messages`, `@highlight` and `@lsp` (imports and members included), whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `names/` with the stub `--editor` writes (the names from `@lsp` alone, across files), `modules/` with that stub and `resolveImport`, `stub/` with the stub and the grammar without `@lsp` | `full/*.session`, `names/*.session`, `modules/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
 | `rote` | Rote, a language of routines whose `@lsp` has `qualify` (`do add^math`) and `nominal` (`$count`) names | `names/*.session`, replayed on `project/` |
+| `jot` | Jot, a language that binds names by assignment (`bind`), colours its functions, parameters, the keywords its lang Lexer makes and a modifier (`color`), and completes those keywords (`words`), with a lang Lexer (`jot.zig`) that reads `loop` as a keyword where it starts a line and `local` where a name follows it | `names/*.session`, replayed on `project/` |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:
@@ -123,7 +124,7 @@ The suites under `grammars/`:
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig's main; `test.conf` names the commit) | 50 programs from Rig's examples and torture cases (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's schema-mode MUMPS grammar and lang module (copied from em) | hand-written cases, 27 VistA routines, 22 MVTS-derived em compliance routines |
 | `ruby`, `slash`, `nexis` | downstream grammars without a schema (`nexis`: copied from nexis's main; `test.conf` names the commit) | hand-written Ruby and Slash, a sample of Nexis tests and examples |
-| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `grammars/zig/compare-tokens` does so over any corpus, and `grammars/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG; `highlight/sample.zig`, coloured |
+| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `grammars/zig/compare-tokens` does so over any corpus, and `grammars/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG; `highlight/sample.zig`, coloured; `server/tokens.session`, the semantic tokens of `project/colors.zig` |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
@@ -290,7 +291,7 @@ workspace's folder and `module NAME=FILE` for the `modules` option;
 `change` with its new text on `| ` lines; `hover FILE L:C`;
 `rename FILE L:C NAME`; ...; `test/lib/lsp` lists them all), and its `.out` is each command after `> `, then what
 the server answered or published, ranges as `L:C-L:C` and semantic tokens
-as `L:C len scope`. `--update` writes the `.out` file.
+as `L:C len scope [modifier ...]`. `--update` writes the `.out` file.
 
 ## The VS Code client
 

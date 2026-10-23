@@ -208,6 +208,38 @@ const Describer = struct {
             try w.writeAll("}");
         }
         try self.lspClose(l.nominals.len);
+        try w.writeAll("],\n    \"binds\": [");
+        for (l.binds, 0..) |b, i| {
+            try self.lspItem(i);
+            try self.roleRef(b.role);
+            try w.writeAll(", \"symbol\": ");
+            try json.string(w, b.symbol);
+            try self.whens(b.when);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.binds.len);
+        try w.writeAll("],\n    \"colors\": [");
+        for (l.colors, 0..) |c, i| {
+            try self.lspItem(i);
+            try w.writeAll("{\"kind\": ");
+            try json.string(w, c.kind);
+            try w.writeAll(", \"role\": ");
+            try json.optString(w, if (c.role) |r| r.role else null);
+            try w.writeAll(", \"edge\": ");
+            try json.optString(w, if (c.edge == .none) null else @tagName(c.edge));
+            try w.writeAll(", \"scope\": ");
+            try json.string(w, c.scope.names().name);
+            try w.writeAll(", \"modifiers\": ");
+            try self.stringList(c.modifiers);
+            try self.whens(c.when);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.colors.len);
+        try w.writeAll("],\n    \"words\": [");
+        for (l.words, 0..) |word, i| {
+            if (i > 0) try w.writeAll(", ");
+            try json.string(w, word.text);
+        }
         try w.writeAll("]\n  }");
     }
 
@@ -232,7 +264,7 @@ const Describer = struct {
     }
 
     /// `, "when": [...]`: each condition's parent kind (or null), role and
-    /// text (or null for presence).
+    /// text (or null for presence) and the kind of node it holds (or null).
     fn whens(self: *Describer, list: []const names.Define.When) Error!void {
         const w = self.w;
         try w.writeAll(", \"when\": [");
@@ -244,6 +276,8 @@ const Describer = struct {
             try json.string(w, c.role);
             try w.writeAll(", \"text\": ");
             try json.optString(w, c.text);
+            try w.writeAll(", \"kind\": ");
+            try json.optString(w, c.kind);
             try w.writeAll("}");
         }
         try w.writeAll("]");

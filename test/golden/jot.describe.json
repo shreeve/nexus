@@ -1,0 +1,115 @@
+{
+  "format": 1,
+  "nexus": "2.3.0",
+  "grammar": "jot.grammar",
+  "lang": "jot",
+  "tokens": [
+    {"name": "ident", "terminal": 12, "display": "ident"},
+    {"name": "number", "terminal": 25, "display": "number"},
+    {"name": "comment", "terminal": null, "display": null},
+    {"name": "newline", "terminal": 10, "display": "newline"},
+    {"name": "kw_def", "terminal": 11, "display": "kw_def"},
+    {"name": "kw_return", "terminal": 21, "display": "kw_return"},
+    {"name": "kw_loop", "terminal": 20, "display": "kw_loop"},
+    {"name": "kw_local", "terminal": 19, "display": "kw_local"},
+    {"name": "assign", "terminal": 18, "display": "\"=\""},
+    {"name": "plus", "terminal": 24, "display": "\"+\""},
+    {"name": "bang", "terminal": 26, "display": "\"!\""},
+    {"name": "lparen", "terminal": 13, "display": "\"(\""},
+    {"name": "rparen", "terminal": 17, "display": "\")\""},
+    {"name": "lbrace", "terminal": 22, "display": "\"{\""},
+    {"name": "rbrace", "terminal": 23, "display": "\"}\""},
+    {"name": "comma", "terminal": 14, "display": "\",\""},
+    {"name": "eof", "terminal": 1, "display": "end of input"},
+    {"name": "err", "terminal": null, "display": null}
+  ],
+  "rules": [
+    {"line": 21, "token": "comment", "pattern": "'#' [^\\n]*", "regex": "#[^\\x0a]*", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 22, "token": "newline", "pattern": "'\\n'", "regex": "\\x0a", "literal": "\n", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 23, "token": "kw_def", "pattern": "\"def\"", "regex": "def", "literal": "def", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 24, "token": "kw_return", "pattern": "\"return\"", "regex": "return", "literal": "return", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 25, "token": "assign", "pattern": "'='", "regex": "=", "literal": "=", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 26, "token": "plus", "pattern": "'+'", "regex": "\\+", "literal": "+", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 27, "token": "bang", "pattern": "'!'", "regex": "!", "literal": "!", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 28, "token": "lparen", "pattern": "'('", "regex": "\\(", "literal": "(", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 29, "token": "rparen", "pattern": "')'", "regex": "\\)", "literal": ")", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 30, "token": "lbrace", "pattern": "'{'", "regex": "\\{", "literal": "{", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 31, "token": "rbrace", "pattern": "'}'", "regex": "\\}", "literal": "}", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 32, "token": "comma", "pattern": "','", "regex": ",", "literal": ",", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 33, "token": "number", "pattern": "[0-9]+", "regex": "[0-9]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 34, "token": "ident", "pattern": "[a-z_]+", "regex": "[_a-z]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 35, "token": "err", "pattern": ".", "regex": "[\\x00-\\xff]", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []}
+  ],
+  "states": [],
+  "after": [],
+  "keywords": {},
+  "trivia": ["COMMENT"],
+  "highlight": {
+    "language": "Jot",
+    "scope_name": "source.jot",
+    "extensions": ["jot"],
+    "line_comment": "#",
+    "block_comment": null,
+    "indent": "\\{[\\x09 ]*$",
+    "dedent": "^[\\x09 ]*\\}",
+    "word_chars": "[0-9A-Z_a-z]",
+    "entries": [
+      {"line": 91, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "[ \\t]* \"loop\"", "regex": "[\\x09 ]*loop", "captures": [], "line_start": true, "line_end": false, "contexts": [{"kind": "not before", "pattern": "[a-z_]", "regex": "[_a-z]"}], "within": null},
+      {"line": 92, "scope": "keyword", "literals": ["def"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 93, "scope": "keyword.control", "literals": ["return"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 94, "scope": "operator", "literals": ["=", "+", "!"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 95, "scope": "punctuation", "literals": ["(", ")", "{", "}", ","], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 96, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 97, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 98, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+    ]
+  },
+  "schema": {"kinds": [
+    {"name": "file", "roles": [{"name": "stmts", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false},
+    {"name": "def", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}, {"name": "params", "type": "params", "optional": false, "rest": false}, {"name": "body", "type": "block", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "params", "roles": [{"name": "names", "type": "leaf", "optional": false, "rest": true}], "side": [], "wrapper": false},
+    {"name": "block", "roles": [{"name": "stmts", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false},
+    {"name": "assign", "roles": [{"name": "target", "type": "leaf", "optional": false, "rest": false}, {"name": "value", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "local", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}, {"name": "value", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "loop", "roles": [{"name": "body", "type": "block", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "return", "roles": [{"name": "value", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "name", "roles": [{"name": "id", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "num", "roles": [{"name": "value", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "add", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "force", "roles": [{"name": "value", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "call", "roles": [{"name": "callee", "type": "any", "optional": false, "rest": false}, {"name": "args", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false}
+  ]},
+  "lsp": {
+    "scopes": [
+      {"kind": "file", "unordered": false},
+      {"kind": "def", "unordered": false},
+      {"kind": "block", "unordered": false}
+    ],
+    "defines": [
+      {"kind": "def", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": true, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
+      {"kind": "params", "role": "names", "rest": true, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
+      {"kind": "local", "role": "name", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null}
+    ],
+    "uses": ["ident"],
+    "skips": [],
+    "builtins": ["print"],
+    "builtin_tokens": [],
+    "doc": null,
+    "undefined": "warning",
+    "imports": [],
+    "members": [],
+    "qualifies": [],
+    "nominals": [],
+    "binds": [
+      {"kind": "assign", "role": "target", "rest": false, "symbol": "variable", "when": []}
+    ],
+    "colors": [
+      {"kind": "def", "role": "name", "edge": null, "scope": "function", "modifiers": ["declaration"], "when": []},
+      {"kind": "params", "role": "names", "edge": null, "scope": "variable.parameter", "modifiers": ["declaration"], "when": []},
+      {"kind": "loop", "role": null, "edge": "start", "scope": "keyword", "modifiers": [], "when": []},
+      {"kind": "local", "role": null, "edge": "start", "scope": "keyword", "modifiers": [], "when": []},
+      {"kind": "force", "role": null, "edge": "end", "scope": "storage.modifier", "modifiers": [], "when": []}
+    ],
+    "words": ["loop", "local"]
+  }
+}

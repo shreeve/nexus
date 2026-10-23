@@ -40,21 +40,31 @@ pub fn parseDiagnostics(arena: Allocator, path: []const u8, text: []const u8) ![
     return out.items;
 }
 
-/// Each token's scope, but a name before `(` is a function.
-pub fn tokens(arena: Allocator, path: []const u8, text: []const u8) ![]const lsp.Token {
+/// The grammar's tokens, but a name before `(` is a function, a builtin's
+/// from the default library.
+pub fn tokens(arena: Allocator, path: []const u8, text: []const u8, grammar: []const lsp.Token) ![]const lsp.Token {
     _ = path;
     var out: std.ArrayList(lsp.Token) = .empty;
+    try out.appendSlice(arena, grammar);
     var lexer = parser.Lexer.init(text);
     var last: ?parser.Token = null;
     while (true) {
         const t = lexer.next();
         if (t.cat == .eof) break;
-        if (t.cat == .lparen) if (last) |l| if (l.cat == .ident)
-            try out.append(arena, .{ .start = l.pos, .len = l.len, .scope = .function });
-        if (language.wordScope(text[t.pos..][0..t.len]) orelse language.tokenScope(t.cat)) |scope|
-            try out.append(arena, .{ .start = t.pos, .len = t.len, .scope = scope });
+        if (t.cat == .lparen) if (last) |l| if (l.cat == .ident) {
+            const called: lsp.Token = .{ .start = l.pos, .len = l.len, .scope = .function, .modifiers = .{ .default_library = std.mem.eql(u8, text[l.pos..][0..l.len], "print") } };
+            const at = for (out.items) |*o| {
+                if (o.start == l.pos) break o;
+            } else null;
+            if (at) |o| o.* = called else try out.append(arena, called);
+        };
         last = t;
     }
+    std.mem.sort(lsp.Token, out.items, {}, struct {
+        fn lt(_: void, x: lsp.Token, y: lsp.Token) bool {
+            return x.start < y.start;
+        }
+    }.lt);
     return out.items;
 }
 

@@ -1,0 +1,9 @@
+# Semantic tokens by meaning (`color`): each token's @highlight scope,
+# and a function's name and its parameters coloured as such, with
+# `declaration` where they are defined. A use takes its definition's
+# colour without it, and so does a member of another file: `util.add` and
+# `util.double` are functions of util.tally (`member`), which is not
+# open; `util.greeting` is no function.
+initialize folder quiet
+open main.tally
+tokens main.tally

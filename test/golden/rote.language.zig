@@ -76,5 +76,6 @@ pub const names: scopes.Table = .{
     },
     .nominals = &.{.{ .cat = .global, .ns = 0 }},
     .namespaces = &.{"globals"},
+    .colors = &.{},
     .extensions = &.{"rote"},
 };

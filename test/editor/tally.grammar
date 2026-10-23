@@ -56,6 +56,8 @@ tokens
 # function's parameters, then a block's `let`s, each from its definition
 # on. `use lib` imports lib.tally, beside the file; a name after `.` is a
 # member of what is before it: a `use`'s file, or what a `let`'s value is.
+# A function's name and its parameters are coloured as such, and so is
+# each name of them, in any file.
 @lsp
     scope       module unordered
     scope       fn block
@@ -69,6 +71,8 @@ tokens
     builtin     "print"
     doc         COMMENT strip "#"
     undefined   warning
+    color       fn.name         function  declaration
+    color       params.names    variable.parameter  declaration
 
 @display
     IDENT: "a name", NEWLINE: "end of line"

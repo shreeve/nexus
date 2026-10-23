@@ -23,13 +23,23 @@
 //!   qualify   KIND.ROLE in:ROLE
 //!   nominal   TOKEN [ns:NAME]
 //!
-//! The lines of binding, colours and words (`bind`, `color`, `words`) are
-//! not read yet: each is an error that says so.
+//! and those of assignment, colours and completion words:
+//!
+//!   bind      KIND.ROLE SYMBOLKIND [when ...]
+//!   color     KIND.ROLE SCOPE [MODIFIER ...] [when ...]
+//!   color     KIND start|end SCOPE [MODIFIER ...] [when ...]
+//!   words     "lit" ...
+//!
+//! A `when` names a role and the text its leaf must have; with no text,
+//! that the role is present; written `ROLE:KIND`, that it holds a KIND
+//! node.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const diag = @import("../diag.zig");
+const highlight = @import("../highlight/highlight.zig");
+const regex = @import("../lexgen/regex.zig");
 const Schema = grammar.Schema;
 
 pub const Error = error{ LspError, OutOfMemory };
@@ -56,8 +66,9 @@ pub const Define = struct {
     @"export": Export = .none,
     detail: Detail = .none,
 
-    /// The role's text, or with no text its presence.
-    pub const When = struct { parent: ?[]const u8 = null, role: []const u8, text: ?[]const u8 };
+    /// The role's text, or with no text its presence; with `kind`, that
+    /// the role holds a node of the kind.
+    pub const When = struct { parent: ?[]const u8 = null, role: []const u8, text: ?[]const u8, kind: ?[]const u8 = null };
     pub const Doc = union(enum) { none, role: RoleRef, leading };
     pub const Export = union(enum) { none, role: []const u8, parent: []const u8 };
     pub const Detail = union(enum) { none, whole, upto: []const u8 };
@@ -88,6 +99,26 @@ pub const Qualify = struct { role: RoleRef, in: []const u8 };
 /// the token's.
 pub const Nominal = struct { token: []const u8, ns: []const u8 };
 
+/// `bind KIND.ROLE SYMBOLKIND`: the leaf, an assignment's target, defines
+/// a name unless a definition of the name is in sight there, which it then
+/// uses.
+pub const Bind = struct { role: RoleRef, symbol: []const u8, when: []const Define.When = &.{} };
+
+/// `color`: the semantic token of a role's leaf (`edge` none), or of a
+/// node's first or last token.
+pub const Color = struct {
+    kind: []const u8,
+    /// The role, for `color KIND.ROLE`.
+    role: ?RoleRef = null,
+    edge: Edge = .none,
+    scope: highlight.Scope,
+    /// LSP's token modifiers, as the server names them.
+    modifiers: []const []const u8 = &.{},
+    when: []const Define.When = &.{},
+
+    pub const Edge = enum { none, start, end };
+};
+
 /// `@lsp`, read and checked.
 pub const Lsp = struct {
     scopes: []const Scope,
@@ -106,6 +137,11 @@ pub const Lsp = struct {
     members: []const Member = &.{},
     qualifies: []const Qualify = &.{},
     nominals: []const Nominal = &.{},
+    binds: []const Bind = &.{},
+    colors: []const Color = &.{},
+    /// `words`: the completion words beside the grammar's, each with where
+    /// it is written.
+    words: []const Word = &.{},
 
     pub const Scope = struct { kind: []const u8, unordered: bool };
     pub const Skip = struct { role: RoleRef, when: []const Define.When = &.{} };
@@ -120,8 +156,19 @@ pub const symbol_kinds = [_][]const u8{
     "operator", "type_parameter",
 };
 
-/// The keys of the lines a later Nexus reads.
-const later = [_][]const u8{ "bind", "color", "words" };
+/// LSP's semantic token modifiers, as the server names them, in the order
+/// of its legend.
+pub const modifier_names = [_][]const u8{
+    "declaration", "definition", "readonly",     "static",        "deprecated",
+    "abstract",    "async",      "modification", "documentation", "default_library",
+};
+
+/// The token the grammar's lexer reads a whole text as, if it reads it as
+/// one.
+pub const OneToken = struct {
+    ctx: *const anyopaque,
+    call: *const fn (ctx: *const anyopaque, text: []const u8) ?[]const u8,
+};
 
 /// Reads `@lsp` against the schema and the lexer's tokens; the first
 /// mistake is reported and returned as LspError.
@@ -132,9 +179,26 @@ pub fn analyze(
     spec: *const grammar.LexerSpec,
     trivia: []const []const u8,
     source: diag.Source,
+    oneToken: OneToken,
 ) Error!Lsp {
-    var r: Reader = .{ .allocator = allocator, .schema = schema, .spec = spec, .trivia = trivia, .source = source };
+    var r: Reader = .{ .allocator = allocator, .schema = schema, .spec = spec, .trivia = trivia, .source = source, .oneToken = oneToken };
     return r.run(lines);
+}
+
+/// The completion words of `@lsp` against `@highlight`'s characters of
+/// words and the words the grammar offers itself (`offered`): each is made
+/// of those characters, and none is one of the grammar's.
+pub fn checkWords(l: *const Lsp, offered: []const []const u8, wordChars: regex.ByteSet, source: diag.Source) error{LspError}!void {
+    for (l.words) |w| {
+        for (w.text) |c| if (!wordChars.has(c)) {
+            diag.errAt(source, w.pos, "words: \"{f}\" is not a word: '{f}' is not one of @highlight's word-chars, and completion offers words", .{ std.zig.fmtString(w.text), std.zig.fmtString(&.{c}) });
+            return error.LspError;
+        };
+        if (contains(offered, w.text)) {
+            diag.errAt(source, w.pos, "words: \"{f}\" is a word of the grammar, which completion offers already", .{std.zig.fmtString(w.text)});
+            return error.LspError;
+        }
+    }
 }
 
 const Word = grammar.LspLines.Word;
@@ -145,6 +209,7 @@ const Reader = struct {
     spec: *const grammar.LexerSpec,
     trivia: []const []const u8,
     source: diag.Source,
+    oneToken: OneToken,
 
     scopes: std.ArrayList(Lsp.Scope) = .empty,
     defines: std.ArrayList(Define) = .empty,
@@ -172,6 +237,10 @@ const Reader = struct {
     qualifyPos: std.ArrayList([2]u32) = .empty,
     nominals: std.ArrayList(Nominal) = .empty,
     nominalPos: std.ArrayList(u32) = .empty,
+    binds: std.ArrayList(Bind) = .empty,
+    bindPos: std.ArrayList(u32) = .empty,
+    colors: std.ArrayList(Color) = .empty,
+    words: std.ArrayList(Word) = .empty,
 
     const DefinePos = struct { line: u32, outer: ?u32, parent: ?u32 };
 
@@ -203,10 +272,14 @@ const Reader = struct {
                 try self.memberLine(line, eql(key, "qualify"));
             } else if (eql(key, "nominal")) {
                 try self.nominalLine(line);
-            } else if (isLater(key)) {
-                return self.fail(line.key.pos, "`{s}` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal", .{key});
+            } else if (eql(key, "bind")) {
+                try self.bindLine(line);
+            } else if (eql(key, "color")) {
+                try self.colorLine(line);
+            } else if (eql(key, "words")) {
+                try self.wordsLine(line);
             } else {
-                return self.fail(line.key.pos, "unknown @lsp line `{s}` (scope, define, use, skip, builtin, doc, undefined, import, member, qualify, nominal)", .{key});
+                return self.fail(line.key.pos, "unknown @lsp line `{s}` (scope, define, use, skip, builtin, doc, undefined, import, member, qualify, nominal, bind, color, words)", .{key});
             }
         }
         if (self.defines.items.len == 0) return self.fail(lines.pos, "@lsp defines no names: give it a `define KIND.ROLE SYMBOLKIND` line", .{});
@@ -225,6 +298,9 @@ const Reader = struct {
             .members = try self.members.toOwnedSlice(self.allocator),
             .qualifies = try self.qualifies.toOwnedSlice(self.allocator),
             .nominals = try self.nominals.toOwnedSlice(self.allocator),
+            .binds = try self.binds.toOwnedSlice(self.allocator),
+            .colors = try self.colors.toOwnedSlice(self.allocator),
+            .words = try self.words.toOwnedSlice(self.allocator),
         };
     }
 
@@ -245,6 +321,14 @@ const Reader = struct {
             if (eql(d.role.kind, s.role.kind) and eql(d.role.role, s.role.role) and d.when.len == 0 and s.when.len == 0)
                 return self.fail(pos, "{s}.{s} is both defined and skipped", .{ s.role.kind, s.role.role });
         };
+        // A bind takes a leaf no define line takes, before a skip without
+        // `when`: a line that never gets a leaf is a mistake.
+        for (self.binds.items, self.bindPos.items) |b, pos| {
+            for (self.defines.items) |d| if (sameRole(d.role, b.role) and (d.when.len == 0 or sameWhens(d.when, b.when)))
+                return self.fail(pos, "{s}.{s}: a `define` line defines it wherever this bind's conditions hold, so the bind never binds", .{ b.role.kind, b.role.role });
+            if (b.when.len == 0) for (self.skips.items, self.skipPos.items) |s, spos| if (sameRole(s.role, b.role) and s.when.len == 0)
+                return self.fail(spos, "{s}.{s} is both bound and skipped", .{ s.role.kind, s.role.role });
+        }
         for (self.builtinTokens.items, self.builtinTokenPos.items) |t, pos| if (!contains(self.uses.items, t))
             return self.fail(pos, "builtin {s}: {s} is no `use` token, so its leaves are never looked up", .{ upper(self.allocator, t), upper(self.allocator, t) });
         // A member's or a qualified name's leaf is looked up by its line
@@ -268,6 +352,8 @@ const Reader = struct {
     fn takenOnce(self: *Reader, role: RoleRef, pos: u32, comptime what: []const u8) Error!void {
         for (self.defines.items) |d| if (sameRole(d.role, role) and d.when.len == 0)
             return self.fail(pos, "{s}.{s} is both {s} and {s}", .{ role.kind, role.role, "defined", what });
+        for (self.binds.items) |b| if (sameRole(b.role, role) and b.when.len == 0)
+            return self.fail(pos, "{s}.{s} is both {s} and {s}", .{ role.kind, role.role, "bound", what });
         for (self.skips.items) |s| if (sameRole(s.role, role) and s.when.len == 0)
             return self.fail(pos, "{s}.{s} is both {s} and {s}", .{ role.kind, role.role, "skipped", what });
     }
@@ -384,9 +470,12 @@ const Reader = struct {
     /// the index of its last word.
     fn whenAt(self: *Reader, words: []const Word, i: usize, kind: []const u8, whens: *std.ArrayList(Define.When)) Error!usize {
         if (i + 1 >= words.len) return self.fail(words[i].pos, "`when` takes a role, and the text it must have: when [^KIND.]ROLE [\"text\"]", .{});
-        const whenRole = words[i + 1];
-        // With a string, the role's text; without, its presence.
+        const word = words[i + 1];
+        // With a string, the role's text; without, its presence; `:KIND`,
+        // the kind of the node it holds.
         const text: ?[]const u8 = if (i + 2 < words.len and words[i + 2].text[0] == '"') try self.stringOf(words[i + 2], "when's text") else null;
+        const colon = std.mem.findScalar(u8, word.text, ':');
+        const whenRole: Word = .{ .text = word.text[0 .. colon orelse word.text.len], .pos = word.pos };
         var of = kind;
         var roleName = whenRole.text;
         var pos = whenRole.pos;
@@ -401,8 +490,21 @@ const Reader = struct {
             parent = p.kind;
         }
         const r = try self.slotRole(of, roleName, pos, if (parent != null) "when ^" else "when ");
+        var held: ?[]const u8 = null;
+        if (colon) |c| {
+            const kindPos = word.pos + @as(u32, @intCast(c + 1));
+            if (text != null) return self.fail(words[i + 2].pos, "when {s} asks the kind of the node the role holds, which has no text", .{word.text});
+            const k = try self.kindOf(.{ .text = word.text[c + 1 ..], .pos = kindPos });
+            const can = switch (r.type) {
+                .any, .node => true,
+                .kinds => |ks| contains(ks, k),
+                .leaf, .tag, .group => false,
+            };
+            if (!can) return self.fail(kindPos, "when {s}: the role never holds a '{s}' node", .{ word.text, k });
+            held = k;
+        }
         if (text != null and r.type != .leaf) return self.fail(whenRole.pos, "when {s}: the role is not leaf-typed, so it has no text", .{whenRole.text});
-        try whens.append(self.allocator, .{ .parent = parent, .role = roleName, .text = text });
+        try whens.append(self.allocator, .{ .parent = parent, .role = roleName, .text = text, .kind = held });
         return i + @as(usize, if (text != null) 2 else 1);
     }
 
@@ -581,6 +683,90 @@ const Reader = struct {
         try self.nominalPos.append(self.allocator, words[0].pos);
     }
 
+    fn bindLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
+        const words = line.words;
+        if (words.len == 0) return self.fail(line.key.pos, "a bind line names a role and a symbol kind: bind KIND.ROLE SYMBOLKIND", .{});
+        const role = try self.roleOf(words[0], "bind");
+        if (!holdsLeaf(self.roleIn(role.kind, role.role).?)) return self.fail(words[0].pos, "bind {s}.{s}: the role holds no token, and a name is a token", .{ role.kind, role.role });
+        if (words.len < 2) return self.fail(line.key.pos, "bind {s}.{s} needs a symbol kind ({s})", .{ role.kind, role.role, symbolList });
+        const symbol = words[1].text;
+        if (!contains(&symbol_kinds, symbol)) return self.fail(words[1].pos, "unknown symbol kind '{s}' (LSP's: {s})", .{ symbol, symbolList });
+        var whens: std.ArrayList(Define.When) = .empty;
+        var i: usize = 2;
+        while (i < words.len) : (i += 1) {
+            if (!eql(words[i].text, "when")) return self.fail(words[i].pos, "unknown option '{s}' of bind (when)", .{words[i].text});
+            i = try self.whenAt(words, i, role.kind, &whens);
+        }
+        for (self.binds.items) |b| if (sameRole(b.role, role) and sameWhens(b.when, whens.items))
+            return self.fail(words[0].pos, "{s}.{s} is bound twice: give each line a different `when`", .{ role.kind, role.role });
+        try self.binds.append(self.allocator, .{ .role = role, .symbol = symbol, .when = whens.items });
+        try self.bindPos.append(self.allocator, words[0].pos);
+    }
+
+    /// `color KIND.ROLE SCOPE [MODIFIER ...] [when ...]`, or `color KIND
+    /// start|end SCOPE ...`.
+    fn colorLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
+        const words = line.words;
+        if (words.len == 0) return self.fail(line.key.pos, "a color line names a role, or a kind and `start` or `end`, then a scope: color KIND.ROLE SCOPE, color KIND start|end SCOPE", .{});
+        var c: Color = .{ .kind = undefined, .scope = undefined };
+        var i: usize = 1;
+        if (std.mem.findScalar(u8, words[0].text, '.') != null) {
+            const role = try self.roleOf(words[0], "color");
+            if (!holdsLeaf(self.roleIn(role.kind, role.role).?)) return self.fail(words[0].pos, "color {s}.{s}: the role holds no token, and a colour is a token's", .{ role.kind, role.role });
+            c.kind = role.kind;
+            c.role = role;
+        } else {
+            c.kind = try self.kindOf(words[0]);
+            if (words.len < 2 or !(eql(words[1].text, "start") or eql(words[1].text, "end")))
+                return self.fail(if (words.len < 2) words[0].pos else words[1].pos, "color {s}: after a kind comes `start` or `end`, its node's first or last token; a role is written KIND.ROLE", .{words[0].text});
+            c.edge = if (eql(words[1].text, "start")) .start else .end;
+            i = 2;
+        }
+        const what = if (c.role) |r| try self.allocator.print("{s}.{s}", .{ r.kind, r.role }) else try self.allocator.print("{s} {s}", .{ c.kind, @tagName(c.edge) });
+        // The tree the server reads is the grammar's: a lang Parser
+        // wrapper's kinds are never in it.
+        for (self.schema.kinds) |k| if (eql(k.tag, c.kind) and k.wrapper)
+            return self.fail(words[0].pos, "color {s}: '{s}' is @wrapper, built by the lang Parser wrapper, and the server colours the grammar's tree, which has no such node", .{ what, c.kind });
+        if (i >= words.len) return self.fail(line.key.pos, "color {s} needs a scope ({s})", .{ what, scopeList });
+        c.scope = highlight.Scope.parse(words[i].text) orelse
+            return self.fail(words[i].pos, "unknown scope '{s}' (@highlight's: {s})", .{ words[i].text, scopeList });
+        i += 1;
+        var mods: std.ArrayList([]const u8) = .empty;
+        var whens: std.ArrayList(Define.When) = .empty;
+        while (i < words.len) : (i += 1) {
+            const w = words[i];
+            if (eql(w.text, "when")) {
+                i = try self.whenAt(words, i, c.kind, &whens);
+                continue;
+            }
+            if (whens.items.len > 0) return self.fail(w.pos, "after a color line's `when`s come more `when`s, not '{s}'", .{w.text});
+            if (!contains(&modifier_names, w.text)) return self.fail(w.pos, "unknown modifier '{s}' (LSP's: {s})", .{ w.text, modifierList });
+            if (contains(mods.items, w.text)) return self.fail(w.pos, "color {s} has {s} twice", .{ what, w.text });
+            try mods.append(self.allocator, w.text);
+        }
+        c.modifiers = mods.items;
+        c.when = whens.items;
+        for (self.colors.items) |o| {
+            if (!eql(o.kind, c.kind) or o.edge != c.edge or !sameWhens(o.when, c.when)) continue;
+            if (c.role) |r| if (!eql(o.role.?.role, r.role)) continue;
+            return self.fail(words[0].pos, "{s} is coloured twice: give each line a different `when`", .{what});
+        }
+        try self.colors.append(self.allocator, c);
+    }
+
+    fn wordsLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
+        if (line.words.len == 0) return self.fail(line.key.pos, "a words line names at least one word: words \"lit\" ...", .{});
+        for (line.words) |w| {
+            const text = try self.stringOf(w, "a completion word");
+            if (text.len == 0) return self.fail(w.pos, "a completion word is not empty", .{});
+            for (self.words.items) |o| if (eql(o.text, text))
+                return self.fail(w.pos, "\"{f}\" is a completion word already", .{std.zig.fmtString(text)});
+            if (self.oneToken.call(self.oneToken.ctx, text) == null)
+                return self.fail(w.pos, "words: the lexer does not read \"{f}\" as one token, so the parser never takes it", .{std.zig.fmtString(text)});
+            try self.words.append(self.allocator, .{ .text = text, .pos = w.pos });
+        }
+    }
+
     // --- Names --------------------------------------------------------------
 
     /// A kind of the schema, as written (a quoted kind's escapes decoded).
@@ -697,7 +883,8 @@ fn sameWhens(a: []const Define.When, b: []const Define.When) bool {
         const found = for (b) |y| {
             const parents = if (x.parent) |xp| (if (y.parent) |yp| eql(xp, yp) else false) else y.parent == null;
             const texts = if (x.text) |xt| (if (y.text) |yt| eql(xt, yt) else false) else y.text == null;
-            if (parents and eql(x.role, y.role) and texts) break true;
+            const kinds = if (x.kind) |xk| (if (y.kind) |yk| eql(xk, yk) else false) else y.kind == null;
+            if (parents and eql(x.role, y.role) and texts and kinds) break true;
         } else false;
         if (!found) return false;
     }
@@ -710,9 +897,17 @@ const symbolList = blk: {
     break :blk s;
 };
 
-fn isLater(key: []const u8) bool {
-    return contains(&later, key);
-}
+const modifierList = blk: {
+    var s: []const u8 = "";
+    for (modifier_names, 0..) |k, i| s = s ++ (if (i == 0) "" else ", ") ++ k;
+    break :blk s;
+};
+
+const scopeList = blk: {
+    var s: []const u8 = "";
+    for (std.enums.values(highlight.Scope), 0..) |k, i| s = s ++ (if (i == 0) "" else ", ") ++ k.names().name;
+    break :blk s;
+};
 
 fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);

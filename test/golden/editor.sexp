@@ -149,7 +149,9 @@
     (lsp_line `member` `member.name` `of:object`)
     (lsp_line `builtin` `"print"`)
     (lsp_line `doc` `COMMENT` `strip` `"#"`)
-    (lsp_line `undefined` `warning`))
+    (lsp_line `undefined` `warning`)
+    (lsp_line `color` `fn.name` `function` `declaration`)
+    (lsp_line `color` `params.names` `variable.parameter` `declaration`))
   (display
     (name_pair `IDENT` `"a name"`)
     (name_pair `NEWLINE` `"end of line"`))

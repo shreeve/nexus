@@ -74,7 +74,7 @@ fn marker(line: []const u8, prefix: []const u8) ?[]const u8 {
 // =============================================================================
 
 test "every section is present and ends" {
-    for ([_][]const u8{ "sexp", "parser", "messages", "ir" }) |name| {
+    for ([_][]const u8{ "sexp", "parser", "messages", "ir", "complete" }) |name| {
         const body = section(name) orelse return error.MissingSection;
         try std.testing.expect(body.len > 0);
         try std.testing.expect(std.mem.find(u8, body, "// @section") == null);
@@ -84,7 +84,7 @@ test "every section is present and ends" {
 }
 
 test "sections exclude the fixture and its tests" {
-    for ([_][]const u8{ "sexp", "parser", "messages", "ir" }) |name| {
+    for ([_][]const u8{ "sexp", "parser", "messages", "ir", "complete" }) |name| {
         const body = section(name).?;
         try std.testing.expect(std.mem.find(u8, body, "test \"") == null);
         try std.testing.expect(std.mem.find(u8, body, "@import(\"std\")") == null);
