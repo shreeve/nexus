@@ -28,7 +28,9 @@
 //!               `!incomplete` and the pieces built, then
 //!               `!tolerant R repairs (I inserted, D deleted, X dropped)` and, for
 //!               input with an error, `!first ` and writeError's text
-//!               followed by writeExcerpt's
+//!               followed by writeExcerpt's, then for each later error
+//!               of `failures`, `!next ` and writeFailure's text followed
+//!               by writeExcerpt's
 //!
 //! The start rule defaults to the first `parse*` method of the parser. Any
 //! method `fn (*Parser) !Sexp` whose name starts with `parse` can be named.
@@ -281,7 +283,7 @@ fn startOf(method: []const u8) ?parser.Start {
     return null;
 }
 
-/// `--tolerant`: the tree or the pieces, the repairs, and the first error.
+/// `--tolerant`: the tree or the pieces, the repairs, and the errors.
 fn writeTolerant(out: *std.Io.Writer, pr: *Printer, b: *parser.BaseParser, start: []const u8, budget: u32) !bool {
     if (comptime !parser.hasRepair) {
         std.debug.print("driver: --tolerant needs a grammar with @repair\n", .{});
@@ -308,6 +310,12 @@ fn writeTolerant(out: *std.Io.Writer, pr: *Printer, b: *parser.BaseParser, start
             try b.writeError(out);
             try out.writeByte('\n');
             try b.writeExcerpt(out, f.span);
+            for (r.failures[1..]) |next| {
+                try out.writeAll("!next ");
+                try b.writeFailure(out, next);
+                try out.writeByte('\n');
+                try b.writeExcerpt(out, next.span);
+            }
         } else try out.writeByte('\n');
         return r.complete and r.failure == null;
     }

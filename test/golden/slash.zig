@@ -951,13 +951,16 @@ pub const Failure = struct {
     symbol: u16,
     cat: TokenCat,
     state: u16,
+    /// What the parser expected there, for `writeFailure` (see
+    /// `BaseParser.recordFailure`).
+    expectation: Expectation = .{},
 };
 
 /// What a failed parse expected: the states of its reduction chain from the
 /// anchor on, whose shifts it lists, and the `@errors`-named rule it
 /// follows (see `BaseParser.recordFailure`).
 const Expectation = struct {
-    states: [chainLimit]u16 = undefined,
+    states: [chainLimit]u16 = @splat(0),
     len: u8 = 0,
     /// The named rule completed just before the error, or `noSymbol`.
     after: u16 = noSymbol,
@@ -1042,6 +1045,13 @@ pub const Tolerant = struct {
     /// The first error, as the strict parse reports it (null when the
     /// input was valid).
     failure: ?Failure,
+    /// Every error the parse repaired past, in source order, the first
+    /// being `failure`, each worded (`writeFailure`) and placed as the
+    /// strict parse words and places its error. An error is reported only
+    /// after `cascade` tokens of the input have been shifted since the
+    /// last one reported, so the errors one mistake sets off are one
+    /// error, and at most `maxFailures` are.
+    failures: []const Failure = &.{},
     /// Tokens inserted plus tokens deleted.
     repairs: u32,
     /// Zero-width tokens inserted (holes and structure).
@@ -1052,6 +1062,12 @@ pub const Tolerant = struct {
     /// terminator or structure token.
     drops: u32 = 0,
     complete: bool,
+
+    /// The tokens of the input shifted after a reported error before
+    /// another is reported.
+    pub const cascade = 3;
+    /// The most errors one parse reports.
+    pub const maxFailures = 100;
 };
 
 /// A token's role in tolerant repair, from `@repair`.
@@ -1137,8 +1153,6 @@ pub const BaseParser = struct {
 
     triviaTokens: std.ArrayList(Token) = .empty,
     failure: ?Failure = null,
-    /// What `failure` expected (see `recordFailure`).
-    expectation: Expectation = .{},
     scratch: std.ArrayList(u16) = .empty,
     /// With `longTokens`: the start and end of every token over 65534
     /// bytes read from this source, in source order (see `tokenEnd`).
@@ -1326,6 +1340,10 @@ pub const BaseParser = struct {
     ///   1. The first error is recorded exactly as the strict parse reports
     ///      it (token, state, expected set); repairs never replace it, and a
     ///      repaired parse still returns it: recovery is not acceptance.
+    ///      Each later error is recorded the same way, on the stack of its
+    ///      moment, once `Tolerant.cascade` tokens of the input have been
+    ///      shifted since the last one recorded, up to
+    ///      `Tolerant.maxFailures` (`Tolerant.failures`).
     ///   2. Only tokens the grammar declares in `@repair` are ever inserted,
     ///      as zero-width tokens at the offending token, taken from the
     ///      state's generated candidate list (holes, then structure; fewer
@@ -1356,12 +1374,18 @@ pub const BaseParser = struct {
         var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
         // Configurations repaired since the last consumed token (rule 4).
         var tried: std.ArrayList(RepairKey) = .empty;
+        var failures: std.ArrayList(Failure) = .empty;
+        // Tokens of the input shifted since the last error recorded.
+        var shifted: u32 = Tolerant.cascade;
         while (true) {
             const state = self.stateStack.last().?;
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
-                if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
+                if (self.pendingInsert == null and self.injectedToken == null) {
+                    tried.clearRetainingCapacity();
+                    shifted +|= 1;
+                }
                 try self.shift(@intCast(action));
             } else if (action < -1) {
                 _ = try self.reduceOrPass(@intCast(-action - 2));
@@ -1372,7 +1396,12 @@ pub const BaseParser = struct {
             } else {
                 // An inserted token is always acceptable (rule 4).
                 std.debug.assert(self.pendingInsert == null);
-                if (self.failure == null) self.recordFailure(state, sym);
+                if (shifted >= Tolerant.cascade and failures.items.len < Tolerant.maxFailures) {
+                    const f = self.failureAt(state, sym);
+                    if (self.failure == null) self.failure = f;
+                    try failures.append(self.allocator(), f);
+                    shifted = 0;
+                }
                 if (result.repairs == budget) break;
                 if (try self.chooseInsertion(sym, tried.items)) |token| {
                     try tried.append(self.allocator(), .{ .depth = @intCast(self.stateStack.items.len), .state = state, .token = token });
@@ -1392,6 +1421,7 @@ pub const BaseParser = struct {
             }
         }
         result.failure = self.failure;
+        result.failures = failures.items;
         if (!result.complete) result.pieces = try self.piecesOf(self.valueStack.items);
         return result;
     }
@@ -2188,15 +2218,21 @@ pub const BaseParser = struct {
     /// operand could still take, an operator or a suffix, is left out once
     /// it completes a named rule. Only a failed parse runs this.
     fn recordFailure(self: *BaseParser, state: u16, sym: u16) void {
+        self.failure = self.failureAt(state, sym);
+    }
+
+    /// The error at the current token, `sym`, rejected by `state`, as
+    /// `recordFailure` describes it.
+    fn failureAt(self: *BaseParser, state: u16, sym: u16) Failure {
         const tok = self.current;
-        self.failure = .{
+        return .{
             .span = .{ .start = tok.pos, .end = self.tokenEnd(tok) },
             .at = self.reportedAt(tok),
             .symbol = sym,
             .cat = tok.cat,
             .state = state,
+            .expectation = expectationOf(self.stateStack.items),
         };
-        self.expectation = expectationOf(self.stateStack.items);
     }
 
     /// The expectation of a parse that fails in the top state of `stack`.
@@ -2350,23 +2386,30 @@ pub const BaseParser = struct {
         return .{ .line = line, .col = @intCast(end - lineStart + 1) };
     }
 
-    /// `line:col: expected A, B or C after R, got D` for the last error, at
-    /// its `at`: what the reduction chain takes (see `recordFailure`),
+    /// `line:col: expected A, B or C after R, got D` for the last error
+    /// (`writeFailure`); nothing when there is none.
+    pub fn writeError(self: *const BaseParser, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        const f = self.failure orelse return;
+        try self.writeFailure(w, f);
+    }
+
+    /// `line:col: expected A, B or C after R, got D` for an error of this
+    /// parser's last parse (`lastError()`, or one of `Tolerant.failures`),
+    /// at its `at`: what the reduction chain takes (see `recordFailure`),
     /// after the `@errors` name of the rule it completed (no `after R` when
     /// it completed none), and the offending token by its name, or by its
     /// text when it is not a token of the grammar (`got '?'`).
-    pub fn writeError(self: *const BaseParser, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        const f = self.failure orelse return;
+    pub fn writeFailure(self: *const BaseParser, w: *std.Io.Writer, f: Failure) std.Io.Writer.Error!void {
         const at = self.lineCol(f.at);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
         var buf: [maxExpected][]const u8 = undefined;
-        const want = self.failureNames(&buf);
+        const want = failureNames(&f, &buf);
         for (want, 0..) |name, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
             try w.writeAll(name);
         }
         if (want.len == 0) try w.writeAll("nothing");
-        if (self.expectation.after != noSymbol) try w.print(" after {s}", .{symbolName(self.expectation.after)});
+        if (f.expectation.after != noSymbol) try w.print(" after {s}", .{symbolName(f.expectation.after)});
         try w.writeAll(", got ");
         const got = symbolName(f.symbol);
         if (f.symbol == errorSymbol and shownText(f.span.text(self.source))) {
@@ -2374,13 +2417,13 @@ pub const BaseParser = struct {
         } else try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
-    /// The reader names of what the last error expected, each once: the
-    /// `@errors` rules the chain's states take, in chain order, then the
-    /// tokens, ascending; the failure state's whole set when the chain
-    /// takes nothing or more than `buf` holds.
-    fn failureNames(self: *const BaseParser, buf: [][]const u8) []const []const u8 {
-        const e = &self.expectation;
-        const whole = self.failure.?.state;
+    /// The reader names of what `f` expected, each once: the `@errors`
+    /// rules the chain's states take, in chain order, then the tokens,
+    /// ascending; the failure state's whole set when the chain takes
+    /// nothing or more than `buf` holds.
+    fn failureNames(f: *const Failure, buf: [][]const u8) []const []const u8 {
+        const e = &f.expectation;
+        const whole = f.state;
         if (!e.takenOnly) return expectedNames(whole, buf);
         var tokens: [maxExpected]u16 = undefined;
         var numTokens: usize = 0;

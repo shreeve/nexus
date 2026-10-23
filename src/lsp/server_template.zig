@@ -1680,29 +1680,38 @@ const Server = struct {
 // =============================================================================
 
 /// The parse diagnostics of a text: the language's `parseDiagnostics`, else
-/// the strict parse's error.
+/// every error the tolerant parse repairs past when the grammar has
+/// `@repair`, else the strict parse's error.
 fn parseDiagnostics(a: Allocator, path: []const u8, text: []const u8) error{OutOfMemory}![]const Diagnostic {
     if (comptime has("parseDiagnostics")) return hooks.parseDiagnostics(a, path, text) catch &.{};
     var p = BaseParser.init(a, text);
-    _ = p.parse(start) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => {
-            const f = p.lastError() orelse return &.{};
-            var out: std.Io.Writer.Allocating = .init(a);
-            p.writeError(&out.writer) catch return error.OutOfMemory;
-            // `line:col: message`: the position is the diagnostic's range.
-            var message = out.written();
-            if (std.mem.findScalar(u8, message, ' ')) |sp| if (sp > 0 and message[sp - 1] == ':') {
-                message = message[sp + 1 ..];
-            };
-            // The offending token, or the end of a line before it (zero width).
-            const end = if (f.at == f.span.start) f.span.end else f.at;
-            const list = try a.alloc(Diagnostic, 1);
-            list[0] = .{ .span = .{ .path = path, .start = f.at, .end = end }, .message = message };
-            return list;
-        },
+    const failures: []const parser.Failure = if (parser.hasRepair) tolerant: {
+        const r = p.parseTolerant(start, 64) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return &.{},
+        };
+        break :tolerant r.failures;
+    } else strict: {
+        _ = p.parse(start) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => break :strict if (p.lastError()) |f| try a.dupe(parser.Failure, &.{f}) else &.{},
+        };
+        break :strict &.{};
     };
-    return &.{};
+    const list = try a.alloc(Diagnostic, failures.len);
+    for (list, failures) |*d, f| {
+        var out: std.Io.Writer.Allocating = .init(a);
+        p.writeFailure(&out.writer, f) catch return error.OutOfMemory;
+        // `line:col: message`: the position is the diagnostic's range.
+        var message = out.written();
+        if (std.mem.findScalar(u8, message, ' ')) |sp| if (sp > 0 and message[sp - 1] == ':') {
+            message = message[sp + 1 ..];
+        };
+        // The offending token, or the end of a line before it (zero width).
+        const end = if (f.at == f.span.start) f.span.end else f.at;
+        d.* = .{ .span = .{ .path = path, .start = f.at, .end = end }, .message = message };
+    }
+    return list;
 }
 
 /// A tree of the text, through the tolerant parse when the grammar has

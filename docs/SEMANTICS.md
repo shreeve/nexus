@@ -239,6 +239,7 @@ test "tolerant parsing" {
     try testing.expect(r.complete);
     try testing.expectEqual(2, r.insertions); // a hole after `=`, a newline before `z`
     try testing.expectEqual(parser.TokenCat.newline, r.failure.?.cat);
+    try testing.expectEqual(2, r.failures.len); // the hole, and `z`
     const stmts = ir.Module.stmts(r.sexp);
     try testing.expectEqual(3, stmts.len);
     const hole = ir.Name.id(ir.Let.value(stmts[0]));
@@ -272,7 +273,7 @@ The module exports:
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()`, `text(source)` (the source it covers, clamped to the source, so a span past its end gives what remains of it or the empty string) |
 | `NodeId` | a node's id (`u32`; 0 is none) |
-| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, the `state` that rejected it, and `at`, where the error is reported (`lastError()`; see [Syntax errors](#syntax-errors)) |
+| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, the `state` that rejected it, `at`, where the error is reported, and `expectation`, what `writeFailure` lists (`lastError()`; see [Syntax errors](#syntax-errors)) |
 | `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
 | `ir.rest(node, role)` | a rest role's children |
@@ -296,7 +297,7 @@ by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `leafEnd(src)`, `leafText(sexp)` (the end and text of a token the parser
 read, and of its leaf, whole for a token over 65534 bytes:
 [GRAMMAR.md](GRAMMAR.md#long-tokens)), `lastError()`, `writeError(w)`,
-`printError()`, `writeExcerpt(w, span)`, `lineCol(pos)`, `expected(state)`,
+`writeFailure(w, failure)`, `printError()`, `writeExcerpt(w, span)`, `lineCol(pos)`, `expected(state)`,
 `expectedNames(state, buf)`, `symbolText(symbol)`; fields `source` and
 `lexer` (the lexer as it stood at the error, for a lang Lexer's own error
 message). A parse fails with `error.ParseError` (see `lastError()`),
@@ -765,6 +766,8 @@ tools. A rule may not use a trivia token.
 A failed parse returns `error.ParseError`; `lastError()` gives the
 offending token's span, category and state, and `at`, and `writeError(w)`
 writes `line:col: expected X, Y or Z after R, got W` at `at`.
+`writeFailure(w, failure)` writes the same for any error of the parser's
+last parse, such as each of a tolerant parse's `failures`.
 `writeExcerpt(w, span)` writes the source line holding a span and a line
 marking it with `^~~` (tabs kept, one column per character), for a
 diagnostic under that message.
@@ -805,11 +808,18 @@ named once), for a consumer that words its own message; `buf` is a
 
 A grammar with `@repair` gets `parseTolerant(start, budget)`, a second
 driver for editors: it parses past errors and returns `Tolerant` (`sexp`,
-`failure`, `repairs`, `insertions`, `deletions`, `drops`, `complete`,
-`pieces`). Strict parsing is unaffected. The rules:
+`failure`, `failures`, `repairs`, `insertions`, `deletions`, `drops`,
+`complete`, `pieces`). Strict parsing is unaffected. The rules:
 
 1. The first error is recorded exactly as a strict parse reports it; a
-   repaired parse still returns it.
+   repaired parse still returns it (`failure`). `failures` holds it and
+   every later error the parse repairs past, in source order, each
+   recorded the same way on the stack of its moment, so `writeFailure`
+   words and places it as a strict parse would. A later error is
+   recorded only when `Tolerant.cascade` (3) tokens of the input have
+   been shifted since the last one recorded, so the errors one mistake
+   sets off, such as tokens deleted one after another, are one; at most
+   `Tolerant.maxFailures` (100) are.
 2. Only tokens the grammar declares in `@repair` are inserted, zero-width,
    from a per-state candidate list computed at generation time: holes
    first, then fewer further insertions needed to finish the construct,

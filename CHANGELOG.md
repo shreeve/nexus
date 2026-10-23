@@ -79,6 +79,20 @@
   each grammar's editor files by what they colour (`test/lib/highlight`:
   reference TextMate and highlight.js tokenizers, and Vim itself, which
   the suite now needs) and pins `--describe` for every grammar.
+- More than one syntax error per file. `Tolerant.failures` holds every
+  error `parseTolerant` repairs past, in source order, the first being
+  `failure`, each worded and placed as the strict parse words and places
+  its error; a later error is reported once `Tolerant.cascade` (3)
+  tokens of the input have been shifted since the last one reported, so
+  the errors one mistake sets off are one, and at most
+  `Tolerant.maxFailures` (100) are
+  ([SEMANTICS.md, "Tolerant parsing"](docs/SEMANTICS.md#tolerant-parsing)).
+  `writeFailure(w, failure)` writes any of them as `writeError` writes
+  the first; each `Failure` carries what it expected (`expectation`).
+  The generated language server reports every one for a grammar with
+  `@repair`, and the strict parse's one error otherwise; a
+  `parseDiagnostics` hook still replaces them. Strict parsing is
+  unchanged.
 - `word-chars C`, an optional `@highlight` metadata line: the characters
   of words, one character class (`word-chars [A-Za-z0-9%]`), by default
   `[A-Za-z0-9_]`. A literal that starts or ends with one does not match
@@ -153,6 +167,13 @@ Additive: no migration required. Downstream:
   and many move to the end of the line before; tests that pin its text
   or position change with it. A lang module that words its own message
   from `lastError()` may report it at `at` for the same placement.
+- Rig, em, nexis: optional; a language server or tool that reports
+  `parseTolerant`'s first error (`failure`) may report each of
+  `failures` with `writeFailure(w, f)`. A `parseDiagnostics` hook that
+  runs the strict parse keeps its one error; to report every error
+  instead, return one diagnostic per entry of
+  `parseTolerant(start, budget).failures`, as the generated server does.
+  `BaseParser` has no `expectation` field: it is each `Failure`'s.
 - Rig, em, nexis: rewrite `editors/` with `nexus --highlight all`. Rig's
   files change in one entry, `("called" | "rarely" | "inline") after
   …`, which coloured `called` and `rarely` anywhere; its sample colours

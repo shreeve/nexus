@@ -193,10 +193,12 @@ writes, so that the client's own dependencies stay fixed.
 
 With every function of `hooks.zig` a stub, the server gives:
 
-- **Syntax errors as you type.** On every change, the strict parse's
-  error, worded as `writeError` words it, at the token where the parse
-  failed, or, when that token is on a later line than the one before
-  it, zero width at the end of that one
+- **Syntax errors as you type.** On every change, every error the
+  tolerant parse repairs past for a grammar with `@repair`
+  ([SEMANTICS.md, "Tolerant parsing"](SEMANTICS.md#tolerant-parsing)),
+  else the strict parse's error; each worded as `writeError` words it,
+  at the token where the parse failed, or, when that token is on a
+  later line than the one before it, zero width at the end of that one
   ([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its
   text (a literal or a `@keywords` word), else its token name. The token
@@ -249,7 +251,7 @@ advertised nor ever called. A function that reads the analysis without
 
 | Function | Turns on |
 |---|---|
-| `parseDiagnostics` | the language's own syntax errors, in place of the strict parse's one error |
+| `parseDiagnostics` | the language's own syntax errors, in place of the grammar's |
 | `tokens` | the language's semantic tokens, in place of each token's `@highlight` scope |
 | `symbols` | the outline and breadcrumbs |
 | `folds` | the language's folding ranges, in place of the grammar's |
