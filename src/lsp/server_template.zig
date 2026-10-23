@@ -426,6 +426,12 @@ const Code = enum(i32) {
 /// Serve until `exit` or the end of input. The status is 0 after
 /// `shutdown` then `exit`, else 1; a leak in a safety-checked build is
 /// reported on stderr and makes it 1.
+///
+/// One task reads the messages and the worker runs `analyze`; both hand
+/// what they have to the main loop through one queue, and the main loop
+/// alone keeps the server's state and writes. Where tasks cannot run
+/// concurrently, the main loop reads, and analyses run as they are asked
+/// for.
 pub fn run(io: std.Io) u8 {
     var sa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     var status: u8 = 1;
@@ -434,9 +440,20 @@ pub fn run(io: std.Io) u8 {
         var in = std.Io.File.stdin().readerStreaming(io, &in_buffer);
         var out_buffer: [64 * 1024]u8 = undefined;
         var out = std.Io.File.stdout().writerStreaming(io, &out_buffer);
-        var server: Server = .{ .gpa = sa.allocator(), .io = io, .out = &out.interface };
+        var events: [64]Event = undefined;
+        var queue: std.Io.Queue(Event) = .init(&events);
+        var server: Server = .{ .gpa = sa.allocator(), .io = io, .out = &out.interface, .queue = &queue };
         defer server.deinit();
-        status = server.serve(&in.interface);
+        if (io.concurrent(readAll, .{ io, sa.allocator(), &in.interface, &queue })) |reader| {
+            var r = reader;
+            status = server.serve();
+            queue.close(io);
+            r.cancel(io);
+        } else |_| {
+            server.inline_jobs = true;
+            status = server.serveInline(&in.interface);
+        }
+        server.stopWorker();
     }
     const leaks = sa.deinit();
     if (leaks > 0) {
@@ -446,20 +463,122 @@ pub fn run(io: std.Io) u8 {
     return status;
 }
 
+/// What the main loop waits for: a message's body, in the server's
+/// allocator (null at the end of input or a message it cannot frame), or
+/// an analysis the worker finished.
+const Event = union(enum) { message: ?[]u8, analyzed: *Job };
+
+/// Read messages into the queue until the end of input.
+fn readAll(io: std.Io, gpa: Allocator, in: *std.Io.Reader, queue: *std.Io.Queue(Event)) void {
+    while (true) {
+        const body = readMessage(in, gpa) catch null;
+        queue.putOne(io, .{ .message = body }) catch {
+            if (body) |b| gpa.free(b);
+            return;
+        };
+        if (body == null) return;
+    }
+}
+
+/// An analysis for the worker: its root, the document whose opening or
+/// saving asked for it, a copy of every open document's path, text and
+/// version, and what `analyze` made of them; all in its own arena.
+const Job = struct {
+    arena: std.heap.ArenaAllocator,
+    io: std.Io,
+    root: []const u8,
+    uri: []const u8,
+    paths: []const []const u8,
+    texts: []const []const u8,
+    read: []const Held.Read,
+    result: anyerror!Analyzed(Analysis) = error.NotRun,
+
+    /// Run `analyze`, then hand the job to the main loop.
+    fn run(job: *Job, queue: *std.Io.Queue(Event)) void {
+        if (comptime has("analyze")) {
+            job.result = hooks.analyze(job.arena.allocator(), job.root, .{ .io = job.io, .paths = job.paths, .texts = job.texts });
+        }
+        queue.putOneUncancelable(job.io, .{ .analyzed = job }) catch {};
+    }
+};
+
+/// A change to a document's text: `len` bytes at `start` became `new_len`
+/// bytes, making version `version`.
+const Edit = struct { version: u64, start: u32, len: u32, new_len: u32 };
+
+/// The most edits a document keeps; past it, positions in the texts
+/// analyses read are no longer mapped.
+const max_edits = 4096;
+
 /// An open document. `version` is a tick of the server's clock, new with
-/// each text; `failed`: the error of the failed analysis its opening or
-/// saving ran, until an analysis succeeds.
+/// each change; `log` holds the edits that made each version after
+/// `log_from`; `failed`: the error of the failed analysis its opening or
+/// saving asked for, until an analysis succeeds.
 const Doc = struct {
     uri: []u8,
     path: []u8,
     text: []u8,
     version: u64,
+    log: std.ArrayList(Edit) = .empty,
+    log_from: u64,
     failed: ?[]const u8 = null,
 
     fn deinit(d: *Doc, gpa: Allocator) void {
         gpa.free(d.uri);
         gpa.free(d.path);
         gpa.free(d.text);
+        d.log.deinit(gpa);
+    }
+
+    /// Offset `at` of the text of version `from`, in the text now; null
+    /// where an edit since replaced the text, or when the log does not
+    /// reach back to `from`. An end offset (`end`) stays before text
+    /// inserted at it; a start offset moves past it.
+    fn forward(d: *const Doc, from: u64, at: u32, end: bool) ?u32 {
+        if (from < d.log_from) return null;
+        var p = at;
+        for (d.log.items) |e| {
+            if (e.version <= from) continue;
+            if (end) {
+                if (p <= e.start) continue;
+                if (p <= e.start + e.len) return null;
+            } else {
+                if (p < e.start) continue;
+                if (p < e.start + e.len) return null;
+            }
+            p = p - e.len + e.new_len;
+        }
+        return p;
+    }
+
+    /// Offset `at` of the text now, in the text of version `to`; null
+    /// inside text an edit since wrote, or when the log does not reach
+    /// back to `to`.
+    fn backward(d: *const Doc, to: u64, at: u32) ?u32 {
+        if (to < d.log_from) return null;
+        var p = at;
+        var i = d.log.items.len;
+        while (i > 0) {
+            i -= 1;
+            const e = d.log.items[i];
+            if (e.version <= to) break;
+            if (p < e.start) continue;
+            if (p < e.start + e.new_len) return null;
+            p = p - e.new_len + e.len;
+        }
+        return p;
+    }
+
+    /// Forget the edits before version `from`.
+    fn prune(d: *Doc, from: u64) void {
+        if (from <= d.log_from) return;
+        var kept: usize = 0;
+        for (d.log.items) |e| if (e.version > from) {
+            d.log.items[kept] = e;
+            kept += 1;
+        };
+        d.log.items.len = kept;
+        d.log_from = from;
     }
 };
 
@@ -515,6 +634,20 @@ const Server = struct {
     /// The hash of the diagnostics last sent to each URI, for the URIs
     /// whose last diagnostics were not empty.
     sent: std.array_hash_map.String(u64) = .empty,
+    queue: *std.Io.Queue(Event),
+    /// Analyses run as they are asked for, not on the worker.
+    inline_jobs: bool = false,
+    /// The analysis the worker runs, and the worker.
+    running: ?*Job = null,
+    worker: ?std.Io.Future(void) = null,
+    /// The analyses asked for while one runs: one per root, with the
+    /// document that asked last.
+    pending: std.ArrayList(Pending) = .empty,
+    /// The ids, as JSON, of the `nexus/idle` requests waiting for every
+    /// analysis asked for to finish.
+    idle: std.ArrayList([]u8) = .empty,
+
+    const Pending = struct { root: []u8, uri: []u8 };
 
     fn deinit(s: *Server) void {
         for (s.docs.items) |*d| d.deinit(s.gpa);
@@ -524,6 +657,13 @@ const Server = struct {
         s.analyses.deinit(s.gpa);
         for (s.sent.keys()) |k| s.gpa.free(k);
         s.sent.deinit(s.gpa);
+        for (s.pending.items) |p| {
+            s.gpa.free(p.root);
+            s.gpa.free(p.uri);
+        }
+        s.pending.deinit(s.gpa);
+        for (s.idle.items) |i| s.gpa.free(i);
+        s.idle.deinit(s.gpa);
     }
 
     fn tick(s: *Server) u64 {
@@ -531,26 +671,76 @@ const Server = struct {
         return s.clock;
     }
 
-    fn serve(s: *Server, in: *std.Io.Reader) u8 {
+    /// Wait for the analysis the worker runs, and drop it.
+    fn stopWorker(s: *Server) void {
+        if (s.worker) |*w| w.await(s.io);
+        s.worker = null;
+        if (s.running) |job| {
+            job.arena.deinit();
+            s.gpa.destroy(job);
+        }
+        s.running = null;
+        // Analyses that finished but were never handled.
+        var events: [1]Event = undefined;
+        while ((s.queue.get(s.io, &events, 0) catch 0) == 1) switch (events[0]) {
+            .message => |body| if (body) |b| s.gpa.free(b),
+            .analyzed => |job| {
+                job.arena.deinit();
+                s.gpa.destroy(job);
+            },
+        };
+    }
+
+    /// Handle what the queue brings until `exit` or the end of input.
+    fn serve(s: *Server) u8 {
+        var arena: std.heap.ArenaAllocator = .init(s.gpa);
+        defer arena.deinit();
+        while (true) {
+            const event = s.queue.getOneUncancelable(s.io) catch return 1;
+            _ = arena.reset(.retain_capacity);
+            const a = arena.allocator();
+            switch (event) {
+                .message => |body| {
+                    const b = body orelse return 1;
+                    defer s.gpa.free(b);
+                    if (s.dispatch(a, b) catch return 1) |status| return status;
+                },
+                .analyzed => |job| s.finish(a, job) catch return 1,
+            }
+        }
+    }
+
+    /// Read and handle messages until `exit` or the end of input, and
+    /// handle each analysis as it finishes.
+    fn serveInline(s: *Server, in: *std.Io.Reader) u8 {
         var arena: std.heap.ArenaAllocator = .init(s.gpa);
         defer arena.deinit();
         while (true) {
             _ = arena.reset(.retain_capacity);
             const a = arena.allocator();
             const body = (readMessage(in, a) catch return 1) orelse return 1;
-            const msg = std.json.parseFromSliceLeaky(Value, a, body, .{}) catch {
-                s.respondError(a, .null, .parse_error, "the message is not JSON") catch return 1;
-                continue;
-            };
-            if (msg != .object) continue;
-            const method = str(msg.object.get("method")) orelse continue;
-            const id = msg.object.get("id");
-            const params = msg.object.get("params") orelse .null;
-            if (std.mem.eql(u8, method, "exit")) return if (s.shut_down) 0 else 1;
-            s.handle(a, method, id, params) catch |err| switch (err) {
-                error.OutOfMemory, error.WriteFailed => return 1,
+            if (s.dispatch(a, body) catch return 1) |status| return status;
+            var events: [1]Event = undefined;
+            while ((s.queue.get(s.io, &events, 0) catch 0) == 1) switch (events[0]) {
+                .message => unreachable,
+                .analyzed => |job| s.finish(a, job) catch return 1,
             };
         }
+    }
+
+    /// Handle one message; the status to exit with after `exit`.
+    fn dispatch(s: *Server, a: Allocator, body: []const u8) error{ OutOfMemory, WriteFailed }!?u8 {
+        const msg = std.json.parseFromSliceLeaky(Value, a, body, .{}) catch {
+            try s.respondError(a, .null, .parse_error, "the message is not JSON");
+            return null;
+        };
+        if (msg != .object) return null;
+        const method = str(msg.object.get("method")) orelse return null;
+        const id = msg.object.get("id");
+        const params = msg.object.get("params") orelse .null;
+        if (std.mem.eql(u8, method, "exit")) return if (s.shut_down) 0 else 1;
+        try s.handle(a, method, id, params);
+        return null;
     }
 
     fn handle(s: *Server, a: Allocator, method: []const u8, id: ?Value, params: Value) error{ OutOfMemory, WriteFailed }!void {
@@ -566,6 +756,11 @@ const Server = struct {
         if (eql(u8, method, "shutdown")) {
             s.shut_down = true;
             return s.respond(a, id orelse return, null);
+        }
+        if (eql(u8, method, "nexus/idle")) {
+            const i = id orelse return;
+            if (s.running == null) return s.respond(a, i, null);
+            return s.idle.append(s.gpa, try std.json.Stringify.valueAlloc(s.gpa, i, .{}));
         }
         if (eql(u8, method, "textDocument/didOpen")) return s.didOpen(a, params);
         if (eql(u8, method, "textDocument/didChange")) return s.didChange(a, params);
@@ -639,7 +834,7 @@ const Server = struct {
         try j.objectField("positionEncoding");
         try j.write(if (encoding == .utf8) "utf-8" else "utf-16");
         try j.objectField("textDocumentSync");
-        try j.write(.{ .openClose = true, .change = 1, .save = .{ .includeText = false } });
+        try j.write(.{ .openClose = true, .change = 2, .save = .{ .includeText = false } });
         try j.objectField("semanticTokensProvider");
         try j.write(.{ .legend = .{ .tokenTypes = legend, .tokenModifiers = [_][]const u8{} }, .full = true });
         // Without node spans or a folds function, the editor's own
@@ -698,32 +893,53 @@ const Server = struct {
             s.gpa.free(d.text);
             d.text = try s.gpa.dupe(u8, text);
             d.version = s.tick();
+            d.log.clearRetainingCapacity();
+            d.log_from = d.version;
         } else {
             const path = try uriToPath(a, uri);
+            const version = s.tick();
             try s.docs.append(s.gpa, .{
                 .uri = try s.gpa.dupe(u8, uri),
                 .path = try s.gpa.dupe(u8, path orelse ""),
                 .text = try s.gpa.dupe(u8, text),
-                .version = s.tick(),
+                .version = version,
+                .log_from = version,
             });
         }
-        try s.analyzeAndPublish(a, s.docOf(params).?);
+        // An analysis it asks for publishes when it lands.
+        if (!try s.askAnalysis(s.docOf(params).?)) try s.publishAll(a);
     }
 
+    /// Apply each change in turn: a range and its new text, or the whole
+    /// new text.
     fn didChange(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
         const d = s.docOf(params) orelse return;
         const changes = field(params, &.{"contentChanges"}) orelse return;
-        if (changes != .array or changes.array.items.len == 0) return;
-        const text = str(field(changes.array.items[changes.array.items.len - 1], &.{"text"})) orelse return;
-        s.gpa.free(d.text);
-        d.text = try s.gpa.dupe(u8, text);
-        d.version = s.tick();
+        if (changes != .array) return;
+        for (changes.array.items) |change| {
+            const new = str(field(change, &.{"text"})) orelse continue;
+            var lo: u32 = 0;
+            var hi: u32 = @intCast(d.text.len);
+            if (field(change, &.{"range"})) |range| {
+                const lines = try Lines.init(a, d.text, s.encoding);
+                lo = lines.offset(position(field(range, &.{"start"})) orelse continue);
+                hi = @max(lo, lines.offset(position(field(range, &.{"end"})) orelse continue));
+            }
+            const text = try std.mem.concat(s.gpa, u8, &.{ d.text[0..lo], new, d.text[hi..] });
+            s.gpa.free(d.text);
+            d.text = text;
+            d.version = s.tick();
+            if (d.log.items.len == max_edits) {
+                d.log.clearRetainingCapacity();
+                d.log_from = d.version;
+            } else try d.log.append(s.gpa, .{ .version = d.version, .start = lo, .len = hi - lo, .new_len = @intCast(new.len) });
+        }
         try s.publish(a, d);
     }
 
     fn didSave(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
         const d = s.docOf(params) orelse return;
-        try s.analyzeAndPublish(a, d);
+        if (!try s.askAnalysis(d)) try s.publishAll(a);
     }
 
     fn didClose(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
@@ -767,69 +983,182 @@ const Server = struct {
 
     // --- Diagnostics ------------------------------------------------------------
 
-    /// Run `analyze` (when written) on the program of `d`, then publish
-    /// every file's diagnostics that changed.
-    fn analyzeAndPublish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
-        if (comptime has("analyze")) if (d.path.len > 0) try s.analyzeProgram(a, d);
-        try s.publishAll(a);
+    /// Ask for an analysis of the program of `d`: now, when the worker is
+    /// free; else after the one it runs, once per root. Whether one was
+    /// asked for: none without `analyze`, or for a document without a path.
+    fn askAnalysis(s: *Server, d: *Doc) error{ OutOfMemory, WriteFailed }!bool {
+        if (comptime !has("analyze")) return false;
+        if (d.path.len == 0) return false;
+        const root = s.rootOf(d);
+        if (s.running == null) {
+            try s.startJob(root, d.uri);
+            return true;
+        }
+        for (s.pending.items) |*p| if (std.mem.eql(u8, p.root, root)) {
+            s.gpa.free(p.uri);
+            p.uri = try s.gpa.dupe(u8, d.uri);
+            return true;
+        };
+        const owned_root = try s.gpa.dupe(u8, root);
+        errdefer s.gpa.free(owned_root);
+        try s.pending.append(s.gpa, .{ .root = owned_root, .uri = try s.gpa.dupe(u8, d.uri) });
+        return true;
     }
 
-    /// Hold what `analyze` makes of the program of `d`, in place of the
-    /// last analysis of the same root. An analysis that fails keeps the
-    /// last one, and says so: in the log, and in a diagnostic on `d` until
-    /// an analysis succeeds.
-    fn analyzeProgram(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
-        var paths: std.ArrayList([]const u8) = .empty;
-        var texts: std.ArrayList([]const u8) = .empty;
-        for (s.docs.items) |o| if (o.path.len > 0) {
-            try paths.append(a, o.path);
-            try texts.append(a, o.text);
-        };
+    /// Hand the worker an analysis of `root` over a copy of the open
+    /// documents; where tasks cannot run concurrently, run it here.
+    fn startJob(s: *Server, root: []const u8, uri: []const u8) error{ OutOfMemory, WriteFailed }!void {
+        const job = try s.gpa.create(Job);
+        job.* = .{ .arena = .init(s.gpa), .io = s.io, .root = undefined, .uri = undefined, .paths = undefined, .texts = undefined, .read = undefined };
+        errdefer {
+            job.arena.deinit();
+            s.gpa.destroy(job);
+        }
+        const ja = job.arena.allocator();
         // Everything the analysis keeps is in its arena: the analysis may
         // keep the root it is given, and the last analysis of this root,
-        // which may hold the root now, is dropped below.
-        var arena: std.heap.ArenaAllocator = .init(s.gpa);
-        const ha = arena.allocator();
-        const root = try ha.dupe(u8, s.rootOf(d));
-        const got = hooks.analyze(ha, root, .{ .io = s.io, .paths = paths.items, .texts = texts.items }) catch |err| {
-            const message = try std.fmt.allocPrint(a, "the analysis of {s} failed: {s}", .{ root, @errorName(err) });
-            arena.deinit();
-            d.failed = @errorName(err);
-            try s.notify(a, "window/logMessage", .{ .type = 1, .message = message });
-            return;
-        };
+        // which may hold the root now, is dropped when this one lands.
+        job.root = try ja.dupe(u8, root);
+        job.uri = try ja.dupe(u8, uri);
+        var paths: std.ArrayList([]const u8) = .empty;
+        var texts: std.ArrayList([]const u8) = .empty;
         var read: std.ArrayList(Held.Read) = .empty;
-        for (s.docs.items) |o| if (o.path.len > 0) try read.append(ha, .{ .path = try ha.dupe(u8, o.path), .version = o.version });
-        const value = try ha.create(Analysis);
+        for (s.docs.items) |o| if (o.path.len > 0) {
+            const path = try ja.dupe(u8, o.path);
+            try paths.append(ja, path);
+            try texts.append(ja, try ja.dupe(u8, o.text));
+            try read.append(ja, .{ .path = path, .version = o.version });
+        };
+        job.paths = paths.items;
+        job.texts = texts.items;
+        job.read = read.items;
+        s.running = job;
+        if (!s.inline_jobs) {
+            if (s.io.concurrent(Job.run, .{ job, s.queue })) |w| {
+                s.worker = w;
+                return;
+            } else |_| s.inline_jobs = true;
+        }
+        job.run(s.queue);
+    }
+
+    /// Hold what the worker made of the program of `job.root`, in place of
+    /// the last analysis of the same root, then start the next analysis
+    /// and publish what changed. An analysis that fails keeps the last
+    /// one, and says so: in the log, and in a diagnostic on the document
+    /// that asked for it until an analysis succeeds.
+    fn finish(s: *Server, a: Allocator, job: *Job) error{ OutOfMemory, WriteFailed }!void {
+        if (s.worker) |*w| w.await(s.io);
+        s.worker = null;
+        s.running = null;
+        var asker: ?*Doc = null;
+        for (s.docs.items) |*d| if (std.mem.eql(u8, d.uri, job.uri)) {
+            asker = d;
+        };
+        if (job.result) |got| {
+            try s.hold(job, got);
+            for (s.docs.items) |*o| if (o == asker or s.analyses.items[s.analyses.items.len - 1].covers(o.path)) {
+                o.failed = null;
+            };
+        } else |err| {
+            const message = try std.fmt.allocPrint(a, "the analysis of {s} failed: {s}", .{ job.root, @errorName(err) });
+            job.arena.deinit();
+            s.gpa.destroy(job);
+            if (asker) |d| d.failed = @errorName(err);
+            try s.notify(a, "window/logMessage", .{ .type = 1, .message = message });
+        }
+        if (s.pending.items.len > 0) {
+            const next = s.pending.orderedRemove(0);
+            defer s.gpa.free(next.root);
+            defer s.gpa.free(next.uri);
+            try s.startJob(next.root, next.uri);
+        }
+        s.pruneLogs();
+        try s.publishAll(a);
+        if (s.running == null) {
+            for (s.idle.items) |i| {
+                try writeMessage(s.out, try std.fmt.allocPrint(a, "{{\"jsonrpc\":\"2.0\",\"id\":{s},\"result\":null}}", .{i}));
+                s.gpa.free(i);
+            }
+            s.idle.clearRetainingCapacity();
+        }
+    }
+
+    /// Hold a finished job's analysis, last in `analyses`, in place of the
+    /// analysis of the same root or else of the one used least recently
+    /// when the server holds the most it may.
+    fn hold(s: *Server, job: *Job, got: Analyzed(Analysis)) error{OutOfMemory}!void {
+        const value = try job.arena.allocator().create(Analysis);
         value.* = got.analysis;
         const now = s.tick();
         const held: Held = .{
-            .arena = arena,
-            .root = root,
+            .arena = job.arena,
+            .root = job.root,
             .value = value,
             .diagnostics = got.diagnostics,
             .files = got.files,
-            .read = read.items,
+            .read = job.read,
             .made = now,
             .used = now,
         };
-        const slot = for (s.analyses.items) |*h| {
-            if (std.mem.eql(u8, h.root, root)) {
-                h.arena.deinit();
-                break h;
-            }
-        } else if (s.analyses.items.len < max_analyses) try s.analyses.addOne(s.gpa) else lru: {
-            var oldest = &s.analyses.items[0];
-            for (s.analyses.items[1..]) |*h| if (h.used < oldest.used) {
-                oldest = h;
+        s.gpa.destroy(job);
+        var drop: ?usize = null;
+        for (s.analyses.items, 0..) |h, i| if (std.mem.eql(u8, h.root, held.root)) {
+            drop = i;
+        };
+        if (drop == null and s.analyses.items.len == max_analyses) {
+            drop = 0;
+            for (s.analyses.items, 0..) |h, i| if (h.used < s.analyses.items[drop.?].used) {
+                drop = i;
             };
-            oldest.arena.deinit();
-            break :lru oldest;
-        };
-        slot.* = held;
-        for (s.docs.items) |*o| if (o == d or slot.covers(o.path)) {
-            o.failed = null;
-        };
+        }
+        if (drop) |i| {
+            s.analyses.items[i].arena.deinit();
+            _ = s.analyses.orderedRemove(i);
+        }
+        try s.analyses.append(s.gpa, held);
+    }
+
+    /// Forget the edits no held or running analysis needs: those before
+    /// the oldest version of each document that one read.
+    fn pruneLogs(s: *Server) void {
+        for (s.docs.items) |*d| {
+            var oldest: u64 = d.version;
+            for (s.analyses.items) |*h| if (h.versionOf(d.path)) |v| {
+                oldest = @min(oldest, v);
+            };
+            if (s.running) |job| for (job.read) |r| if (std.mem.eql(u8, r.path, d.path)) {
+                oldest = @min(oldest, r.version);
+            };
+            d.prune(oldest);
+        }
+    }
+
+    /// The open document of `path`.
+    fn docAt(s: *Server, path: []const u8) ?*Doc {
+        if (path.len == 0) return null;
+        for (s.docs.items) |*d| if (std.mem.eql(u8, d.path, path)) return d;
+        return null;
+    }
+
+    /// `span`, in the text the analysis `h` read, in the text now: the
+    /// same in a file not open or whose text `h` read from disk; null
+    /// where an edit since replaced text in it.
+    fn toNow(s: *Server, h: *const Held, span: Span) ?Span {
+        const d = s.docAt(span.path) orelse return span;
+        const from = h.versionOf(span.path) orelse return span;
+        if (from == d.version) return span;
+        const last = d.forward(from, span.end, true) orelse return null;
+        const first = if (span.start == span.end) last else d.forward(from, span.start, false) orelse return null;
+        return .{ .path = span.path, .start = first, .end = last };
+    }
+
+    /// Offset `at` of `d`'s text now, in the text the analysis `h` read;
+    /// null inside text written since.
+    fn toRead(h: *const Held, d: *const Doc, at: u32) ?u32 {
+        const to = h.versionOf(d.path) orelse return at;
+        if (to == d.version) return at;
+        return d.backward(to, at);
     }
 
     fn isOpen(s: *Server, path: []const u8) bool {
@@ -886,8 +1215,15 @@ const Server = struct {
             .span = .{ .path = path, .start = 0, .end = 0 },
             .message = try std.fmt.allocPrint(a, "the analysis failed: {s}", .{err}),
         });
-        if (s.ownerOf(path)) |h| if (open == null or h.versionOf(path) == open.?.version) {
-            for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) try list.append(a, d);
+        // The analysis's, moved with the edits since it read the file;
+        // none in an open file it did not read.
+        if (s.ownerOf(path)) |h| if (open == null or h.versionOf(path) != null) {
+            for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) {
+                const span = s.toNow(h, d.span) orelse continue;
+                var notes: std.ArrayList(Note) = .empty;
+                for (d.notes) |n| try notes.append(a, .{ .span = s.toNow(h, n.span) orelse continue, .message = n.message });
+                try list.append(a, .{ .span = span, .severity = d.severity, .message = d.message, .notes = notes.items });
+            };
         };
         const text = if (open) |o| o.text else try s.fileText(a, path);
         const lines = try Lines.init(a, text, s.encoding);
@@ -1165,10 +1501,20 @@ const Server = struct {
         return h.value;
     }
 
+    /// The request's position, in the text the analysis of `d`'s program
+    /// read; null inside text written since.
     fn posOf(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!?Pos {
         const lines = try Lines.init(a, d.text, s.encoding);
         const p = position(field(params, &.{"position"})) orelse return null;
-        return .{ .path = d.path, .offset = lines.offset(p) };
+        const at = lines.offset(p);
+        const h = s.ownerOf(d.path) orelse return .{ .path = d.path, .offset = at };
+        return .{ .path = d.path, .offset = toRead(h, d, at) orelse return null };
+    }
+
+    /// A span the analysis of `d`'s program gave, in the text now.
+    fn spanNow(s: *Server, d: *Doc, span: Span) ?Span {
+        const h = s.ownerOf(d.path) orelse return span;
+        return s.toNow(h, span);
     }
 
     fn location(s: *Server, a: Allocator, span: Span) error{OutOfMemory}!struct { uri: []const u8, range: Range } {
@@ -1195,7 +1541,7 @@ const Server = struct {
         const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
-        return json(a, try s.location(a, sym.decl));
+        return json(a, try s.location(a, s.spanNow(d, sym.decl) orelse return json(a, null)));
     }
 
     fn typeDefinition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
@@ -1205,16 +1551,21 @@ const Server = struct {
         const t = (hooks.typeAt(an, a, pos) catch null) orelse return json(a, null);
         const desc = (hooks.describe(an, a, .{ .type = t }) catch null) orelse return json(a, null);
         const decl = desc.decl orelse return json(a, null);
-        return json(a, try s.location(a, decl));
+        return json(a, try s.location(a, s.spanNow(d, decl) orelse return json(a, null)));
     }
 
-    /// Every span that uses `sym`: the language's `references`, else every
-    /// token whose `symbolAt` is `sym` of every file the analysis of `d`'s
-    /// program read and every open document of that program.
+    /// Every span that uses `sym`, in the text now: the language's
+    /// `references`, else every token whose `symbolAt` is `sym` of every
+    /// file the analysis of `d`'s program read and every open document of
+    /// that program. A use in text written since the analysis is not one.
     fn uses(s: *Server, a: Allocator, d: *Doc, an: *Analysis, sym: Symbol) error{OutOfMemory}![]const Span {
-        if (comptime has("references")) return hooks.references(an, a, sym) catch &.{};
-        if (comptime !has("symbolAt")) unreachable;
         var out: std.ArrayList(Span) = .empty;
+        if (comptime has("references")) {
+            const got = hooks.references(an, a, sym) catch &.{};
+            for (got) |sp| try out.append(a, s.spanNow(d, sp) orelse continue);
+            return out.items;
+        }
+        if (comptime !has("symbolAt")) unreachable;
         var files: std.ArrayList([]const u8) = .empty;
         const owner = s.ownerOf(d.path);
         if (owner) |h| try files.appendSlice(a, h.files);
@@ -1225,7 +1576,8 @@ const Server = struct {
             while (true) {
                 const t = lexer.next();
                 if (t.cat == .eof) break;
-                const found = (hooks.symbolAt(an, a, .{ .path = path, .offset = t.pos }) catch null) orelse continue;
+                const at = if (owner) |h| (if (s.docAt(path)) |o| toRead(h, o, t.pos) orelse continue else t.pos) else t.pos;
+                const found = (hooks.symbolAt(an, a, .{ .path = path, .offset = at }) catch null) orelse continue;
                 if (std.mem.eql(u8, found.id, sym.id)) try out.append(a, .{ .path = path, .start = t.pos, .end = t.pos + t.len });
             }
         }
@@ -1237,6 +1589,7 @@ const Server = struct {
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
         const spans = try s.uses(a, d, an, sym);
+        const decl = s.spanNow(d, sym.decl);
         const withDecl = if (field(params, &.{ "context", "includeDeclaration" })) |v| v == .bool and v.bool else here;
         if (here) {
             const lines = try Lines.init(a, d.text, s.encoding);
@@ -1248,7 +1601,7 @@ const Server = struct {
         const L = struct { uri: []const u8, range: Range };
         var out: std.ArrayList(L) = .empty;
         for (spans) |sp| {
-            const isDecl = std.mem.eql(u8, sp.path, sym.decl.path) and sp.start == sym.decl.start;
+            const isDecl = if (decl) |dc| std.mem.eql(u8, sp.path, dc.path) and sp.start == dc.start else false;
             if (isDecl and !withDecl) continue;
             const loc = try s.location(a, sp);
             try out.append(a, .{ .uri = loc.uri, .range = loc.range });
@@ -1262,6 +1615,9 @@ const Server = struct {
         const name = str(field(params, &.{"newName"})) orelse return .{ .failed = "no new name" };
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return .{ .failed = "nothing to rename here" };
         if (comptime has("renamable")) if (!hooks.renamable(an, sym)) return .{ .failed = "this name cannot be renamed" };
+        // Every use must be where the analysis saw it.
+        if (s.ownerOf(d.path)) |h| for (s.docs.items) |*o| if (h.versionOf(o.path)) |v| if (v != o.version)
+            return .{ .failed = "a file of the program changed since its analysis: save it first" };
         // The new name must lex as one token of the old name's category.
         const declText = try s.fileText(a, sym.decl.path);
         const old = oneToken(declText[@min(sym.decl.start, declText.len)..@min(sym.decl.end, declText.len)]) orelse return .{ .failed = "the declaration is not one token" };

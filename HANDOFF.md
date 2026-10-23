@@ -68,15 +68,8 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      recipe of docs/LSP.md (`.vscodeignore`, `--skip-license`,
      `--allow-missing-repository`) has not been run; the opt-in
      `test/vscode/run` of the LSP plan is to check it.
-   - In a file edited since the last analysis, a request looks up the
-     edited text's offsets in that analysis, so until the save an answer
-     there can be missing or misplaced (`full/analysis.session` shows
-     `references` dropping the edited file's uses). Mapping offsets
-     through the edits would fix it.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
-   - From Rig's dry run (`rig/.git/revamp/r3/nexus-lsp-dryrun.md`):
-     `analyze` runs on the request thread.
    - Next: `@lsp`, names and scopes declared in the grammar, so that
      definition, references and scope completion need no `analyze`;
      hooks in TypeScript or JavaScript over JSON lines; `rig lsp` onto

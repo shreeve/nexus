@@ -1,0 +1,23 @@
+# Edits not yet saved: positions move with the text. A request in an
+# edited file reads the analysis at the place the analysis saw, its
+# answers land where that text is now, and the analysis's diagnostics
+# move with their text; text written since has no answers, and a
+# diagnostic whose text an edit replaced is dropped. A rename waits for a
+# save.
+initialize root main.tally
+open util.tally
+open main.tally
+edit util.tally 1:1-1:1 "# Moved down a line.\n"
+hover util.tally 3:4
+definition main.tally 4:18
+references util.tally 3:4
+edit main.tally 1:1-1:1 "\n"
+edit main.tally 16:1-16:8 "zero"
+hover main.tally 5:5
+rename util.tally 3:4 plus
+edit util.tally 3:4-3:7 "plus"
+hover util.tally 3:4
+definition main.tally 5:18
+save util.tally
+save main.tally
+hover util.tally 3:4
