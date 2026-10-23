@@ -1,0 +1,11 @@
+{
+  "name": "nexus-tally",
+  "displayName": "Tally (Nexus)",
+  "description": "Tally: highlighting and its language server.",
+  "publisher": "nexus-local",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "repository": "",
+  "settings": "nexus-tally",
+  "mode": "standalone"
+}

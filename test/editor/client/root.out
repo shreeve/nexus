@@ -1,0 +1,35 @@
+package nexus-local.nexus-tally "Tally (Nexus)" 0.1.0; contributes languages, grammars, configuration, semanticTokenTypes, semanticTokenScopes
+activate
+createOutputChannel Tally (Nexus)
+client 1: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"<ws>/app/src/main.tally"},"outputChannel":"<channel Tally (Nexus)>"}
+client 1: start
+client 1: running
+activated
+workspace setting nexus-tally.server.root = "/abs/main.tally"
+client 1: stop
+client 2: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"/abs/main.tally"},"outputChannel":"<channel Tally (Nexus)>"}
+client 2: start
+client 2: running
+workspace setting nexus-tally.server.root = ""
+client 2: stop
+client 3: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":""},"outputChannel":"<channel Tally (Nexus)>"}
+client 3: start
+client 3: running
+workspace setting nexus-tally.server.root = "main.tally"
+client 3: stop
+warning: Tally (Nexus): nexus-tally.server.root is relative and no folder is open; the server analyzes the file opened or saved.
+client 4: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":""},"outputChannel":"<channel Tally (Nexus)>"}
+client 4: start
+client 4: running
+deactivate
+client 4: stop
+dispose channel Tally (Nexus)
+deactivated

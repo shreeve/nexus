@@ -103,7 +103,10 @@ reaches the parser module: a grammar generates the same module with or
 without `@highlight` (`highlight/<grammar>/files` checks it).
 
 `src/lsp/editor.zig` writes the rest of `nexus --editor`
-([LSP.md](LSP.md)): the extension's `package.json` and `extension.js`,
+([LSP.md](LSP.md)): the extension's `package.json`, `extension.js`,
+`README.md` and `.vscodeignore`, named after its identity
+(`src/lsp/identity.zig` reads `vscode/identity.json`, or gives the
+defaults it writes when the file is missing),
 and the server's `build.zig`, `main.zig`, `language.zig` (the grammar's
 token scopes and completion words, read from `Highlight` and the
 grammar) and the stub `hooks.zig`; it copies the lang module and the
@@ -419,6 +422,7 @@ current numbers and how to compare two builds.
 | `src/highlight/render.zig` | patterns as regexes: bytes, Oniguruma, JavaScript, Vim |
 | `src/highlight/emit.zig` | the TextMate grammar, VS Code language configuration, highlight.js language, Vim syntax file |
 | `src/lsp/editor.zig` | `--editor`: the VS Code extension, the server's files, the stub `hooks.zig` |
+| `src/lsp/identity.zig` | the extension's `identity.json`: its defaults, and reading it, with located errors |
 | `src/lsp/server_template.zig` | the language server, written as each server's `lsp.zig` |
 | `src/describe.zig` | `--describe`: the grammar as JSON |
 | `src/json.zig` | JSON strings |

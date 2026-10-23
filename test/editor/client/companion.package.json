@@ -1,0 +1,77 @@
+{
+  "name": "tally-lsp-client",
+  "displayName": "Tally Server",
+  "description": "Tally: highlighting and its language server.",
+  "version": "1.2.3",
+  "publisher": "Example",
+  "license": "MIT",
+  "repository": "https://example.com/tally.git",
+  "engines": {"vscode": "^1.82.0"},
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:tally"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The language server is the one the user's own settings name, never a workspace's.",
+      "restrictedConfigurations": ["tally.server.path"]
+    }
+  },
+  "dependencies": {"vscode-languageclient": "9.0.1"},
+  "contributes": {
+    "configuration": {
+      "title": "Tally Server",
+      "properties": {
+        "tally.server.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "The language server: a path, or a name on `PATH`, from user settings only. Empty: the extension's own `bin/tally-lsp`, else `tally-lsp` on `PATH`."
+        },
+        "tally.server.root": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: the file opened or saved."
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {"id": "keywordControl", "superType": "keyword", "description": "@highlight keyword.control"},
+      {"id": "keywordOperator", "superType": "keyword", "description": "@highlight keyword.operator"},
+      {"id": "constant", "superType": "enumMember", "description": "@highlight constant"},
+      {"id": "constantNumeric", "superType": "number", "description": "@highlight constant.numeric"},
+      {"id": "constantSymbol", "superType": "enumMember", "description": "@highlight constant.symbol"},
+      {"id": "stringEscape", "superType": "string", "description": "@highlight string.escape"},
+      {"id": "punctuation", "description": "@highlight punctuation"},
+      {"id": "functionBuiltin", "superType": "function", "description": "@highlight function.builtin"},
+      {"id": "storageModifier", "superType": "keyword", "description": "@highlight storage.modifier"},
+      {"id": "variableParameter", "superType": "parameter", "description": "@highlight variable.parameter"},
+      {"id": "variableSpecial", "superType": "variable", "description": "@highlight variable.special"},
+      {"id": "invalid", "description": "@highlight invalid"}
+    ],
+    "semanticTokenScopes": [{
+      "language": "tally",
+      "scopes": {
+        "keyword": ["keyword.other.tally"],
+        "keywordControl": ["keyword.control.tally"],
+        "keywordOperator": ["keyword.operator.word.tally"],
+        "constant": ["constant.language.tally"],
+        "constantNumeric": ["constant.numeric.tally"],
+        "constantSymbol": ["constant.other.symbol.tally"],
+        "string": ["string.quoted.tally"],
+        "stringEscape": ["constant.character.escape.tally"],
+        "comment": ["comment.tally"],
+        "operator": ["keyword.operator.tally"],
+        "punctuation": ["punctuation.tally"],
+        "type": ["entity.name.type.tally"],
+        "function": ["entity.name.function.tally"],
+        "functionBuiltin": ["support.function.tally"],
+        "label": ["entity.name.label.tally"],
+        "storageModifier": ["storage.modifier.tally"],
+        "variableParameter": ["variable.parameter.tally"],
+        "variableSpecial": ["variable.language.tally"],
+        "invalid": ["invalid.illegal.tally"]
+      }
+    }]
+  }
+}

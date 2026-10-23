@@ -61,9 +61,13 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    unexpanded alternatives) and for `!X` in a rule's default action. em's
    grammar uses `@schema`, so these rules no longer shape em's trees.
 4. **Editors and language servers** ([docs/LSP.md](docs/LSP.md)):
-   - The suite drives the server through sessions, but not the VS Code
-     client in VS Code, nor `vsce package`; the extension's files are
-     pinned by goldens.
+   - The suite drives the server through sessions and the VS Code
+     client under Node against stub `vscode` modules
+     (`test/editor/client/`), but not the client in VS Code, nor `vsce
+     package`; the extension's files are pinned by goldens. The packaging
+     recipe of docs/LSP.md (`.vscodeignore`, `--skip-license`,
+     `--allow-missing-repository`) has not been run; the opt-in
+     `test/vscode/run` of the LSP plan is to check it.
    - In a file edited since the last analysis, a request looks up the
      edited text's offsets in that analysis, so until the save an answer
      there can be missing or misplaced (`full/analysis.session` shows

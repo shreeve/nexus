@@ -1,0 +1,7 @@
+**
+!extension.js
+!language-configuration.json
+!syntaxes/**
+!bin/**
+!node_modules/**
+!LICENSE*
