@@ -95,6 +95,20 @@
   parameters, constants (`readonly`), the types it defines (`const S =
   struct {...}`, by `when init:container_decl`), enum fields, error
   names, enum literals and error values (`grammars/zig/server/`).
+- A `color` line's SCOPE may be one of the 14 semantic token types of
+  LSP that no `@highlight` scope stands for, spelled as LSP spells them:
+  `namespace`, `class`, `enum`, `interface`, `struct`, `typeParameter`,
+  `variable`, `property`, `enumMember`, `event`, `method`, `macro`,
+  `regexp`, `decorator`
+  ([GRAMMAR.md, "The lines"](docs/GRAMMAR.md#the-lines)). An LSP type
+  that a scope of another name stands for is a located error that names
+  the scope to write (`number`: `constant.numeric`; `parameter`:
+  `variable.parameter`; `modifier`: `storage.modifier`). The server's
+  legend is the 19 scopes, then the 14, always, in that order; the
+  editor files of `@highlight` are unchanged, so the 14 colour only
+  through semantic tokens. VS Code knows each, so `package.json`
+  declares none and gives none a TextMate scope. The Zig grammar colours
+  a struct's fields `property` and its `var`s `variable`.
 - Keyword completion parses once to the cursor, then tests each word
   against a copy of the parse stack: the generated server's `parser.zig`
   is the module `--spans` generates followed by the runtime's `complete`
@@ -363,9 +377,10 @@ Downstream:
     `struct`, `enum` and `type`, `constant` for enum literals and
     symbols, `label` for labels, `function.builtin` for builtins, and
     `color KIND start|end storage.modifier` for its sigils (`move
-    start`, `propagate end`, ...); a method, a property and the
-    `control` modifier have no `@highlight` scope and stay with the
-    `tokens` hook, which now gets the grammar's tokens to adjust. And
+    start`, `propagate end`, ...); a method and a property take LSP's
+    `method` and `property` (below), and the `control` modifier, which
+    LSP lacks, stays with the `tokens` hook, which now gets the
+    grammar's tokens to adjust. And
     `words "obj" "rarely" "new" "of" "called" "inline"` (`else` is a
     word of the grammar already): checked on a copy of Rig's grammar,
     the server offers `obj`, `new` and `rarely` at the start of a
@@ -377,6 +392,14 @@ Downstream:
     command the lang Lexer makes from a name.
   - nexis: with a `@schema`, `bind` for its assignments and `color` for
     its functions and parameters.
+- Rig, em, nexis: a `color` line's LSP types are new syntax (each was an
+  error), so no grammar changes meaning, generated parsers are byte for
+  byte the same, and `package.json` is unchanged. The server's
+  `lsp.Scope` gains the 14 after `invalid`: a `hooks.zig` that switches
+  over it exhaustively adds them or an `else`. Optional: Rig's methods
+  and properties (`color ... method`, `color ... property`) in place of
+  its `tokens` hook's; em and nexis, any name LSP's types fit better
+  than a scope.
 - Rig, em, nexis: `@messages` is new syntax (`@messages` was an error),
   so no grammar changes meaning, and a grammar without it generates the
   same parser. Optional: write the messages a language words by hand in

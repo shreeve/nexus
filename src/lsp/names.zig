@@ -111,12 +111,69 @@ pub const Color = struct {
     /// The role, for `color KIND.ROLE`.
     role: ?RoleRef = null,
     edge: Edge = .none,
-    scope: highlight.Scope,
+    scope: ColorScope,
     /// LSP's token modifiers, as the server names them.
     modifiers: []const []const u8 = &.{},
     when: []const Define.When = &.{},
 
     pub const Edge = enum { none, start, end };
+};
+
+/// A `color` line's scope: one of `@highlight`'s, or one of LSP's semantic
+/// token types that no scope stands for.
+pub const ColorScope = union(enum) {
+    highlight: highlight.Scope,
+    lsp: LspType,
+
+    /// The scope as a `color` line writes it.
+    pub fn name(s: ColorScope) []const u8 {
+        return switch (s) {
+            .highlight => |h| h.names().name,
+            .lsp => |t| lsp_type_names[@backingInt(t)],
+        };
+    }
+
+    /// The field of the server's `Scope`.
+    pub fn field(s: ColorScope) []const u8 {
+        return switch (s) {
+            inline else => |v| @tagName(v),
+        };
+    }
+};
+
+/// LSP's semantic token types that no `@highlight` scope stands for, in
+/// the order the server's legend gives them after the scopes.
+pub const LspType = enum { namespace, class, @"enum", interface, @"struct", type_parameter, variable, property, enum_member, event, method, macro, regexp, decorator };
+
+/// The types of `LspType`, as LSP spells them: in camel case, as the
+/// server's legend spells its `Scope`.
+pub const lsp_type_names = blk: {
+    const types = std.enums.values(LspType);
+    var out: [types.len][]const u8 = undefined;
+    for (types, &out) |t, *name| {
+        var camel: []const u8 = "";
+        var cap = false;
+        for (@tagName(t)) |c| {
+            if (c == '_') {
+                cap = true;
+                continue;
+            }
+            camel = camel ++ .{if (cap) std.ascii.toUpper(c) else c};
+            cap = false;
+        }
+        name.* = camel;
+    }
+    break :blk out;
+};
+
+/// LSP's semantic token types that a `@highlight` scope of another name
+/// stands for, each with that scope. (The others, `type`, `function`,
+/// `keyword`, `comment`, `string` and `operator`, are scopes of the same
+/// name.)
+const lsp_scope_types = [_]struct { []const u8, highlight.Scope }{
+    .{ "number", .constant_numeric },
+    .{ "parameter", .variable_parameter },
+    .{ "modifier", .storage_modifier },
 };
 
 /// `@lsp`, read and checked.
@@ -728,8 +785,7 @@ const Reader = struct {
         for (self.schema.kinds) |k| if (eql(k.tag, c.kind) and k.wrapper)
             return self.fail(words[0].pos, "color {s}: '{s}' is @wrapper, built by the lang Parser wrapper, and the server colours the grammar's tree, which has no such node", .{ what, c.kind });
         if (i >= words.len) return self.fail(line.key.pos, "color {s} needs a scope ({s})", .{ what, scopeList });
-        c.scope = highlight.Scope.parse(words[i].text) orelse
-            return self.fail(words[i].pos, "unknown scope '{s}' (@highlight's: {s})", .{ words[i].text, scopeList });
+        c.scope = try self.colorScope(words[i]);
         i += 1;
         var mods: std.ArrayList([]const u8) = .empty;
         var whens: std.ArrayList(Define.When) = .empty;
@@ -752,6 +808,15 @@ const Reader = struct {
             return self.fail(words[0].pos, "{s} is coloured twice: give each line a different `when`", .{what});
         }
         try self.colors.append(self.allocator, c);
+    }
+
+    /// A `color` line's scope: `@highlight`'s, else LSP's as it spells it.
+    fn colorScope(self: *Reader, w: Word) Error!ColorScope {
+        if (highlight.Scope.parse(w.text)) |s| return .{ .highlight = s };
+        for (lsp_type_names, 0..) |n, k| if (eql(n, w.text)) return .{ .lsp = @fromBackingInt(@intCast(k)) };
+        for (lsp_scope_types) |t| if (eql(t[0], w.text))
+            return self.fail(w.pos, "LSP's type '{s}' is @highlight's scope {s}: write {s}", .{ w.text, t[1].names().name, t[1].names().name });
+        return self.fail(w.pos, "unknown scope '{s}' ({s})", .{ w.text, scopeList });
     }
 
     fn wordsLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
@@ -904,8 +969,10 @@ const modifierList = blk: {
 };
 
 const scopeList = blk: {
-    var s: []const u8 = "";
+    var s: []const u8 = "@highlight's: ";
     for (std.enums.values(highlight.Scope), 0..) |k, i| s = s ++ (if (i == 0) "" else ", ") ++ k.names().name;
+    s = s ++ "; LSP's: ";
+    for (lsp_type_names, 0..) |n, i| s = s ++ (if (i == 0) "" else ", ") ++ n;
     break :blk s;
 };
 

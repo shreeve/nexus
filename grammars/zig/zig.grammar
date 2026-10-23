@@ -524,6 +524,8 @@ tokens
     color       var_decl.name           type  declaration  when init:container_decl
     color       var_decl.name           type  declaration  when init:error_set_decl
     color       var_decl.name           constant  declaration  readonly  when mut "const"
+    color       var_decl.name           variable  declaration  when mut "var"
+    color       container_field.name    property  declaration
     color       container_field.type    constant  declaration  when ^container_decl.kind "enum"
     color       error_name.name         constant  declaration
     color       enum_literal.name       constant

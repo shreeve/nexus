@@ -332,6 +332,8 @@ pub const names: scopes.Table = .{
         .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .init), .kind = .container_decl } }, .scope = .type, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .init), .kind = .error_set_decl } }, .scope = .type, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .mut), .text = "const" } }, .scope = .constant, .modifiers = .{ .declaration = true, .readonly = true } },
+        .{ .at = .{ .kind = .var_decl, .slot = ir.slot(.var_decl, .name) }, .when = &.{ .{ .slot = ir.slot(.var_decl, .mut), .text = "var" } }, .scope = .variable, .modifiers = .{ .declaration = true } },
+        .{ .at = .{ .kind = .container_field, .slot = ir.slot(.container_field, .name) }, .scope = .property, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .container_field, .slot = ir.slot(.container_field, .type) }, .when = &.{ .{ .parent = .container_decl, .slot = ir.slot(.container_decl, .kind), .text = "enum" } }, .scope = .constant, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .error_name, .slot = ir.slot(.error_name, .name) }, .scope = .constant, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .enum_literal, .slot = ir.slot(.enum_literal, .name) }, .scope = .constant },

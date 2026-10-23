@@ -1,6 +1,7 @@
-# A color line's scope is one of @highlight's.
-# error: lsp_color_bad_scope.grammar:47:23:
-# error: unknown scope 'variable' (@highlight's: keyword, keyword.control, keyword.operator, constant, constant.numeric, constant.symbol, string, string.escape, comment, operator, punctuation, type, function, function.builtin, label, storage.modifier, variable.parameter, variable.special, invalid)
+# A color line's scope is one of @highlight's or one of LSP's token types;
+# field is a symbol kind (LSP's token type of a field is property).
+# error: lsp_color_bad_scope.grammar:48:23:
+# error: unknown scope 'field' (@highlight's: keyword, keyword.control, keyword.operator, constant, constant.numeric, constant.symbol, string, string.escape, comment, operator, punctuation, type, function, function.builtin, label, storage.modifier, variable.parameter, variable.special, invalid; LSP's: namespace, class, enum, interface, struct, typeParameter, variable, property, enumMember, event, method, macro, regexp, decorator)
 @lexer
 
 tokens
@@ -44,7 +45,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    color    let.name variable
+    color    let.name field
 
 prog!  = body                               → (prog ...1)
 

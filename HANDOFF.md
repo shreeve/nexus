@@ -93,9 +93,11 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    - Step 3 reads `when ROLE:KIND` (a role holds a node of a kind)
      beyond the approved syntax, for Zig's types (`const S = struct
      {...}`), and `when` on `color`. `color`'s scopes are `@highlight`'s
-     19, which have none for a field, a property, a method or a plain
-     variable: Zig's struct fields and `var`s, and Rig's methods and
-     properties, keep their tokens' colours (or a `tokens` hook's).
+     19 and the 14 LSP types no scope stands for (`property`,
+     `variable`, `method`, ...; `.git/lsp/panel/color-proposed.md`),
+     which colour only through semantic tokens: Zig's struct fields are
+     `property` and its `var`s `variable`; Rig's methods and properties
+     can leave its `tokens` hook for `color` lines.
    - Keyword completion keeps the parse before the last token whose
      lexer had not read past the cursor's word (`pauseAt`), and replays
      from there; a lang Lexer that reads ahead (Zig's) costs a token or

@@ -1132,6 +1132,8 @@
     (lsp_line `color` `var_decl.name` `type` `declaration` `when` `init:container_decl`)
     (lsp_line `color` `var_decl.name` `type` `declaration` `when` `init:error_set_decl`)
     (lsp_line `color` `var_decl.name` `constant` `declaration` `readonly` `when` `mut` `"const"`)
+    (lsp_line `color` `var_decl.name` `variable` `declaration` `when` `mut` `"var"`)
+    (lsp_line `color` `container_field.name` `property` `declaration`)
     (lsp_line `color` `container_field.type` `constant` `declaration` `when` `^container_decl.kind` `"enum"`)
     (lsp_line `color` `error_name.name` `constant` `declaration`)
     (lsp_line `color` `enum_literal.name` `constant`)

@@ -6,12 +6,14 @@
 //   test/lib/vscode client VSCODE_DIR SCENARIO
 //
 // `legend`: package.json's semantic token types agree with the server's
-// `legend` (in SERVER_TEMPLATE, src/lsp/server_template.zig): every type
-// of the legend is a standard type of VS Code's or one package.json
-// declares, package.json declares no type the legend lacks and no
-// standard type, every `superType` is a standard type, and
-// `semanticTokenScopes` gives a TextMate scope to exactly the legend's
-// types; and the same of the modifiers of the server's `modifier_legend`
+// `legend` (in SERVER_TEMPLATE, src/lsp/server_template.zig), which is
+// `scope_legend ++ type_legend`: every type of the legend is a standard
+// type of VS Code's or one package.json declares, every type of
+// `type_legend` (LSP's own) is standard, package.json declares no type
+// the legend lacks and no standard type, every `superType` is a standard
+// type, and `semanticTokenScopes` gives a TextMate scope to exactly the
+// types of `scope_legend` (a standard type it gives none keeps VS Code's
+// own); and the same of the modifiers of the server's `modifier_legend`
 // and package.json's `semanticTokenModifiers`. Prints each disagreement;
 // exit status 1 if there is one.
 //
@@ -61,10 +63,18 @@ const standardModifiers = new Set([
 function legend(pkgPath, templatePath) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const template = fs.readFileSync(templatePath, "utf8");
-  const m = /pub const legend = \[_\]\[\]const u8\{([^}]*)\};/.exec(template);
-  if (!m) return fail(`${templatePath}: no legend`);
-  const types = [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+  if (!/pub const legend = scope_legend \+\+ type_legend;/.test(template)) return fail(`${templatePath}: no legend of scope_legend ++ type_legend`);
+  const list = (name) => {
+    const m = new RegExp(`pub const ${name} = \\[_\\]\\[\\]const u8\\{([^}]*)\\};`).exec(template);
+    return m ? [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]) : null;
+  };
+  const scopeTypes = list("scope_legend");
+  const lspTypes = list("type_legend");
+  if (!scopeTypes || !lspTypes) return fail(`${templatePath}: no scope_legend or no type_legend`);
+  const types = [...scopeTypes, ...lspTypes];
   const problems = [];
+  for (const t of lspTypes) if (!standardTypes.has(t)) problems.push(`type_legend has ${t}, which is not a standard type`);
+  for (const t of types) if (types.indexOf(t) !== types.lastIndexOf(t)) problems.push(`the server's legend has ${t} twice`);
   const declared = new Map();
   for (const t of (pkg.contributes && pkg.contributes.semanticTokenTypes) || []) {
     if (declared.has(t.id)) problems.push(`semanticTokenTypes declares ${t.id} twice`);
@@ -90,8 +100,11 @@ function legend(pkgPath, templatePath) {
     if (!standardModifiers.has(m) && !declaredModifiers.has(m)) problems.push(`the server's legend has the modifier ${m}, which package.json does not declare`);
   }
   const scopes = (pkg.contributes.semanticTokenScopes || []).flatMap((s) => Object.keys(s.scopes || {}));
-  for (const t of types) if (!scopes.includes(t)) problems.push(`semanticTokenScopes gives ${t} no scope`);
-  for (const s of scopes) if (!types.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, which the server's legend lacks`);
+  for (const t of scopeTypes) if (!scopes.includes(t)) problems.push(`semanticTokenScopes gives ${t} no scope`);
+  for (const s of scopes) {
+    if (lspTypes.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, LSP's own type, which keeps VS Code's`);
+    else if (!types.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, which the server's legend lacks`);
+  }
   for (const p of problems) console.log(p);
   process.exit(problems.length > 0 ? 1 : 0);
 }

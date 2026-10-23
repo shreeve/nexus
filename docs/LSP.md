@@ -148,15 +148,19 @@ token types and the settings.
 ### The extension
 
 The extension's `package.json` declares its identity, the language and
-grammar (in `standalone` mode), the semantic token types the server sends
+grammar (in `standalone` mode), the semantic token types of the scopes
 (each mapped to its TextMate scope, and each type VS Code does not know
 given a standard `superType`, so a theme colours it either way:
 `keywordControl`, `keywordOperator` and `storageModifier` are keywords,
 `constantNumeric` a number, `constant` and `constantSymbol` enum members,
 `stringEscape` a string, `functionBuiltin` a function,
 `variableParameter` a parameter and `variableSpecial` a variable;
-`punctuation` and `invalid` have none), and its settings. The server's
-token modifiers are LSP's ten (`declaration`, `definition`, `readonly`,
+`punctuation` and `invalid` have none), and its settings. The 14 types
+of LSP's own that the server also sends (`property`, `variable`, ...)
+are standard types of VS Code's, which a theme colours by name or by the
+TextMate scopes VS Code gives each, so `package.json` neither declares
+them nor gives them a scope: no `@highlight` scope, and so no TextMate
+scope of the grammar's, stands for them. The server's token modifiers are LSP's ten (`declaration`, `definition`, `readonly`,
 `static`, `deprecated`, `abstract`, `async`, `modification`,
 `documentation`, `defaultLibrary`), which VS Code knows, so
 `package.json` declares none.
@@ -226,11 +230,15 @@ With every function of `hooks.zig` a stub, the server gives:
   ([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its
   text (a literal or a `@keywords` word), else its token name. The token
-  types are `@highlight`'s 19 scopes. With `@lsp`'s `color` lines, a
-  token they colour takes their scope and modifiers in place of it (or
-  beside it, a name with none): a role's leaf, a node's first or last
-  token, and each name, in the file or another, of a definition whose
-  leaf a line colours, without `declaration` and `definition`.
+  types are `@highlight`'s 19 scopes, then, always and in this order,
+  the 14 types of LSP's that no scope stands for (`namespace`, `class`,
+  `enum`, `interface`, `struct`, `typeParameter`, `variable`,
+  `property`, `enumMember`, `event`, `method`, `macro`, `regexp`,
+  `decorator`), which only `color` lines give. With `@lsp`'s `color`
+  lines, a token they colour takes their scope and modifiers in place of
+  it (or beside it, a name with none): a role's leaf, a node's first or
+  last token, and each name, in the file or another, of a definition
+  whose leaf a line colours, without `declaration` and `definition`.
 - **Folding.** Each node of the tree whose solid tokens span lines, and
   each run of comment tokens on consecutive lines. A solid token is one
   with text other than blanks and line ends that is not a comment; a
@@ -561,7 +569,8 @@ The suite checks the extension under Node, without VS Code
 (`test/lib/vscode`). For every grammar, `package.json`'s semantic token
 types must agree with the server's legend: each type the server sends is
 standard or declared, each declared type is one it sends, each
-`superType` is standard, and each type has a TextMate scope. The
+`superType` is standard, each type of a scope has a TextMate scope, and
+LSP's 14 are standard types with none. The
 scenarios of `test/editor/client/` run `extension.js` against stub
 `vscode` and `vscode-languageclient` modules and compare every call it
 makes with a golden: the server it runs (bundled, on `PATH`, from user
