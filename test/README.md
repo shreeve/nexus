@@ -180,10 +180,18 @@ checkout's `bin/nexus` (rebuilt first).
 test/diff /tmp/nexus-before/bin/nexus current grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar \
     --ext .m ~/Data/Code/em/misc/vista
 
-# A grammar change under review, after a lang Parser wrapper
+# A grammar change under review, after a lang Parser wrapper, over Rig's
+# test cases (written out first, in a Rig worktree RIG) and examples
+(cd RIG && swarm test/rig.rip tree)
 test/diff --start parseProgram current current OLD/rig.grammar NEW/rig.grammar \
-    --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
+    --ext .rig RIG/test RIG/.zig-cache/rig-tests/tree RIG/examples
 ```
+
+Rig's tests are cases in `test/rig/*.rig.test` (Rig's
+`docs/internals/tests.md`), not programs of their own. Rig's runner,
+`swarm test/rig.rip tree`, writes each one out as the program it
+compiles, under `.zig-cache/rig-tests/tree/behavior/` and `reject/`,
+and builds and runs nothing.
 
 Results are grouped as `same`, `same_error` (the same parse error),
 `tree_differs`, `error_differs`, `new_fails`, `new_parses`, `new_crashes`,
