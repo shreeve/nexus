@@ -1,0 +1,39 @@
+# The names are those of the text now: each change indexes the file again,
+# saved or not, a document without a path included, and a text with
+# syntax errors through the tolerant parse.
+initialize
+open main.tally
+edit main.tally 7:1-7:1 "let rate = 2\n"
+definition main.tally 13:1
+references main.tally 8:10
+edit main.tally 9:17-9:23 "rate"
+references main.tally 7:5
+highlight main.tally 9:18
+# A builtin answers nothing and is no undefined name; a fix clears the
+# warning.
+edit main.tally 16:1-16:8 "print"
+definition main.tally 16:1
+hover main.tally 16:1
+# Typing: after `util.` no names (a member); at a statement's start and
+# inside an unfinished expression the names in scope (the keywords only
+# where the text before them parses).
+change main.tally
+| use util
+| let total = util.
+| fn f(a) {
+|     let b = a +
+| }
+completion main.tally 2:18
+completion main.tally 3:1
+completion main.tally 4:16
+definition main.tally 4:13
+open untitled:Scratch-1
+| let one = 1
+| fn twice(n) {
+|     return n + n + one
+| }
+| twice(two)
+definition untitled:Scratch-1 3:20
+references untitled:Scratch-1 2:11
+rename untitled:Scratch-1 2:11 m
+symbols untitled:Scratch-1

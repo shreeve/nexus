@@ -1,8 +1,23 @@
 (module
-  (use `util`)
-  (let `total` (* (call (member (name `util`) `add`) (num `1`) (num `2`)) (- (num `3`) (num `4`))))
+  _
+  (use `util`)@56..64
+  (let
+    `total`
+    (*
+      (call (member (name `util`)@77..81 `add`)@77..85 (num `1`)@86..87 (num `2`)@89..90)@77..91
+      (- (num `3`)@95..96 (num `4`)@99..100)@95..100)@77..101)@65..101
   (fn
     `greet`
-    (params `name` `punct`)
-    (block (let `s` (+ (+ (str `"hello "`) (name `name`)) (name `punct`))) (return (name `s`))))
-  (call (name `greet`) (str `"world"`) (str `"!"`)))
+    (params `name` `punct`)@111..122
+    (block
+      _
+      (let
+        `s`
+        (+
+          (+ (str `"hello "`)@138..146 (name `name`)@149..153)@138..153
+          (name `punct`)@156..161)@138..161)@130..161
+      (return (name `s`)@173..174)@166..174
+      _)@124..176)@102..176
+  _
+  (call (name `greet`)@178..183 (str `"world"`)@184..191 (str `"!"`)@193..196)@178..197
+  _)@55..198

@@ -1,0 +1,42 @@
+# What @lsp gives with every function of hooks.zig left `lsp.todo`: the
+# outline, definition, references, highlights, hover and the names in
+# scope, from the scopes, definitions and uses the grammar declares, and a
+# warning at each name nothing defines (`undefined warning`).
+initialize
+open main.tally
+symbols main.tally
+# A use of a module, a function, a parameter and a local; a definition.
+definition main.tally 4:13
+definition main.tally 12:1
+definition main.tally 8:13
+definition main.tally 9:24
+definition main.tally 7:4
+# A member (skipped), a keyword, a name nothing defines, a blank: nothing.
+definition main.tally 4:18
+definition main.tally 7:1
+definition main.tally 15:1
+definition main.tally 6:1
+references main.tally 7:10
+references main.tally 8:13
+references main.tally 1:6
+highlight main.tally 8:9
+highlight main.tally 4:8
+# Hover: the detail `detail:..body` gives, the doc of the comment lines
+# before the definition (`doc:leading`), else the name.
+hover main.tally 7:6
+hover main.tally 4:7
+hover main.tally 13:10
+hover main.tally 8:17
+hover main.tally 4:18
+# Completion: the names in scope where a name is used, nearest first, then
+# the keywords; none after `.` (a member) or where a name is defined.
+completion main.tally 8:13
+completion main.tally 13:5
+completion main.tally 4:18
+completion main.tally 4:6
+open util.tally
+symbols util.tally
+hover util.tally 8:12
+hover util.tally 11:7
+references util.tally 3:12
+open lib.tally
