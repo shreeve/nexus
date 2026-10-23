@@ -48,6 +48,14 @@ pub fn isCtFun(decl: Sexp) bool {
     return def.isKind(.fun) and ir.Fun.params(def) == .nil and ir.Fun.tparams(def) != .nil;
 }
 
+/// Whether `decl` declares an API (`api Shape`) or adds one to a type
+/// (`add Int: Shape`): methods no pass but the checker of conformances
+/// reads, and nothing emits (docs/design/apis.md, Stage 3).
+pub fn isApiDecl(decl: Sexp) bool {
+    const d = unpub(decl);
+    return d.isKind(.api) or d.isKind(.api_add);
+}
+
 /// A declaration without its `pub`.
 pub fn unpub(decl: Sexp) Sexp {
     return if (decl.isKind(.@"pub")) ir.Pub.decl(decl) else decl;
@@ -283,7 +291,7 @@ pub fn stmtClass(tag: Tag) StmtClass {
         .raw_block => .raw,
         // Assignments, drops, `pass`, the exits and jumps, and expressions.
         .set, .destructure, .tuple, .drop, .pass, .rarely, .@"return", .@"break", .@"continue", .panic, .propagate, .propagate_none, .@"catch", .call, .builtin, .member, .index, .inst, .ct_call, .array, .array_fill, .lambda, .@"+", .@"-", .@"*", .@"/", .@"%", .@"+%", .@"-%", .@"*%", .@"+|", .@"-|", .@"==", .@"!=", .@"<", .@">", .@"<=", .@">=", .@"&", .@"|", .@"^", .@"<<", .@"<<%", .@">>", .@"??", .@"and", .@"or", .@"..", .neg, .not, .move, .read, .write, .clone, .share, .weak, .box => .unit,
-        .module, .use, .fun, .sub, .@"struct", .@"enum", .errors, .error_join, .generic_struct, .generic_enum, .type, .@"test", .@"pub", .@"extern", .extern_fun, .extern_sub, .zig_extern, .zig_const, .drop_decl, .@"inline", .called, .@":", .bound, .default, .valued, .none_value, .variant, .as, .as_results, .as_pattern, .as_match, .results, .result_part, .results_type, .arm, .alt_pattern, .range_pattern, .set_pattern, .variant_pattern, .enum_lit, .symbol, .captures, .cap_clone, .cap_move, .cap_weak, .cap_read, .cap_write, .kwarg, .optional, .error_union, .read_view, .write_view, .shared, .boxed, .slice, .generic_inst, .array_type, .fun_type, .fails, .unique, .fixed, .task, .shadow, .shadow_fixed, .@"+=", .@"-=", .@"*=", .@"/=", .@"%=", .@"+%=", .@"-%=", .@"*%=", .@"+|=", .@"-|=", .@"&=", .@"|=", .@"^=", .@"<<=", .@"<<%=", .@">>=", .iter, .inclusive => .none,
+        .module, .use, .fun, .sub, .@"struct", .@"enum", .errors, .error_join, .generic_struct, .generic_enum, .api, .api_type, .api_add, .type, .@"test", .@"pub", .@"extern", .extern_fun, .extern_sub, .zig_extern, .zig_const, .drop_decl, .@"inline", .called, .@":", .bound, .assoc_bound, .default, .valued, .none_value, .variant, .as, .as_results, .as_pattern, .as_match, .results, .result_part, .results_type, .arm, .alt_pattern, .range_pattern, .set_pattern, .variant_pattern, .enum_lit, .symbol, .captures, .cap_clone, .cap_move, .cap_weak, .cap_read, .cap_write, .kwarg, .optional, .error_union, .read_view, .write_view, .shared, .boxed, .slice, .generic_inst, .array_type, .fun_type, .fails, .unique, .fixed, .task, .shadow, .shadow_fixed, .@"+=", .@"-=", .@"*=", .@"/=", .@"%=", .@"+%=", .@"-%=", .@"*%=", .@"+|=", .@"-|=", .@"&=", .@"|=", .@"^=", .@"<<=", .@"<<%=", .@">>=", .iter, .inclusive => .none,
         // `>t`, rewritten to a call; `f: once T`, rewritten to a
         // parameter; and `a..=b`, rewritten to an inclusive `..`: each
         // before any pass reads a statement.
@@ -1266,7 +1274,10 @@ pub const Lexer = struct {
             self.column = width;
             self.takes_else[self.depth] = false;
             self.in_arms[self.depth] = self.line_match;
-            self.in_members[self.depth] = self.line_head == .obj or switch (self.line_head) {
+            self.in_members[self.depth] = switch (self.line_head) {
+                .obj, .api, .add => true,
+                else => false,
+            } or switch (self.line_head) {
                 .@"enum", .@"error" => true,
                 else => false,
             };
@@ -1410,7 +1421,7 @@ pub const Lexer = struct {
             else => {},
         }
         switch (out.cat) {
-            .fun, .sub, .@"enum", .@"error", .@"if", .@"else", .@"while", .@"for", .match, .@"test", .raw, .@"extern", .drop, .obj => self.line_opens = true,
+            .fun, .sub, .@"enum", .@"error", .@"if", .@"else", .@"while", .@"for", .match, .@"test", .raw, .@"extern", .drop, .obj, .api, .add => self.line_opens = true,
             else => {},
         }
         if (out.cat == .match) self.line_match = true;
@@ -1514,6 +1525,10 @@ pub const Lexer = struct {
         if (std.mem.eql(u8, word, "new")) return if (self.stmtStart() and self.nextIsName()) .new else .ident;
         if (std.mem.eql(u8, word, "of") and self.isFillOf()) return .of;
         if (std.mem.eql(u8, word, "obj")) return if ((self.stmtStart() or self.last_cat == .@"pub") and self.nextIsName()) .obj else .ident;
+        // `api` and `add` start a module-level declaration, and are
+        // names everywhere else: `user.api`, `!set.add(x)`, `add = 2`.
+        if (std.mem.eql(u8, word, "api")) return if (self.moduleDeclStart(true) and self.nextIsName()) .api else .ident;
+        if (std.mem.eql(u8, word, "add")) return if (self.moduleDeclStart(true) and self.nextStartsType()) .add else .ident;
         if (isMarker(word)) {
             if (!(self.stmtStart() or self.last_cat == .@"pub") or !self.nextIsFunOrSub()) return .ident;
             return if (word[0] == 'i') .@"inline" else .called;
@@ -1861,6 +1876,26 @@ pub const Lexer = struct {
         };
     }
 
+    /// A declaration at the module's margin starts here: at the start of a
+    /// line outside any block or bracket, or after its `pub` when
+    /// `after_pub`.
+    fn moduleDeclStart(self: *const Lexer, after_pub: bool) bool {
+        if (self.depth != 0 or self.nesting != 0) return false;
+        return (self.stmtStart() and !self.after_label) or (after_pub and self.last_cat == .@"pub");
+    }
+
+    /// A type starts next: a name, or a sigil or bracket a type may start
+    /// with (`add ?Square: Shape` parses, to be rejected).
+    fn nextStartsType(self: *const Lexer) bool {
+        var probe = self.base;
+        const t = probe.next();
+        return switch (t.cat) {
+            .ident => !std.mem.eql(u8, probe.text(t), "new"),
+            .question, .not_sym, .star, .caret, .tilde, .lbracket, .lparen => true,
+            else => false,
+        };
+    }
+
     fn nextIsName(self: *const Lexer) bool {
         var probe = self.base;
         const t = probe.next();
@@ -2129,8 +2164,8 @@ pub const Api = enum {
     Copy,
     Clone,
     Owned,
-    Moves,
-    Shares,
+    Sends,
+    Syncs,
     Eq,
     Hash,
     Ord,
@@ -2138,6 +2173,10 @@ pub const Api = enum {
     Num,
     Integer,
     Signed,
+    /// What a `for` loop walks: a type that declares `next(!@) -> T?`,
+    /// whose `Item` is `T` (`sema.iterItem`); derived, never named on a
+    /// header.
+    Iter,
 
     /// The API a name spells, or null.
     pub fn named(text: []const u8) ?Api {
@@ -2313,6 +2352,14 @@ pub const Parser = struct {
     /// module as it declares it (`fun Nope.m()`, `fun geo.Point.m()`),
     /// each as written, `pub` included; the checker says why.
     detached: std.ArrayList(Sexp) = .empty,
+    /// The type's parameters as a method declared outside its type's
+    /// body names them, by where the method's name is, for a method that
+    /// bounds one of them (`fun Wrap[T: Print].show(?@)`): each a bare
+    /// name, its bounds recorded by where it is (`bounds`).
+    owner_bounds: std.AutoHashMapUnmanaged(u32, []const Sexp) = .empty,
+    /// The bounds on associated types (`[S: Source, S.Item: Ord]`), by
+    /// where the name of the parameter whose types they bound is.
+    assoc_bounds: std.AutoHashMapUnmanaged(u32, []const Sexp) = .empty,
 
     /// How many `obj` or `enum` bodies the node being rewritten is in: a
     /// function there is a method.
@@ -2725,7 +2772,8 @@ pub const Parser = struct {
         .{ "const", Foreign{ .fix = "write `x =! e` for a binding that never changes", .alone = true } },
         .{ "class", Foreign{ .fix = "declare a type with `obj`" } },
         .{ "struct", Foreign{ .fix = "write `obj Name`: `struct` is spelled `obj`" } },
-        .{ "impl", Foreign{ .fix = "methods go in the `obj` body", .alone = true } },
+        .{ "impl", Foreign{ .fix = "write `add`: `add Int: Shape` adds an API to a type, and `obj Square: Shape` names one on its header", .alone = true } },
+        .{ "trait", Foreign{ .fix = "write `api`: `api Shape` declares the methods a type provides", .alone = true } },
         .{ "switch", Foreign{ .fix = "write `match`" } },
         .{ "case", Foreign{ .fix = "a match arm is `pattern => ...`" } },
         .{ "elif", Foreign{ .fix = "write `else if`" } },
@@ -3160,7 +3208,7 @@ pub const Parser = struct {
         }
         const walked = try self.allocator().alloc(Sexp, items.len);
         const in_type = switch (sexp.kind() orelse .module) {
-            .@"struct", .@"enum", .errors, .generic_struct, .generic_enum => true,
+            .@"struct", .@"enum", .errors, .generic_struct, .generic_enum, .api, .api_add => true,
             else => false,
         };
         if (in_type) self.type_depth += 1;
@@ -3175,7 +3223,7 @@ pub const Parser = struct {
                 self.moduleConsts(out);
                 return self.builtinRefs(try self.attachMethods(out));
             },
-            .@"struct", .@"enum", .errors => try self.pubMembers(out),
+            .@"struct", .@"enum", .errors, .api, .api_add => try self.pubMembers(out),
             .generic_struct => {
                 try self.tparamBounds(walked, ir.slot(.generic_struct, .tparams));
                 try self.pubMembers(out);
@@ -3219,11 +3267,13 @@ pub const Parser = struct {
             // The body's value is returned.
             .fun => {
                 try self.tparamBounds(walked, ir.slot(.fun, .tparams));
+                try self.tparamBounds(walked, ir.slot(.fun, .owner_params));
                 try self.paramList(out);
                 if (ir.Fun.returns(out) != .nil) try self.valueTail(&walked[ir.slot(.fun, .body)]);
             },
             .sub => {
                 try self.tparamBounds(walked, ir.slot(.sub, .tparams));
+                try self.tparamBounds(walked, ir.slot(.sub, .owner_params));
                 try self.paramList(out);
             },
             .extern_fun, .extern_sub => try self.paramList(out),
@@ -3279,10 +3329,24 @@ pub const Parser = struct {
     /// member's name, a field's, a binding's, and a parameter's are names
     /// of their own, and stay. `firsts` gets the position of the first
     /// such name of each file.
-    fn rewriteBuiltin(self: *Parser, node: Sexp, hidden: []const bool, firsts: *std.ArrayList(u32)) std.mem.Allocator.Error!Sexp {
+    fn rewriteBuiltin(self: *Parser, node: Sexp, outer: []const bool, firsts: *std.ArrayList(u32)) std.mem.Allocator.Error!Sexp {
         if (node != .list) return node;
         const kind = node.kind();
         const items = node.items();
+        // An API's associated type (`type Item`) hides a built-in type of
+        // its name in the API.
+        var own: [builtin_type_names.len]bool = undefined;
+        const hidden = if (kind == .api) blk: {
+            @memcpy(&own, outer[0..builtin_type_names.len]);
+            for (ir.rest(node, .members)) |m| {
+                if (!m.isKind(.api_type) or ir.ApiType.name(m) != .src) continue;
+                const text = leafText(self.base.source, ir.ApiType.name(m).src);
+                for (builtin_type_names, 0..) |n, i| if (std.mem.eql(u8, n, text)) {
+                    own[i] = true;
+                };
+            }
+            break :blk own[0..];
+        } else outer;
         var copy: ?[]Sexp = null;
         for (items, 0..) |c, i| {
             if (kind != null and i == 0) continue;
@@ -3342,10 +3406,12 @@ pub const Parser = struct {
 
     /// The type parameters among `walked[slot]`, a declaration's
     /// compile-time parameters, written with bounds: `[T: Ord]`, whose
-    /// name after the colon is a built-in API (`Api`), and `[K: Hash +
-    /// Print]`. Each becomes a bare name, as `[T]`, and its bounds are
-    /// recorded by where its name is (`bounds`). `[n: Int]` names a type
-    /// and stays a compile-time value.
+    /// name after the colon is a built-in API (`Api`), `[T: Shape]`, a
+    /// type parameter (a capital letter) named after the colon, and `[K:
+    /// Hash + Print]`. Each becomes a bare name, as `[T]`, and its bounds
+    /// are recorded by where its name is (`bounds`); resolve tells an API
+    /// from a type. `[n: Int]` names a type and stays a compile-time
+    /// value.
     fn tparamBounds(self: *Parser, walked: []Sexp, slot: usize) std.mem.Allocator.Error!void {
         const group = walked[slot];
         if (group != .list) return;
@@ -3355,8 +3421,12 @@ pub const Parser = struct {
             const name: Sexp, const apis: []const Sexp = switch (p.kind() orelse continue) {
                 .@":" => blk: {
                     const ty = ir.get(p.*, .type);
-                    if (ty != .src or Api.named(leafText(self.base.source, ty.src)) == null) continue;
-                    break :blk .{ ir.get(p.*, .name), try self.allocator().dupe(Sexp, &.{ty}) };
+                    const pname = ir.get(p.*, .name);
+                    const builtin = ty == .src and Api.named(leafText(self.base.source, ty.src)) != null;
+                    const capital = pname == .src and std.ascii.isUpper(leafText(self.base.source, pname.src)[0]);
+                    const named = (ty == .src and std.ascii.isUpper(leafText(self.base.source, ty.src)[0])) or ty.isKind(.member);
+                    if (!builtin and !(capital and named)) continue;
+                    break :blk .{ pname, try self.allocator().dupe(Sexp, &.{ty}) };
                 },
                 .bound => .{ ir.get(p.*, .name), ir.get(p.*, .apis).items() },
                 else => continue,
@@ -3366,13 +3436,48 @@ pub const Parser = struct {
             p.* = name;
             changed = true;
         }
-        if (changed) walked[slot] = .{ .list = parser.List.withId(items, group.list.id) };
+        // `S.Item: Ord`: bounds on an associated type of a parameter the
+        // same brackets name, recorded by where that parameter's name is
+        // (`assoc_bounds`), and no parameter of its own.
+        var kept: std.ArrayList(Sexp) = .empty;
+        for (items) |p| {
+            if (!p.isKind(.assoc_bound)) {
+                try kept.append(self.allocator(), p);
+                continue;
+            }
+            changed = true;
+            const owner = ir.get(p, .owner);
+            const base = for (items) |q| {
+                const qn = if (q == .src) q else if (q.isKind(.@":") or q.isKind(.bound)) ir.get(q, .name) else Sexp.nil;
+                if (qn == .src and owner == .src and std.mem.eql(u8, leafText(self.base.source, qn.src), leafText(self.base.source, owner.src))) break qn;
+            } else {
+                self.reject(p, "an associated type's bound names a parameter of the same brackets: `[S: Source, S.Item: Ord]`");
+                continue;
+            };
+            const entry = try self.assoc_bounds.getOrPut(self.allocator(), base.src.pos);
+            if (!entry.found_existing) entry.value_ptr.* = &.{};
+            entry.value_ptr.* = try std.mem.concat(self.allocator(), Sexp, &.{ entry.value_ptr.*, &.{p} });
+        }
+        if (changed) walked[slot] = .{ .list = parser.List.withId(kept.items, group.list.id) };
+    }
+
+    /// The bounds on associated types of the type parameter whose name is
+    /// at `pos`, each an `assoc_bound` (`[S: Source, S.Item: Ord]`).
+    pub fn assocBoundsAt(self: *const Parser, pos: u32) []const Sexp {
+        return self.assoc_bounds.get(pos) orelse &.{};
     }
 
     /// The bounds written on the type parameter whose name is at `pos`
     /// (`tparamBounds`); empty for one written bare.
     pub fn boundsAt(self: *const Parser, pos: u32) []const Sexp {
         return self.bounds.get(pos) orelse &.{};
+    }
+
+    /// The type's parameters as the method whose name is at `pos` names
+    /// them, when it bounds one (`fun Wrap[T: Print].show(?@)`); each
+    /// one's bounds are `boundsAt` its name. Empty for any other method.
+    pub fn ownerBoundsAt(self: *const Parser, pos: u32) []const Sexp {
+        return self.owner_bounds.get(pos) orelse &.{};
     }
 
     /// A `rarely` that starts the body of a function, a branch of `if` or
@@ -3647,6 +3752,14 @@ pub const Parser = struct {
                 try self.detached.append(a, d);
                 continue;
             }
+            const owner_params = ir.get(method, .owner_params);
+            const named = ir.get(method, .name);
+            if (named == .src and owner_params != .nil) for (owner_params.items()) |p| {
+                if (p == .src and self.bounds.contains(p.src.pos)) {
+                    try self.owner_bounds.put(a, named.src.pos, owner_params.items());
+                    break;
+                }
+            };
             const items = @constCast(method.items());
             const fun = method.isKind(.fun);
             items[if (fun) ir.slot(.fun, .owner) else ir.slot(.sub, .owner)] = .nil;
@@ -4448,7 +4561,7 @@ test "keywords are reserved; `new` only at statement start" {
     // `rarely` is a lexer rule.
     for (@intFromEnum(TokenCat.true)..@intFromEnum(TokenCat.yield) + 1) |c| {
         const cat: TokenCat = @enumFromInt(c);
-        if (cat == .obj or cat == .@"inline" or cat == .called or cat == .rarely) continue;
+        if (cat == .obj or cat == .api or cat == .add or cat == .@"inline" or cat == .called or cat == .rarely) continue;
         try testing.expectEqual(cat, keyword(@tagName(cat)).?);
         if (cat != .new) try expectCats(@tagName(cat), &.{cat});
     }

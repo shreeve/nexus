@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `inline` `rarely` `called` `not` `or` `panic` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `dollar` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `dotdot_eq` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `catch_jump` `catch_block` `task_amp` `step_colon` `symbol_colon` `as_comma` `label` `label_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `api` `add` `inline` `rarely` `called` `not` `or` `panic` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `dollar` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `dotdot_eq` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `catch_jump` `catch_block` `task_amp` `step_colon` `symbol_colon` `as_comma` `label` `label_colon` `comment` `eof` `err`)
   (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
@@ -362,6 +362,44 @@
       _
       _)
     (kind_decl
+      (kinds `api`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          opt)
+        (role rest `members` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `api_type`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `api_add`)
+      (roles
+        (role _ `type` _ _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          _)
+        (role rest `members` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `type`)
       (roles
         (role
@@ -522,6 +560,26 @@
     (kind_decl
       (kinds `bound`)
       (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `apis`
+          (type `group`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `assoc_bound`)
+      (roles
+        (role
+          _
+          `owner`
+          (type `leaf`)
+          _)
         (role
           _
           `name`
@@ -1140,6 +1198,8 @@
     (name_pair `KWARG_NAME` `"a keyword argument"`)
     (name_pair `OF` `"\`of\`"`)
     (name_pair `OBJ` `"\`obj\`"`)
+    (name_pair `API` `"\`api\`"`)
+    (name_pair `ADD` `"\`add\`"`)
     (name_pair `INLINE` `"\`inline\`"`)
     (name_pair `CALLED` `"\`called\`"`)
     (name_pair `RARELY` `"\`rarely\`"`)
@@ -1280,13 +1340,15 @@
     (hl_line `scope-name` `source.rig`)
     (hl_line `extensions` `rig`)
     (hl_line `line-comment` `"#"`)
-    (hl_line `indent` `line-start [ \\t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \\t]+ ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?)? | ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?) [ \\t]* line-end`)
+    (hl_line `indent` `line-start [ \\t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \\t]+ ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?)? | ("pub" [ \\t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "api" | "add" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \\t(] [^\\n]*)?) [ \\t]* line-end`)
     (hl_line `dedent` `line-start [ \\t]* "else"`)
     (hl_line `keyword` `("fun" | "sub") [ \\t]+ function:([A-Za-z_] [A-Za-z0-9_]*)`)
     (hl_line `keyword` `("obj" | "enum" | "type") [ \\t]+ type:([A-Za-z_] [A-Za-z0-9_]*)`)
     (hl_line `keyword` `("called" | "inline") after [ \\t]+ ("fun" | "sub")`)
     (hl_line `keyword` `line-start [ \\t]* "rarely" not after [ \\t]* [^ \\t#]`)
     (hl_line `keyword` `line-start [ \\t]* "new" after [ \\t]+ [A-Za-z_]`)
+    (hl_line `keyword` `line-start ("pub" [ \\t]+)? "api" after [ \\t]+ [A-Za-z_]`)
+    (hl_line `keyword` `line-start "add" after [ \\t]+ [A-Za-z_?!*^~(\\[]`)
     (hl_line `keyword` `"of" before ' ' after ' '`)
     (hl_line `keyword` `"from" [ \\t]+ "static" not after [A-Za-z0-9_]`)
     (hl_line `keyword` `("from" | "keeps") before ' ' after ' ' [A-Za-z_@]`)
@@ -1959,6 +2021,16 @@
     (alt
       _
       ((ref `test`))
+      _
+      _)
+    (alt
+      _
+      ((ref `api`))
+      _
+      _)
+    (alt
+      _
+      ((ref `add`))
       _
       _))
   (rule
@@ -2640,6 +2712,21 @@
           `apis`
           (ref `apis2`)))
       (node `bound`)
+      _)
+    (alt
+      _
+      ((label
+          `owner`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`)))
+      (node `assoc_bound`)
       _))
   (rule
     (name `apis`)
@@ -3068,6 +3155,137 @@
           `type`
           (ref `type`)))
       (node `type`)
+      _))
+  (rule
+    (name `api`)
+    (alt
+      _
+      ((tok `API`)
+        (label
+          `name`
+          (ref `name`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `amembers`))
+        (tok `OUTDENT`))
+      (node `api`)
+      _)
+    (alt
+      _
+      ((tok `API`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `amembers`))
+        (tok `OUTDENT`))
+      (node `api`)
+      _)
+    (alt
+      _
+      ((tok `API`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`)))
+      (node `api`)
+      _))
+  (rule
+    (name `amembers`)
+    (alt
+      _
+      ((ref `amember`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `amembers`)
+        (tok `NEWLINE`)
+        (ref `amember`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `amembers`)
+        (tok `NEWLINE`))
+      (pos `1`)
+      _))
+  (rule
+    (name `amember`)
+    (alt
+      _
+      ((ref `zfun`))
+      _
+      _)
+    (alt
+      _
+      ((ref `fun`))
+      _
+      _)
+    (alt
+      _
+      ((ref `sub`))
+      _
+      _)
+    (alt
+      _
+      ((tok `TYPE`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `api_type`)
+      _)
+    (alt
+      _
+      ((tok `PUB`)
+        (label
+          `decl`
+          (ref `amember`)))
+      (node `pub`)
+      _))
+  (rule
+    (name `add`)
+    (alt
+      _
+      ((tok `ADD`)
+        (label
+          `type`
+          (ref `type`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `api_add`)
+      _)
+    (alt
+      _
+      ((tok `ADD`)
+        (label
+          `type`
+          (ref `type`))
+        (lit `":"`)
+        (label
+          `apis`
+          (ref `apis`)))
+      (node `api_add`)
       _))
   (rule
     (name `members`)

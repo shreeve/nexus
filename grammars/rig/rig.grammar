@@ -74,9 +74,9 @@ tokens
     string_dq       # "double"
 
     # Keywords, `true` first and `yield` last (src/rig.zig reads the range
-    # as Rig's keywords). Every keyword but `new`, `obj`, `inline`,
-    # `called`, and `rarely` is reserved, and is a lexer rule; those five
-    # are classified by the rewriter.
+    # as Rig's keywords). Every keyword but `new`, `obj`, `api`, `add`,
+    # `inline`, `called`, and `rarely` is reserved, and is a lexer rule;
+    # those seven are classified by the rewriter.
     true
     false
     and
@@ -98,6 +98,8 @@ tokens
     match
     new             # a keyword only at statement start (`new x = ...`)
     obj             # a keyword only at the start of a type declaration (`obj Point`)
+    api             # a keyword only at the start of a module-level declaration (`api Shape`)
+    add             # a keyword only at the start of a module-level declaration (`add Int: Shape`)
     inline          # a keyword only before the `fun` or `sub` of a declaration
     rarely          # a keyword only alone on a line: the block it starts rarely runs
     called          # a keyword only before the `fun` or `sub` of a declaration
@@ -118,8 +120,8 @@ tokens
     async           # reserved; no form uses it
     await           # reserved; no form uses it
     const           # reserved; no form uses it
-    impl            # reserved; no form uses it
-    trait           # reserved; no form uses it
+    impl            # reserved, to say "write `add`"
+    trait           # reserved, to say "write `api`"
     when            # reserved; no form uses it
     where           # reserved; no form uses it
     yield           # reserved; no form uses it
@@ -394,6 +396,9 @@ tokens
     error_join                  name:leaf parts:group ...members
     generic_struct              name:leaf tparams:group unique:tag(unique)? apis:group? ...members
     generic_enum                name:leaf tparams:group apis:group? ...members
+    api                         name:leaf apis:group? ...members   # `api Shape: Print`, its methods
+    api_type                    name:leaf                          # `type Item` in an API: an associated type
+    api_add                     type apis:group ...members         # `add Int: Shape`, its methods
     type                        name:leaf type
     test                        name:leaf body:block
     pub                         decl
@@ -410,6 +415,7 @@ tokens
     # Parameters, fields, and enum members
     ":"                         name:leaf type
     bound                       name:leaf apis:group   # `[K: Hash + Print]`, two or more APIs; one is a `:`
+    assoc_bound                 owner:leaf name:leaf apis:group   # `[S: Source, S.Item: Ord]`: bounds on an associated type
     once                        name:leaf type   # `f: once ?fun() -> T`; the Parser wrapper makes it a `:`
     default                     name:leaf type value
     valued                      name:leaf value
@@ -505,7 +511,7 @@ tokens
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument"
-    OF: "`of`", OBJ: "`obj`", INLINE: "`inline`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`", KEEPS: "`keeps`", ONCE: "`once`"
+    OF: "`of`", OBJ: "`obj`", API: "`api`", ADD: "`add`", INLINE: "`inline`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`", KEEPS: "`keeps`", ONCE: "`once`"
     DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", TASK_AMP: "`&`", STEP_COLON: "`:`", SYMBOL_COLON: "`:`", AS_COMMA: "`,`", LABEL: "`$`", LABEL_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`", CATCH_JUMP: "`catch`", CATCH_BLOCK: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
@@ -556,7 +562,7 @@ tokens
     scope-name          source.rig
     extensions          rig
     line-comment        "#"
-    indent              line-start [ \t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \t]+ ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?)? | ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?) [ \t]* line-end
+    indent              line-start [ \t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \t]+ ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?)? | ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "api" | "add" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?) [ \t]* line-end
     dedent              line-start [ \t]* "else"
 
     keyword             ("fun" | "sub") [ \t]+ function:([A-Za-z_] [A-Za-z0-9_]*)
@@ -564,6 +570,8 @@ tokens
     keyword             ("called" | "inline") after [ \t]+ ("fun" | "sub")
     keyword             line-start [ \t]* "rarely" not after [ \t]* [^ \t#]
     keyword             line-start [ \t]* "new" after [ \t]+ [A-Za-z_]
+    keyword             line-start ("pub" [ \t]+)? "api" after [ \t]+ [A-Za-z_]
+    keyword             line-start "add" after [ \t]+ [A-Za-z_?!*^~(\[]
     keyword             "of" before ' ' after ' '
     keyword             "from" [ \t]+ "static" not after [A-Za-z0-9_]
     keyword             ("from" | "keeps") before ' ' after ' ' [A-Za-z_@]
@@ -698,7 +706,7 @@ constant = target:name "=" value:tail               → (set)
          | target:name "=!" value:tail              → (set op:fixed)
          | target:name ":" type:type "=!" value:tail → (set op:fixed)
 
-defn     = fun | sub | method | enum | struct | errors | typedef | test
+defn     = fun | sub | method | enum | struct | errors | typedef | test | api | add
 
 # `use geo`, `use geo as g`, `use checker.binder`, `use std.os as o`: a
 # module named by its path from the program's root directory, or from
@@ -770,9 +778,10 @@ tfields  = tfield                                   → (1)
 tfield   = name
          | name:name ":" type:type                  → (:)
          | name:name ":" apis:apis2                 → (bound)     # `[K: Hash + Print]`
+         | owner:name "." name:name ":" apis:apis   → (assoc_bound) # `[S: Source, S.Item: Ord]`
 
-# The built-in APIs a bound or a type's header names, joined with `+`:
-# `Eq + Hash`.
+# The APIs a bound or a type's header names, joined with `+`: built-in
+# ones and a program's own, `Eq + Hash`, `Shape + Print`.
 apis     = tname                                    → (1)
          | apis2
 
@@ -825,6 +834,30 @@ struct   = OBJ name:name INDENT members:members OUTDENT   → (struct)
                                                     → (generic_struct unique:unique)
 
 typedef  = TYPE name:name "=" type:type             → (type)
+
+# An API: the methods a type provides, each required (no body) or a
+# default (a body), and the APIs it builds on: `api Named: Print`. The
+# lexer reads `api` as a keyword only at the start of a module-level
+# declaration, so `user.api` stays a name.
+api      = API name:name INDENT members:amembers OUTDENT                → (api)
+         | API name:name ":" apis:apis INDENT members:amembers OUTDENT  → (api)
+         | API name:name ":" apis:apis                                  → (api)
+
+amembers = amember                                  → (1)
+         | amembers NEWLINE amember                 → (...1 3)
+         | amembers NEWLINE                         → 1
+
+amember  = zfun
+         | fun
+         | sub
+         | TYPE name:name                           → (api_type)   # `type Item`
+         | PUB decl:amember                         → (pub)        # rejected: an API's methods are as public as it is
+
+# An addition: a type provides an API declared elsewhere, or only under
+# a bound: `add Int: Shape`, `add Wrap[T: Shape]: Shape`. Any type
+# parses, so that the checker can name what `add` takes.
+add      = ADD type:type ":" apis:apis INDENT members:members OUTDENT   → (api_add)
+         | ADD type:type ":" apis:apis                                  → (api_add)
 
 members  = member                                   → (1)
          | members NEWLINE member                   → (...1 3)
