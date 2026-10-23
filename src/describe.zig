@@ -228,7 +228,7 @@ const Describer = struct {
             try w.writeAll(", \"edge\": ");
             try json.optString(w, if (c.edge == .none) null else @tagName(c.edge));
             try w.writeAll(", \"scope\": ");
-            try json.string(w, c.scope.names().name);
+            try json.string(w, c.scope.name());
             try w.writeAll(", \"modifiers\": ");
             try self.stringList(c.modifiers);
             try self.whens(c.when);

@@ -1,6 +1,6 @@
 # A color line gives a scope.
 # error: lsp_color_no_scope.grammar:47:5:
-# error: color let.name needs a scope (keyword, keyword.control, keyword.operator, constant, constant.numeric, constant.symbol, string, string.escape, comment, operator, punctuation, type, function, function.builtin, label, storage.modifier, variable.parameter, variable.special, invalid)
+# error: color let.name needs a scope (@highlight's: keyword, keyword.control, keyword.operator, constant, constant.numeric, constant.symbol, string, string.escape, comment, operator, punctuation, type, function, function.builtin, label, storage.modifier, variable.parameter, variable.special, invalid; LSP's: namespace, class, enum, interface, struct, typeParameter, variable, property, enumMember, event, method, macro, regexp, decorator)
 @lexer
 
 tokens

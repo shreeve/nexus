@@ -298,10 +298,12 @@ as `L:C len scope [modifier ...]`. `--update` writes the `.out` file.
 `test/lib/vscode` checks the extension without VS Code, under Node.
 `legend PACKAGE_JSON SERVER_TEMPLATE` (in every `editor/<grammar>/files`)
 checks that `package.json`'s semantic token types agree with the legend
-in `src/lsp/server_template.zig`: each type of the legend is one of VS
-Code's standard types or one `package.json` declares, it declares no
-other and no standard one, each `superType` is a standard type, and
-`semanticTokenScopes` gives a scope to exactly the legend's types.
+in `src/lsp/server_template.zig` (`scope_legend ++ type_legend`, the
+scopes' types and then LSP's): each type of the legend is one of VS
+Code's standard types or one `package.json` declares, each of LSP's is
+standard, it declares no other and no standard one, each `superType` is
+a standard type, and `semanticTokenScopes` gives a scope to exactly the
+scopes' types.
 `client VSCODE_DIR SCENARIO` loads `extension.js` with stub `vscode` and
 `vscode-languageclient/node` modules and runs a scenario, a CommonJS
 module of steps (settings at user or workspace level, a trusted or

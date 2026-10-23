@@ -1881,7 +1881,21 @@ symbol kinds as the server names them (`file`, `module`, `namespace`,
 `package`, `class`, `method`, `property`, `field`, `constructor`,
 `enum`, `interface`, `function`, `variable`, `constant`, `string`,
 `number`, `boolean`, `array`, `object`, `key`, `null`, `enum_member`,
-`struct`, `event`, `operator`, `type_parameter`).
+`struct`, `event`, `operator`, `type_parameter`). `SCOPE` is one of
+`@highlight`'s 19 [scopes](#scopes), or one of the 14 semantic token
+types of LSP that no scope stands for, spelled as LSP spells them:
+`namespace`, `class`, `enum`, `interface`, `struct`, `typeParameter`,
+`variable`, `property`, `enumMember`, `event`, `method`, `macro`,
+`regexp`, `decorator`. LSP's other types are scopes, and are written as
+the scope: `type`, `function`, `keyword`, `comment`, `string` and
+`operator` by their own names, `number` as `constant.numeric`,
+`parameter` as `variable.parameter` and `modifier` as
+`storage.modifier`. An LSP type colours only through the language
+server's semantic tokens; the editor files of `@highlight` (TextMate,
+Vim, highlight.js) know only the scopes. `MODIFIER` is one of LSP's
+token modifiers (`declaration`, `definition`, `readonly`, `static`,
+`deprecated`, `abstract`, `async`, `modification`, `documentation`,
+`default_library`).
 
 | Line | Meaning |
 |---|---|
@@ -2188,8 +2202,10 @@ all.
 In Counts an assignment binds its name: `n = 1` defines `n` unless an
 `n` is in sight, which it then assigns. A `def`'s name is a function and
 its parameters parameters, coloured so where they are defined
-(`declaration`) and wherever they are named; the `!` that ends a `force`
-node is a modifier, and the `loop` that starts a loop a keyword. `loop`
+(`declaration`) and wherever they are named; an assignment's target is
+LSP's `variable`, which no `@highlight` scope stands for, and so is each
+use of the name; the `!` that ends a `force` node is a modifier, and the
+`loop` that starts a loop a keyword. `loop`
 is a keyword only where it starts a line, which the lang Lexer decides,
 so the grammar names it a completion word:
 
@@ -2255,6 +2271,7 @@ tokens
     use         IDENT
     color       def.name        function  declaration
     color       params.names    variable.parameter  declaration
+    color       assign.target   variable
     color       loop start      keyword
     color       force end       storage.modifier
     words       "loop"
@@ -2360,26 +2377,34 @@ error -32803 'by' is in sight on line 2, where the assignment would assign it, n
   1:10 2 variableParameter declaration
   1:12 1 punctuation
   1:14 1 punctuation
+  2:5 1 variable
   2:7 1 operator
   2:9 2 variableParameter
   2:12 1 operator
   2:14 1 constantNumeric
+  3:5 1 variable
   3:6 1 storageModifier
   4:1 1 punctuation
   5:1 4 keyword
   5:6 1 punctuation
+  6:5 1 variable
   6:7 1 operator
   6:9 1 constantNumeric
   7:1 1 punctuation
+  8:1 1 variable
   8:3 1 operator
   8:5 4 function
   8:9 1 punctuation
   8:10 1 constantNumeric
   8:11 1 punctuation
+  9:1 1 variable
   9:3 1 operator
+  9:5 1 variable
   9:7 1 operator
   9:9 1 constantNumeric
+  10:1 5 variable
   10:7 1 operator
+  10:9 1 variable
 ```
 
 A use takes its definition's colour without `declaration` and
@@ -2422,8 +2447,9 @@ wherever the bind's conditions hold, or one a `skip` without `when` also
 names; `when ROLE:KIND` with a text, or on a role that never holds a KIND
 node; a `color` line without a role or `start` or `end`, on a role that
 holds no token, on a `@wrapper` kind (which the grammar's tree never
-has), without a scope or with one `@highlight` does not have, with a
-modifier LSP does not have, one twice or one after its `when`s, or twice
+has), without a scope, with one neither `@highlight` nor LSP has, or
+with an LSP type a scope stands for (`number`, which the error says to
+write as `constant.numeric`), with a modifier LSP does not have, one twice or one after its `when`s, or twice
 with the same conditions; a `words` line without words, or with a word
 that is not a string, is empty, repeated, not one token of the lexer,
 not made of `@highlight`'s word-chars, or one the grammar offers

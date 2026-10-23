@@ -559,6 +559,8 @@
       {"kind": "var_decl", "role": "name", "edge": null, "scope": "type", "modifiers": ["declaration"], "when": [{"parent": null, "role": "init", "text": null, "kind": "container_decl"}]},
       {"kind": "var_decl", "role": "name", "edge": null, "scope": "type", "modifiers": ["declaration"], "when": [{"parent": null, "role": "init", "text": null, "kind": "error_set_decl"}]},
       {"kind": "var_decl", "role": "name", "edge": null, "scope": "constant", "modifiers": ["declaration", "readonly"], "when": [{"parent": null, "role": "mut", "text": "const", "kind": null}]},
+      {"kind": "var_decl", "role": "name", "edge": null, "scope": "variable", "modifiers": ["declaration"], "when": [{"parent": null, "role": "mut", "text": "var", "kind": null}]},
+      {"kind": "container_field", "role": "name", "edge": null, "scope": "property", "modifiers": ["declaration"], "when": []},
       {"kind": "container_field", "role": "type", "edge": null, "scope": "constant", "modifiers": ["declaration"], "when": [{"parent": "container_decl", "role": "kind", "text": "enum", "kind": null}]},
       {"kind": "error_name", "role": "name", "edge": null, "scope": "constant", "modifiers": ["declaration"], "when": []},
       {"kind": "enum_literal", "role": "name", "edge": null, "scope": "constant", "modifiers": [], "when": []},

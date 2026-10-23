@@ -339,7 +339,7 @@ fn namesTable(allocator: Allocator, w: *Writer, in: Input, l: *const names.Lsp) 
         try w.writeAll("\n        .{ .at = ");
         if (c.role) |r| try slotOf(w, r) else try w.print(".{{ .kind = .{f}, .slot = 0 }}, .edge = .{s}", .{ std.zig.fmtIdPU(c.kind), @tagName(c.edge) });
         try whenList(w, c.kind, c.when);
-        try w.print(", .scope = .{s}", .{@tagName(c.scope)});
+        try w.print(", .scope = .{f}", .{std.zig.fmtIdPU(c.scope.field())});
         if (c.modifiers.len > 0) {
             try w.writeAll(", .modifiers = .{");
             for (c.modifiers, 0..) |m, i| try w.print("{s}.{f} = true", .{ if (i > 0) ", " else " ", std.zig.fmtIdPU(m) });

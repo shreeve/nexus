@@ -15,8 +15,10 @@
   5:17 1 operator
   5:19 6 keyword
   5:26 1 punctuation
+  6:5 1 property declaration
   6:6 1 punctuation
   6:11 1 punctuation
+  7:5 1 property declaration
   7:6 1 punctuation
   7:11 1 punctuation
   9:5 3 storageModifier
@@ -31,9 +33,11 @@
   10:9 6 keywordControl
   10:16 1 variableParameter
   10:17 1 punctuation
+  10:18 1 property
   10:20 1 operator
   10:22 1 variableParameter
   10:23 1 punctuation
+  10:24 1 property
   10:25 1 punctuation
   11:5 1 punctuation
   12:1 1 punctuation
@@ -62,6 +66,7 @@
   16:15 2 constantNumeric
   16:17 1 punctuation
   17:1 3 keyword
+  17:5 5 variable declaration
   17:10 1 punctuation
   17:16 1 operator
   17:18 1 constantNumeric
@@ -89,6 +94,7 @@
   20:33 1 punctuation
   20:34 6 constant
   20:40 1 punctuation
+  21:5 5 variable
   21:11 2 operator
   21:14 1 constantNumeric
   21:15 1 punctuation

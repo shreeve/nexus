@@ -152,8 +152,9 @@ pub fn Analyzed(comptime A: type) type {
     };
 }
 
-/// The scopes of `@highlight`, the semantic token types the server
-/// declares (`legend`).
+/// The semantic token types the server declares (`legend`): the scopes of
+/// `@highlight`, then LSP's types that no scope stands for, which only
+/// `@lsp`'s `color` lines give.
 pub const Scope = enum(u8) {
     keyword,
     keyword_control,
@@ -174,16 +175,59 @@ pub const Scope = enum(u8) {
     variable_parameter,
     variable_special,
     invalid,
+    namespace,
+    class,
+    @"enum",
+    interface,
+    @"struct",
+    type_parameter,
+    variable,
+    property,
+    enum_member,
+    event,
+    method,
+    macro,
+    regexp,
+    decorator,
 };
 
-/// The semantic token types, one per `Scope`, as `package.json` declares
+/// The semantic token types, one per `Scope`: the scopes', then LSP's.
+pub const legend = scope_legend ++ type_legend;
+
+/// The token types of `@highlight`'s scopes, as `package.json` declares
 /// them.
-pub const legend = [_][]const u8{
+pub const scope_legend = [_][]const u8{
     "keyword",         "keywordControl",    "keywordOperator", "constant",        "constantNumeric",
     "constantSymbol",  "string",            "stringEscape",    "comment",         "operator",
     "punctuation",     "type",              "function",        "functionBuiltin", "label",
     "storageModifier", "variableParameter", "variableSpecial", "invalid",
 };
+
+/// LSP's token types that no scope stands for, as LSP names them. VS Code
+/// knows each, so `package.json` declares none and gives none a scope.
+pub const type_legend = [_][]const u8{
+    "namespace", "class",      "enum",  "interface", "struct", "typeParameter", "variable",
+    "property",  "enumMember", "event", "method",    "macro",  "regexp",        "decorator",
+};
+
+// Each type of the legend is its `Scope` in camel case.
+comptime {
+    const types = std.enums.values(Scope);
+    if (legend.len != types.len) @compileError("the legend and Scope differ in length");
+    for (types, legend) |s, name| {
+        var camel: []const u8 = "";
+        var upper = false;
+        for (@tagName(s)) |c| {
+            if (c == '_') {
+                upper = true;
+                continue;
+            }
+            camel = camel ++ .{if (upper) std.ascii.toUpper(c) else c};
+            upper = false;
+        }
+        if (!std.mem.eql(u8, camel, name)) @compileError("the legend's " ++ name ++ " is not Scope's " ++ @tagName(s));
+    }
+}
 
 /// LSP's semantic token modifiers, as the server declares them
 /// (`modifier_legend`, in order).
