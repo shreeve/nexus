@@ -142,41 +142,17 @@ pub fn languageZig(allocator: Allocator, in: Input) Error![]const u8 {
     }
 
     // The words a terminal stands for, which completion offers.
-    try w.writeAll("\n/// The words completion offers where the grammar takes them: each literal\n/// terminal, token whose one rule is a literal, and `@keywords` terminal\n/// that is a word.\npub const words: []const []const u8 = &.{");
+    const added: []const grammar.LspLines.Word = if (in.lsp) |l| l.words else &.{};
+    try w.print("\n/// The words completion offers where the grammar takes them: each literal\n/// terminal, token whose one rule is a literal, and `@keywords` terminal\n/// that is a word{s}.\npub const words: []const []const u8 = &.{{", .{if (added.len > 0) ", and those of `@lsp words`" else ""});
     var words: std.ArrayList([]const u8) = .empty;
-    for (in.g.symbols.items) |sym| {
-        if (sym.kind != .terminal or sym.name.len < 3 or sym.name[0] != '"') continue;
-        const text = sym.name[1 .. sym.name.len - 1];
-        if (isWord(in.h, text)) try words.append(allocator, text);
-    }
-    for (in.g.tokenMap) |b| {
-        if (in.g.symbols.items[b.sym].name[0] == '"') continue;
-        var only: ?[]const u8 = null;
-        var count: usize = 0;
-        for (in.spec.rules.items) |r| if (!r.isSkip and std.mem.eql(u8, r.token, b.cat)) {
-            only = r.literal;
-            count += 1;
-        };
-        if (count == 1) if (only) |text| if (isWord(in.h, text)) try words.append(allocator, text);
-    }
-    for (in.g.keywordGroups) |group| for (0..group.terminals.len) |i| {
-        var word: ?[]const u8 = null;
-        var count: usize = 0;
-        for (group.entries) |ge| if (ge.terminal == i and !ge.alias) {
-            word = ge.word;
-            count += 1;
-        };
-        if (count == 1) try words.append(allocator, word.?);
-    };
+    try words.appendSlice(allocator, try grammarWords(allocator, in.g, in.spec, in.h));
+    for (added) |word| try words.append(allocator, word.text);
     std.mem.sort([]const u8, words.items, {}, struct {
         fn lt(_: void, x: []const u8, y: []const u8) bool {
             return std.mem.order(u8, x, y) == .lt;
         }
     }.lt);
-    for (words.items, 0..) |word, i| {
-        if (i > 0 and std.mem.eql(u8, words.items[i - 1], word)) continue;
-        try w.print("\n    \"{f}\",", .{std.zig.fmtString(word)});
-    }
+    for (words.items) |word| try w.print("\n    \"{f}\",", .{std.zig.fmtString(word)});
     try w.writeAll(if (words.items.len > 0) "\n};\n" else "};\n");
 
     // word-chars
@@ -199,6 +175,48 @@ pub fn languageZig(allocator: Allocator, in: Input) Error![]const u8 {
     try w.writeAll("        else => false,\n    };\n}\n");
     if (in.lsp) |l| try namesTable(allocator, w, in, l);
     return out.written();
+}
+
+/// The words of the grammar completion offers, sorted, each once: each
+/// literal terminal, token whose one rule is a literal, and `@keywords`
+/// terminal that is a word.
+pub fn grammarWords(allocator: Allocator, g: *const Grammar, spec: *const grammar.LexerSpec, h: *const Highlight) Allocator.Error![]const []const u8 {
+    var words: std.ArrayList([]const u8) = .empty;
+    for (g.symbols.items) |sym| {
+        if (sym.kind != .terminal or sym.name.len < 3 or sym.name[0] != '"') continue;
+        const text = sym.name[1 .. sym.name.len - 1];
+        if (isWord(h, text)) try words.append(allocator, text);
+    }
+    for (g.tokenMap) |b| {
+        if (g.symbols.items[b.sym].name[0] == '"') continue;
+        var only: ?[]const u8 = null;
+        var count: usize = 0;
+        for (spec.rules.items) |r| if (!r.isSkip and std.mem.eql(u8, r.token, b.cat)) {
+            only = r.literal;
+            count += 1;
+        };
+        if (count == 1) if (only) |text| if (isWord(h, text)) try words.append(allocator, text);
+    }
+    for (g.keywordGroups) |group| for (0..group.terminals.len) |i| {
+        var word: ?[]const u8 = null;
+        var count: usize = 0;
+        for (group.entries) |ge| if (ge.terminal == i and !ge.alias) {
+            word = ge.word;
+            count += 1;
+        };
+        if (count == 1) try words.append(allocator, word.?);
+    };
+    std.mem.sort([]const u8, words.items, {}, struct {
+        fn lt(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.order(u8, x, y) == .lt;
+        }
+    }.lt);
+    var out: std.ArrayList([]const u8) = .empty;
+    for (words.items, 0..) |word, i| {
+        if (i > 0 and std.mem.eql(u8, words.items[i - 1], word)) continue;
+        try out.append(allocator, word);
+    }
+    return out.items;
 }
 
 /// `@lsp` as scopes.zig reads it: `names`, with every slot the parser's
@@ -251,6 +269,15 @@ fn namesTable(allocator: Allocator, w: *Writer, in: Input, l: *const names.Lsp) 
             .upto => |r| try w.print(", .detail = .{{ .upto = ir.slot(.{f}, .{f}) }}", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) }),
         }
         try w.writeAll(" },");
+    }
+    // A bind line is a definition the walk makes or not, after the define
+    // lines.
+    for (l.binds) |b| {
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, b.role);
+        try w.print(", .symbol = .{f}", .{std.zig.fmtIdPU(b.symbol)});
+        try whenList(w, b.role.kind, b.when);
+        try w.writeAll(", .bind = true },");
     }
     try w.writeAll("\n    },\n    .skips = &.{");
     for (l.skips) |sk| {
@@ -307,7 +334,21 @@ fn namesTable(allocator: Allocator, w: *Writer, in: Input, l: *const names.Lsp) 
     }
     try w.writeAll("},\n    .namespaces = &.{");
     for (spaces.items, 0..) |s, i| try w.print("{s}\"{f}\"", .{ if (i > 0) ", " else "", std.zig.fmtString(s) });
-    try w.writeAll("},\n    .extensions = &.{");
+    try w.writeAll("},\n    .colors = &.{");
+    for (l.colors) |c| {
+        try w.writeAll("\n        .{ .at = ");
+        if (c.role) |r| try slotOf(w, r) else try w.print(".{{ .kind = .{f}, .slot = 0 }}, .edge = .{s}", .{ std.zig.fmtIdPU(c.kind), @tagName(c.edge) });
+        try whenList(w, c.kind, c.when);
+        try w.print(", .scope = .{s}", .{@tagName(c.scope)});
+        if (c.modifiers.len > 0) {
+            try w.writeAll(", .modifiers = .{");
+            for (c.modifiers, 0..) |m, i| try w.print("{s}.{f} = true", .{ if (i > 0) ", " else " ", std.zig.fmtIdPU(m) });
+            try w.writeAll(" }");
+        }
+        try w.writeAll(" },");
+    }
+    try w.writeAll(if (l.colors.len > 0) "\n    },\n" else "},\n");
+    try w.writeAll("    .extensions = &.{");
     for (in.h.extensions, 0..) |e, i| try w.print("{s}\"{f}\"", .{ if (i > 0) ", " else "", std.zig.fmtString(e) });
     try w.writeAll("},\n};\n");
 }
@@ -322,6 +363,7 @@ fn whenList(w: *Writer, kind: []const u8, when: []const names.Define.When) Write
         if (wh.parent) |p| try w.print(".parent = .{f}, ", .{std.zig.fmtIdPU(p)});
         try w.print(".slot = ir.slot(.{f}, .{f})", .{ std.zig.fmtIdPU(of), std.zig.fmtIdPU(wh.role) });
         if (wh.text) |t| try w.print(", .text = \"{f}\"", .{std.zig.fmtString(t)});
+        if (wh.kind) |k| try w.print(", .kind = .{f}", .{std.zig.fmtIdPU(k)});
         try w.writeAll(" }");
     }
     try w.writeAll(" }");
@@ -402,9 +444,10 @@ const hooks_body =
     \\/// pub fn parseDiagnostics(arena: std.mem.Allocator, path: []const u8, text: []const u8) ![]const lsp.Diagnostic
     \\pub const parseDiagnostics = lsp.todo;
     \\
-    \\/// The semantic tokens of a file, in order, in place of each token's
-    \\/// `@highlight` scope.
-    \\/// pub fn tokens(arena: std.mem.Allocator, path: []const u8, text: []const u8) ![]const lsp.Token
+    \\/// The semantic tokens of a file, in order, in place of the grammar's:
+    \\/// `grammar`, each token's `@highlight` scope, and the scopes and
+    \\/// modifiers of `@lsp`'s `color` lines.
+    \\/// pub fn tokens(arena: std.mem.Allocator, path: []const u8, text: []const u8, grammar: []const lsp.Token) ![]const lsp.Token
     \\pub const tokens = lsp.todo;
     \\
     \\/// The outline of a file. Turns on the outline and breadcrumbs.

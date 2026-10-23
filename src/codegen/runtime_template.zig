@@ -2341,6 +2341,129 @@ fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
 
 // @end
 
+// @section complete
+
+// =============================================================================
+// Completion (the language server's module only)
+// =============================================================================
+
+/// A parse paused by `pauseAt`, as it was before it shifted a token: its
+/// state stack then, the token, and the lexer just after it read the
+/// token, its scanner not past the pause; or with no token, as it began.
+pub const Paused = struct {
+    states: []const u16,
+    token: ?Token,
+    lexer: Lexer,
+};
+
+/// The bytes before the pause in which `pauseAt` keeps where the parse
+/// was, and the most tokens `takesAt` reads from there.
+const pauseWindow = 16 << 10;
+const pauseTokens = 4096;
+
+/// Parse `start` over `p`'s source up to `at`: shift each token before
+/// `at`, making the reductions it makes, and stop before the first token
+/// at or after it. What it returns is the parse before it shifted the last
+/// token whose lexer had not read past `at` (a lang Lexer may read ahead),
+/// for `takesAt` to go on from. Null when the text before `at` has a
+/// syntax error, a token runs across `at`, or no token near `at` ends
+/// before the lexer reads past it.
+pub fn pauseAt(p: *BaseParser, start: Start, at: u32) !?Paused {
+    p.started = true;
+    try p.begin(start);
+    if (p.injectedToken) |marker| try p.shift(@intCast(getAction(p.stateStack.last().?, marker)));
+    var states: std.ArrayList(u16) = .empty;
+    try states.appendSlice(p.allocator(), p.stateStack.items);
+    var paused: ?Paused = .{ .states = &.{}, .token = null, .lexer = Lexer.init(p.source) };
+    const near = at -| pauseWindow;
+    var state = p.stateStack.last().?;
+    while (p.current.cat != .eof and p.current.pos < at) {
+        if (p.tokenEnd(p.current) > at) return null;
+        const action = p.strictAction(state, p.promoted(tokenToSymbol(p.current)));
+        if (action > 0) {
+            // Where the parse was is kept near `at`, unless the lexer has
+            // read past it; the last kept stays.
+            const scanned = if (Lexer == BaseLexer) p.lexer.pos else p.lexer.base.pos;
+            if (p.current.pos < near) {
+                paused = null;
+            } else if (scanned <= at) {
+                states.clearRetainingCapacity();
+                try states.appendSlice(p.allocator(), p.stateStack.items);
+                paused = .{ .states = &.{}, .token = p.current, .lexer = p.lexer };
+            }
+            state = @intCast(action);
+            try p.shiftToken(state);
+        } else if (action < -1) {
+            state = try p.reduceOrPass(@intCast(-action - 2));
+        } else return null;
+    }
+    var got = paused orelse return null;
+    got.states = states.items;
+    return got;
+}
+
+/// The symbol the parse `paused` takes the token at `at` of `source` as,
+/// going on from where it was kept: its token, then the tokens the lexer
+/// reads from there over `source`, the parser's source up to the pause,
+/// then other text. Every token before the one at `at` (the source's,
+/// layout, a zero-width one at `at`) is taken first. Null unless the token
+/// at `at` is `len` bytes, and the parser takes it there, and each token
+/// before it, shifting it or (the last) accepting after the reductions it
+/// makes on it. The parser is left as it is for another call, and for
+/// nothing else.
+pub fn takesAt(p: *BaseParser, paused: *const Paused, source: []const u8, at: u32, len: u32) error{OutOfMemory}!?u16 {
+    var lexer = paused.lexer;
+    const base: *BaseLexer = if (Lexer == BaseLexer) &lexer else &lexer.base;
+    base.source = source;
+    p.source = source;
+    p.stateStack.clearRetainingCapacity();
+    try p.stateStack.appendSlice(p.allocator(), paused.states);
+    if (paused.token) |t| {
+        p.setCurrent(t);
+        _ = (try takeNext(p)) orelse return null;
+    }
+    // A bound on the tokens before the word, for a lexer that makes
+    // layout without end.
+    for (0..pauseTokens) |_| {
+        var tok = lexer.next();
+        while (isTrivia(tok.cat)) tok = lexer.next();
+        if (tok.cat == .eof or tok.pos > at) return null;
+        const word = tok.pos == at and tok.len > 0;
+        if (word and tok.len != len) return null;
+        p.setCurrent(tok);
+        const sym = (try takeNext(p)) orelse return null;
+        if (word) return sym;
+        if (sym == endSymbol) return null;
+    }
+    return null;
+}
+
+/// Take the current token on the state stack: the symbol it is taken as,
+/// after the reductions it makes, or null when the state stack does not
+/// take it. A shift pushes its state; an accept pushes none.
+fn takeNext(p: *BaseParser) error{OutOfMemory}!?u16 {
+    const raw = tokenToSymbol(p.current);
+    var sym = p.promoted(raw);
+    while (true) {
+        const action = p.strictAction(p.stateStack.last().?, sym);
+        if (action == -1) return sym;
+        if (action > 0) {
+            try p.stateStack.append(p.allocator(), @intCast(action));
+            return sym;
+        }
+        if (action == 0) return null;
+        const rule: u16 = @intCast(-action - 2);
+        if (ruleLen[rule] >= p.stateStack.items.len) return null;
+        p.stateStack.items.len -= ruleLen[rule];
+        const next = getAction(p.stateStack.last().?, ruleLhs[rule]);
+        if (next <= 0) return null;
+        try p.stateStack.append(p.allocator(), @intCast(next));
+        if (asGroups > 0 and raw == needsPromotion) sym = p.promoted(raw);
+    }
+}
+
+// @end
+
 // =============================================================================
 // Test fixture (not emitted)
 //
@@ -2846,6 +2969,51 @@ test "trivia tokens leave the parse stream and are kept with spans" {
     try testing.expectEqual(@as(u32, 2), t[0].pos);
     try testing.expectEqual(@as(u16, 5), t[0].len);
     try testing.expectEqual(@as(u32, 9), t[1].pos);
+}
+
+test "a paused parse takes the tokens the grammar takes there, and no others" {
+    //                                         0123456
+    var p = BaseParser.init(testing.allocator, "a = (b x");
+    defer p.deinit();
+    const paused = (try pauseAt(&p, .prog, 7)).?;
+    // `+` and `)` go on, a name or a line end does not.
+    try testing.expectEqual(@as(?u16, 11), try takesAt(&p, &paused, "a = (b +", 7, 1));
+    try testing.expectEqual(@as(?u16, 13), try takesAt(&p, &paused, "a = (b ) x", 7, 1));
+    try testing.expectEqual(@as(?u16, null), try takesAt(&p, &paused, "a = (b c", 7, 1));
+    try testing.expectEqual(@as(?u16, null), try takesAt(&p, &paused, "a = (b \n", 7, 1));
+    // A token of another length than the one asked is not the word.
+    try testing.expectEqual(@as(?u16, null), try takesAt(&p, &paused, "a = (b cd", 7, 1));
+    // After a comment, and a line end.
+    var t = BaseParser.init(testing.allocator, "a = b # c\n");
+    defer t.deinit();
+    const next = (try pauseAt(&t, .prog, 10)).?;
+    try testing.expectEqual(@as(?u16, 9), try takesAt(&t, &next, "a = b # c\nz", 10, 1));
+    try testing.expectEqual(@as(?u16, null), try takesAt(&t, &next, "a = b # c\n+", 10, 1));
+    // Paused before the blanks before the word: the line end between is
+    // taken first.
+    var v = BaseParser.init(testing.allocator, "a = b\n  y");
+    defer v.deinit();
+    const gap = (try pauseAt(&v, .prog, 5)).?;
+    try testing.expectEqual(@as(?u16, 9), try takesAt(&v, &gap, "a = b\n  z", 8, 1));
+    try testing.expectEqual(@as(?u16, null), try takesAt(&v, &gap, "a = b\n  )", 8, 1));
+    try testing.expectEqual(@as(?u16, 11), try takesAt(&v, &gap, "a = b  +", 7, 1));
+    // At the start, and after a reduction the next token makes.
+    var q = BaseParser.init(testing.allocator, "a + b");
+    defer q.deinit();
+    const first = (try pauseAt(&q, .prog, 0)).?;
+    try testing.expectEqual(@as(?u16, 9), try takesAt(&q, &first, "z", 0, 1));
+    try testing.expectEqual(@as(?u16, null), try takesAt(&q, &first, "+", 0, 1));
+    var u = BaseParser.init(testing.allocator, "a + b");
+    defer u.deinit();
+    const later = (try pauseAt(&u, .prog, 4)).?;
+    try testing.expectEqual(@as(?u16, 12), try takesAt(&u, &later, "a + (", 4, 1));
+    // An error before the pause, or a token across it: no pause.
+    var r = BaseParser.init(testing.allocator, "a = = b");
+    defer r.deinit();
+    try testing.expectEqual(@as(?Paused, null), try pauseAt(&r, .prog, 6));
+    var s = BaseParser.init(testing.allocator, "a = bcd");
+    defer s.deinit();
+    try testing.expectEqual(@as(?Paused, null), try pauseAt(&s, .prog, 5));
 }
 
 test "parse errors carry the token span and the expected set" {

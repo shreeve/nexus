@@ -66,11 +66,15 @@ pub const Define = struct {
     doc: Doc = .none,
     @"export": Export = .none,
     detail: Detail = .none,
+    /// A `bind` line: the leaf defines its name unless a definition of the
+    /// name is in sight there, whose use it then is.
+    bind: bool = false,
 
     /// The leaf in slot `slot` of the node (of its parent, when the parent
-    /// is a `parent`) is `text`, an absent one's text being empty; without
-    /// `text`, the slot is not empty.
-    pub const When = struct { parent: ?Tag = null, slot: u16, text: ?[]const u8 = null };
+    /// is a `parent`) is `text`, an absent one's text being empty; with
+    /// `kind`, the slot holds a node of the kind; with neither, the slot
+    /// is not empty.
+    pub const When = struct { parent: ?Tag = null, slot: u16, text: ?[]const u8 = null, kind: ?Tag = null };
     /// `doc:ROLE`: the tokens of a role; `doc:leading`: the doc tokens on
     /// the lines just before the definition's node.
     pub const Doc = union(enum) { none, role: Slot, leading };
@@ -96,6 +100,18 @@ pub const Qualify = struct { at: Slot, in: u16 };
 /// `nominal`: a leaf of `cat` is a name of namespace `ns`.
 pub const Nominal = struct { cat: TokenCat, ns: u16 };
 
+/// `color`: the semantic token of the leaf in `at`, or with an `edge`, of
+/// the first or last token of a node of `at.kind`.
+pub const Color = struct {
+    at: Slot,
+    edge: Edge = .none,
+    when: []const Define.When = &.{},
+    scope: lsp.Scope,
+    modifiers: lsp.Modifiers = .{},
+
+    pub const Edge = enum { none, start, end };
+};
+
 pub const Table = struct {
     scopes: []const ScopeKind = &.{},
     /// Whether the file's own scope is unordered when its tree is not
@@ -118,6 +134,7 @@ pub const Table = struct {
     nominals: []const Nominal = &.{},
     /// The namespaces of `nominal`, by number.
     namespaces: []const []const u8 = &.{},
+    colors: []const Color = &.{},
     /// The extensions of the language's files, which make up a workspace.
     extensions: []const []const u8 = &.{},
 };
@@ -143,8 +160,10 @@ pub const Def = struct {
     scope: u32,
     /// The scope whose definitions are its children in the outline.
     inner: ?u32 = null,
-    /// Its `define` line.
+    /// Its `define` (or `bind`) line.
     line: u16,
+    /// The `color` line of its leaf, which its uses take too.
+    color: ?u16 = null,
     /// Its node's span (for a rest role, its own leaf's).
     node_start: u32,
     node_end: u32,
@@ -201,6 +220,10 @@ pub const Occurrence = struct {
 /// tolerant parse inserted.
 const Other = struct { start: u32, end: u32, use: bool };
 
+/// A token a `color` line colours: a leaf of its role, or a node's first
+/// or last token.
+pub const Colored = struct { start: u32, end: u32, color: u16 };
+
 pub const Index = struct {
     text: []const u8,
     tokens: []const parser.Token,
@@ -216,6 +239,8 @@ pub const Index = struct {
     /// Every other leaf, and every hole, by position: what completion
     /// asks of the word at the cursor.
     others: []const Other,
+    /// The tokens `color` lines colour, by position.
+    colored: []const Colored,
     /// The definitions of each name.
     byName: std.StringHashMapUnmanaged(std.ArrayList(u32)),
 
@@ -264,20 +289,30 @@ pub const Index = struct {
             else => null,
         } else null;
         var scope: ?u32 = self.scopeAt(offset);
+        var picks: std.StringArrayHashMapUnmanaged(u32) = .empty;
         while (scope) |s| : (scope = self.scopes[s].parent) {
             const unordered = self.scopes[s].unordered;
-            // In an ordered scope the last definition before `offset` of a
-            // name is the one in sight.
-            var i = self.defs.len;
-            while (i > 0) {
-                i -= 1;
-                const d = self.defs[i];
+            // Of each name, the last definition of the scope: in an ordered
+            // scope, the last before `offset`, the one in sight.
+            picks.clearRetainingCapacity();
+            for (self.defs, 0..) |d, i| {
                 if (d.scope != s or table.defines[d.line].visibility == .member) continue;
                 if (!unordered and d.visible >= offset) continue;
                 if (here != null and here.? == i) continue;
-                const gop = try seen.getOrPut(arena, d.name);
+                const gop = try picks.getOrPut(arena, d.name);
+                if (!gop.found_existing or self.defs[gop.value_ptr.*].start < d.start) gop.value_ptr.* = @intCast(i);
+            }
+            // The scope's names, the last defined first.
+            const ids = try arena.dupe(u32, picks.values());
+            std.mem.sort(u32, ids, self, struct {
+                fn later(ix: *const Index, x: u32, y: u32) bool {
+                    return ix.defs[x].start > ix.defs[y].start;
+                }
+            }.later);
+            for (ids) |i| {
+                const gop = try seen.getOrPut(arena, self.defs[i].name);
                 if (gop.found_existing) continue;
-                try out.append(arena, @intCast(i));
+                try out.append(arena, i);
             }
         }
         return out.items;
@@ -286,9 +321,14 @@ pub const Index = struct {
     /// Whether completion at `offset` offers names: unless the word there
     /// (or the hole the tolerant parse put there) is a definition's, a
     /// skipped role's, a member's or another name a scope does not hold,
-    /// where a name in scope cannot go.
+    /// where a name in scope cannot go. An assignment's target that
+    /// defines its name (`bind`) may assign one in sight instead.
     pub fn wantsNames(self: *const Index, offset: u32) bool {
-        if (self.at(offset)) |o| return o.what == .use;
+        if (self.at(offset)) |o| return switch (o.what) {
+            .use => true,
+            .def => |d| table.defines[self.defs[d].line].bind,
+            else => false,
+        };
         for (self.others) |o| {
             if (o.start == o.end) {
                 if (self.holeAt(o.start, offset)) return o.use;
@@ -464,6 +504,13 @@ pub const Index = struct {
                 .children = children,
             });
         }
+        // A bind's definition is made after the walk: in the order of the
+        // text.
+        std.mem.sort(lsp.OutlineItem, out.items, {}, struct {
+            fn lt(_: void, x: lsp.OutlineItem, y: lsp.OutlineItem) bool {
+                return x.name_start < y.name_start;
+            }
+        }.lt);
         return out.items;
     }
 
@@ -490,6 +537,7 @@ pub fn index(arena: Allocator, text: []const u8) error{OutOfMemory}!Index {
     var b: Builder = .{ .arena = arena, .text = text };
     try b.lex();
     try b.walk();
+    try b.bindAll();
     try b.resolve();
     try b.denote();
     std.mem.sort(Occurrence, b.occurrences.items, {}, struct {
@@ -499,6 +547,11 @@ pub fn index(arena: Allocator, text: []const u8) error{OutOfMemory}!Index {
     }.lt);
     std.mem.sort(Other, b.others.items, {}, struct {
         fn lt(_: void, x: Other, y: Other) bool {
+            return x.start < y.start;
+        }
+    }.lt);
+    std.mem.sort(Colored, b.colored.items, {}, struct {
+        fn lt(_: void, x: Colored, y: Colored) bool {
             return x.start < y.start;
         }
     }.lt);
@@ -520,6 +573,7 @@ pub fn index(arena: Allocator, text: []const u8) error{OutOfMemory}!Index {
         .nominals = b.nominals.items,
         .occurrences = b.occurrences.items,
         .others = b.others.items,
+        .colored = b.colored.items,
         .byName = byName,
     };
 }
@@ -554,6 +608,10 @@ const Builder = struct {
     /// type roles'.
     operands: std.ArrayList(struct { member: u32, value: Sexp }) = .empty,
     defValues: std.ArrayList(struct { def: u32, value: Sexp, typed: Sexp }) = .empty,
+    /// The leaves `bind` lines take, in the order of the text, each made a
+    /// definition or a use after the walk.
+    binds: std.ArrayList(struct { item: Item, line: u16, start: u32, end: u32 }) = .empty,
+    colored: std.ArrayList(Colored) = .empty,
 
     fn lex(b: *Builder) error{OutOfMemory}!void {
         var lexer = parser.Lexer.init(b.text);
@@ -633,6 +691,7 @@ const Builder = struct {
                     }
                 }
                 try b.importAt(item, kind);
+                if (comptime table.colors.len > 0) try b.edgeColors(item, kind);
                 const items = list.items();
                 var n = items.len;
                 while (n > 1) {
@@ -671,12 +730,74 @@ const Builder = struct {
         }
     }
 
+    /// The `color` line of a node's first and last tokens.
+    fn edgeColors(b: *Builder, item: Item, kind: Tag) error{OutOfMemory}!void {
+        const node: Item = .{ .value = item.value, .owner = item.value, .parent = item.owner, .slot = 0, .scope = item.scope };
+        var done: [2]bool = .{ false, false };
+        for (table.colors, 0..) |c, line| {
+            if (c.edge == .none or c.at.kind != kind or done[@intFromBool(c.edge == .end)]) continue;
+            if (!b.holds(node, c.when)) continue;
+            done[@intFromBool(c.edge == .end)] = true;
+            const span = b.p.span(item.value);
+            const t = (if (c.edge == .start) b.solidFrom(span.start, span.end) else b.solidBefore(span.start, span.end)) orelse continue;
+            try b.colored.append(b.arena, .{ .start = t.pos, .end = t.pos + t.len, .color = @intCast(line) });
+        }
+    }
+
+    /// The first token of `start..end` with text other than blanks and
+    /// line ends, not a comment.
+    fn solidFrom(b: *Builder, start: u32, end: u32) ?parser.Token {
+        var i = b.firstAt(start);
+        while (i < b.tokens.items.len and b.tokens.items[i].pos < end) : (i += 1) {
+            const t = b.tokens.items[i];
+            if (isSolid(b.text, t)) return t;
+        }
+        return null;
+    }
+
+    /// The last such token that ends by `end`.
+    fn solidBefore(b: *Builder, start: u32, end: u32) ?parser.Token {
+        var i = b.firstAt(end);
+        while (i > 0) {
+            i -= 1;
+            const t = b.tokens.items[i];
+            if (t.pos < start) return null;
+            if (t.pos + t.len <= end and isSolid(b.text, t)) return t;
+        }
+        return null;
+    }
+
+    /// The first token that starts at or after `pos`.
+    fn firstAt(b: *Builder, pos: u32) usize {
+        const toks = b.tokens.items;
+        var lo: usize = 0;
+        var hi: usize = toks.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            if (toks[mid].pos < pos) lo = mid + 1 else hi = mid;
+        }
+        return lo;
+    }
+
+    /// The `color` line of a leaf of slot `item.slot` of a `kind` node: the
+    /// first whose conditions hold.
+    fn colorOf(b: *Builder, item: Item, kind: Tag) ?u16 {
+        for (table.colors, 0..) |c, line| {
+            if (c.edge != .none or c.at.kind != kind or !slotMatches(c.at, item.slot)) continue;
+            if (b.holds(item, c.when)) return @intCast(line);
+        }
+        return null;
+    }
+
     /// Classify a leaf of slot `item.slot` of `item.owner`.
     fn classify(b: *Builder, item: Item, leafv: parser.Src) error{OutOfMemory}!void {
         const start = leafv.pos;
         const end = b.p.leafEnd(leafv);
         const ownerKind = item.owner.kind();
         if (ownerKind) |k| {
+            if (comptime table.colors.len > 0) if (start < end) if (b.colorOf(item, k)) |c| {
+                try b.colored.append(b.arena, .{ .start = start, .end = end, .color = c });
+            };
             for (table.skips) |s| if (s.when.len > 0 and s.at.kind == k and slotMatches(s.at, item.slot) and b.holds(item, s.when))
                 return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
             for (table.defines, 0..) |d, line| {
@@ -684,7 +805,8 @@ const Builder = struct {
                 if (!b.holds(item, d.when)) continue;
                 // A hole, and a builtin's name, which is never defined in
                 // sight; a member, which is never in sight, may have one.
-                if (start == end or (d.visibility != .member and b.builtinAt(start, end))) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+                if (start == end or (d.visibility != .member and b.builtinAt(start, end))) return b.others.append(b.arena, .{ .start = start, .end = end, .use = d.bind });
+                if (d.bind) return b.binds.append(b.arena, .{ .item = item, .line = @intCast(line), .start = start, .end = end });
                 return b.define(item, @intCast(line), start, end);
             }
             for (table.skips) |s| if (s.when.len == 0 and s.at.kind == k and slotMatches(s.at, item.slot))
@@ -806,6 +928,9 @@ const Builder = struct {
             else => {},
         }
         if (d.outer or b.opened.get(@intFromPtr(item.owner.list.ptr)) == scope) def.visible = end;
+        if (comptime table.colors.len > 0) if (item.owner.kind()) |k| {
+            def.color = b.colorOf(item, k);
+        };
         try b.defs.append(b.arena, def);
         const id: u32 = @intCast(b.defs.items.len - 1);
         try b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .def = id } });
@@ -834,7 +959,10 @@ const Builder = struct {
     fn holds(b: *Builder, item: Item, when: []const Define.When) bool {
         for (when) |w| {
             const node = if (w.parent) |p| (if (item.parent.kind() == p) item.parent else return false) else item.owner;
-            if (w.text) |t| {
+            if (w.kind) |k| {
+                const items = node.items();
+                if (w.slot >= items.len or items[w.slot].kind() != k) return false;
+            } else if (w.text) |t| {
                 if (!std.mem.eql(u8, b.childText(node, w.slot), t)) return false;
             } else {
                 const items = node.items();
@@ -869,43 +997,77 @@ const Builder = struct {
         return null;
     }
 
-    /// Resolve every use: up its chain of scopes, the nearest definition
-    /// of its name in sight; else a builtin; else unresolved.
-    fn resolve(b: *Builder) error{OutOfMemory}!void {
-        var byName: std.StringHashMapUnmanaged(std.ArrayList(u32)) = .empty;
-        for (b.defs.items, 0..) |d, i| {
-            if (table.defines[d.line].visibility == .member) continue;
-            const gop = try byName.getOrPut(b.arena, d.name);
-            if (!gop.found_existing) gop.value_ptr.* = .empty;
-            try gop.value_ptr.append(b.arena, @intCast(i));
+    /// The definitions in sight by name, of every definition made so far.
+    const ByName = std.StringHashMapUnmanaged(std.ArrayList(u32));
+
+    fn addName(b: *Builder, byName: *ByName, d: u32) error{OutOfMemory}!void {
+        const def = b.defs.items[d];
+        if (table.defines[def.line].visibility == .member) return;
+        const gop = try byName.getOrPut(b.arena, def.name);
+        if (!gop.found_existing) gop.value_ptr.* = .empty;
+        try gop.value_ptr.append(b.arena, d);
+    }
+
+    /// The definition a name at `at`, in `scope`, resolves to: up the
+    /// chain of scopes, the nearest definition of the name in sight.
+    fn lookupAt(b: *Builder, byName: *const ByName, chain: *std.ArrayList(u32), name: []const u8, scope: u32, at: u32) error{OutOfMemory}!?u32 {
+        const candidates = byName.get(name) orelse return null;
+        chain.clearRetainingCapacity();
+        var s: ?u32 = scope;
+        while (s) |x| : (s = b.scopes.items[x].parent) try chain.append(b.arena, x);
+        var best: ?u32 = null;
+        var bestDepth: usize = std.math.maxInt(usize);
+        for (candidates.items) |c| {
+            const d = b.defs.items[c];
+            const depth = std.mem.findScalar(u32, chain.items, d.scope) orelse continue;
+            if (depth > bestDepth) continue;
+            const unordered = b.scopes.items[d.scope].unordered;
+            if (!unordered and d.visible > at) continue;
+            if (depth == bestDepth) {
+                // Ordered: the last before the use; unordered: the first.
+                const prev = b.defs.items[best.?];
+                if (if (unordered) d.start > prev.start else d.start < prev.start) continue;
+            }
+            best = c;
+            bestDepth = depth;
         }
+        return best;
+    }
+
+    /// Each leaf a `bind` line takes, in the order of the text: a use of
+    /// the definition of its name in sight there (a define line's, or an
+    /// earlier bind's), else a definition.
+    fn bindAll(b: *Builder) error{OutOfMemory}!void {
+        if (b.binds.items.len == 0) return;
+        var byName: ByName = .empty;
+        for (0..b.defs.items.len) |i| try b.addName(&byName, @intCast(i));
+        var chain: std.ArrayList(u32) = .empty;
+        for (b.binds.items) |x| {
+            if (try b.lookupAt(&byName, &chain, b.text[x.start..x.end], x.item.scope, x.start)) |d| {
+                try b.uses.append(b.arena, .{ .start = x.start, .end = x.end, .scope = x.item.scope, .res = .{ .def = d } });
+                const id: u32 = @intCast(b.uses.items.len - 1);
+                try b.useAt.put(b.arena, x.start, id);
+                try b.occurrences.append(b.arena, .{ .start = x.start, .end = x.end, .what = .{ .use = id } });
+                continue;
+            }
+            try b.define(x.item, x.line, x.start, x.end);
+            try b.addName(&byName, @intCast(b.defs.items.len - 1));
+        }
+    }
+
+    /// Resolve every use: up its chain of scopes, the nearest definition
+    /// of its name in sight; else a builtin; else unresolved. A bind's use
+    /// is resolved already.
+    fn resolve(b: *Builder) error{OutOfMemory}!void {
+        var byName: ByName = .empty;
+        for (0..b.defs.items.len) |i| try b.addName(&byName, @intCast(i));
         var chain: std.ArrayList(u32) = .empty;
         for (b.uses.items) |*u| {
+            if (u.res != .unresolved) continue;
             const name = b.text[u.start..u.end];
-            if (byName.get(name)) |candidates| {
-                chain.clearRetainingCapacity();
-                var s: ?u32 = u.scope;
-                while (s) |x| : (s = b.scopes.items[x].parent) try chain.append(b.arena, x);
-                var best: ?u32 = null;
-                var bestDepth: usize = std.math.maxInt(usize);
-                for (candidates.items) |c| {
-                    const d = b.defs.items[c];
-                    const depth = std.mem.findScalar(u32, chain.items, d.scope) orelse continue;
-                    if (depth > bestDepth) continue;
-                    const unordered = b.scopes.items[d.scope].unordered;
-                    if (!unordered and d.visible > u.start) continue;
-                    if (depth == bestDepth) {
-                        // Ordered: the last before the use; unordered: the first.
-                        const prev = b.defs.items[best.?];
-                        if (unordered or d.start < prev.start) continue;
-                    }
-                    best = c;
-                    bestDepth = depth;
-                }
-                if (best) |d| {
-                    u.res = .{ .def = d };
-                    continue;
-                }
+            if (try b.lookupAt(&byName, &chain, name, u.scope, u.start)) |d| {
+                u.res = .{ .def = d };
+                continue;
             }
             if (isBuiltin(name)) {
                 u.res = .builtin;
@@ -1152,6 +1314,49 @@ pub const Resolver = struct {
     }
 };
 
+/// The semantic tokens `@lsp` gives file `f`, by position: each token a
+/// `color` line colours, and each other name that names a definition whose
+/// leaf one colours, with that line's scope and modifiers but
+/// `declaration` and `definition`, which mark the definition's own leaf.
+pub fn tokens(r: *Resolver, f: File) error{OutOfMemory}![]const lsp.Token {
+    if (comptime table.colors.len == 0) return &.{};
+    const ix = f.ix;
+    var out: std.ArrayList(lsp.Token) = .empty;
+    var c: usize = 0;
+    for (ix.occurrences) |o| {
+        // The tokens colour lines colour themselves come first.
+        while (c < ix.colored.len and ix.colored[c].start <= o.start) : (c += 1) try addColored(r.arena, &out, ix.colored[c]);
+        if (out.items.len > 0 and out.getLast().start == o.start) continue;
+        if (o.what == .def) continue;
+        const t = (try r.resolve(f, o)) orelse continue;
+        if (t != .def) continue;
+        const line = t.def.file.ix.defs[t.def.def].color orelse continue;
+        var m = colorLine(line).modifiers;
+        m.declaration = false;
+        m.definition = false;
+        try out.append(r.arena, .{ .start = o.start, .len = o.end - o.start, .scope = colorLine(line).scope, .modifiers = m });
+    }
+    while (c < ix.colored.len) : (c += 1) try addColored(r.arena, &out, ix.colored[c]);
+    return out.items;
+}
+
+/// The token of a `color` line; of two at one token, the leaf's role's
+/// (made after its node's) in place of the node's edge.
+fn addColored(arena: Allocator, out: *std.ArrayList(lsp.Token), c: Colored) error{OutOfMemory}!void {
+    const line = colorLine(c.color);
+    const t: lsp.Token = .{ .start = c.start, .len = c.end - c.start, .scope = line.scope, .modifiers = line.modifiers };
+    if (out.items.len > 0 and out.getLast().start == c.start) {
+        out.items[out.items.len - 1] = t;
+    } else try out.append(arena, t);
+}
+
+/// Whether a token has text other than blanks and line ends, and is not a
+/// comment.
+fn isSolid(text: []const u8, t: parser.Token) bool {
+    if (t.len == 0 or t.pos >= text.len or Index.isComment(t)) return false;
+    return std.mem.trim(u8, text[t.pos..][0..@min(t.len, text.len - t.pos)], " \t\r\n").len > 0;
+}
+
 /// The definition of `name` among the members of `place` that a name of
 /// the file at `from` sees.
 fn lookup(place: Place, name: []const u8, from: []const u8) ?Global {
@@ -1239,13 +1444,19 @@ pub fn renameRefusal(before: *Resolver, after: *Resolver, t: Target, name: []con
     for (paths) |path| {
         const a = (try before.load(path)) orelse continue;
         const b = (try after.load(path)) orelse return changed;
-        if (a.ix.defs.len != b.ix.defs.len or a.ix.occurrences.len != b.ix.occurrences.len) return changed;
+        if (a.ix.occurrences.len != b.ix.occurrences.len) return changed;
         for (a.ix.occurrences, b.ix.occurrences) |oa, ob| {
-            if (m.of(path, oa.start) != ob.start or std.meta.activeTag(oa.what) != std.meta.activeTag(ob.what)) return changed;
-            const was = try before.resolve(a, oa);
-            const now = try after.resolve(b, ob);
+            if (m.of(path, oa.start) != ob.start) return changed;
             const line = lineOf(a.ix.text, oa.start);
             const of = if (std.mem.eql(u8, path, home)) "" else try arena.print(" of {s}", .{std.fs.path.basename(path)});
+            if (std.meta.activeTag(oa.what) != std.meta.activeTag(ob.what)) {
+                // A bind that defines, and would assign the name in sight.
+                if (oa.what == .def and ob.what == .use)
+                    return try arena.print("'{s}' is in sight on line {d}{s}, where the assignment would assign it, not define a name", .{ b.ix.textOf(ob), line, of });
+                return changed;
+            }
+            const was = try before.resolve(a, oa);
+            const now = try after.resolve(b, ob);
             if (was != null and same(was.?, t)) {
                 if (now == null or !m.same(was.?, now.?, name))
                     return try arena.print("the use of '{s}' on line {d}{s} would name another '{s}'", .{ old, line, of, name });
@@ -1254,6 +1465,7 @@ pub fn renameRefusal(before: *Resolver, after: *Resolver, t: Target, name: []con
             const kept = if (was) |x| now != null and m.same(x, now.?, null) else now == null;
             if (!kept) return try arena.print("'{s}' would capture the use of '{s}' on line {d}{s}", .{ name, a.ix.textOf(oa), line, of });
         }
+        if (a.ix.defs.len != b.ix.defs.len) return changed;
     }
     if (t == .def) {
         const g = t.def;
@@ -1298,6 +1510,12 @@ const Shift = struct {
 fn importLine(line: u16) Import {
     if (comptime table.imports.len == 0) unreachable;
     return table.imports[line];
+}
+
+/// The `color` line `line`.
+fn colorLine(line: u16) Color {
+    if (comptime table.colors.len == 0) unreachable;
+    return table.colors[line];
 }
 
 /// The name of namespace `ns`.

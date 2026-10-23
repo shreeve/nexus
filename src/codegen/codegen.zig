@@ -42,6 +42,9 @@ pub const Options = struct {
     /// `@messages`: the keyed entries (src/messages.zig); null without
     /// the directive, whose module then has no message table.
     messages: ?[]const messages.Entry = null,
+    /// The language server's completion functions (the runtime's
+    /// `complete` section), for the module `--editor` writes.
+    completion: bool = false,
 };
 
 /// Generate the parser module. `lexerDecls` is lexgen's declarations
@@ -181,6 +184,9 @@ const Codegen = struct {
         try self.emitSideLabels(w);
         try self.emitSlots(w);
         try self.emitApi(w);
+        // The language server's own: the module `--editor` writes is the
+        // one `--spans` generates with this section after it.
+        if (self.options.completion) try runtime.writeSection(w, "complete", &.{});
 
         return output.toOwnedSlice();
     }

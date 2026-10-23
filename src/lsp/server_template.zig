@@ -185,8 +185,32 @@ pub const legend = [_][]const u8{
     "storageModifier", "variableParameter", "variableSpecial", "invalid",
 };
 
-/// A semantic token: a byte range of the file and its scope.
-pub const Token = struct { start: u32, len: u32, scope: Scope };
+/// LSP's semantic token modifiers, as the server declares them
+/// (`modifier_legend`, in order).
+pub const Modifiers = packed struct(u32) {
+    declaration: bool = false,
+    definition: bool = false,
+    readonly: bool = false,
+    static: bool = false,
+    deprecated: bool = false,
+    abstract: bool = false,
+    async: bool = false,
+    modification: bool = false,
+    documentation: bool = false,
+    default_library: bool = false,
+    _: u22 = 0,
+};
+
+/// The semantic token modifiers, one per field of `Modifiers`, as LSP
+/// names them.
+pub const modifier_legend = [_][]const u8{
+    "declaration", "definition", "readonly",     "static",        "deprecated",
+    "abstract",    "async",      "modification", "documentation", "defaultLibrary",
+};
+
+/// A semantic token: a byte range of the file, its scope and its
+/// modifiers.
+pub const Token = struct { start: u32, len: u32, scope: Scope, modifiers: Modifiers = .{} };
 
 /// An entry of the outline. `start`..`end` is all of it; `name_start`..
 /// `name_end` is what the editor selects.
@@ -222,6 +246,8 @@ comptime {
     for ([_][]const u8{ "symbolAt", "typeAt", "members", "visible", "signatures", "describe", "modules", "references", "renamable" }) |name| {
         if (has(name) and !has("analyze")) @compileError("hooks." ++ name ++ " reads an analysis: write hooks.analyze too");
     }
+    if (has("tokens") and @typeInfo(@TypeOf(hooks.tokens)).@"fn".param_types.len != 4)
+        @compileError("hooks.tokens adjusts the grammar's tokens: pub fn tokens(arena: std.mem.Allocator, path: []const u8, text: []const u8, grammar: []const lsp.Token) ![]const lsp.Token");
 }
 
 /// Whether the grammar declares its names and scopes (`@lsp`), which
@@ -926,7 +952,7 @@ const Server = struct {
         try j.objectField("textDocumentSync");
         try j.write(.{ .openClose = true, .change = 2, .save = .{ .includeText = false } });
         try j.objectField("semanticTokensProvider");
-        try j.write(.{ .legend = .{ .tokenTypes = legend, .tokenModifiers = [_][]const u8{} }, .full = true });
+        try j.write(.{ .legend = .{ .tokenTypes = legend, .tokenModifiers = modifier_legend }, .full = true });
         // Without node spans or a folds function, the editor's own
         // indentation folding serves better than comment runs alone.
         if (parser.nodeStore or has("folds")) {
@@ -1425,10 +1451,11 @@ const Server = struct {
     // --- From the grammar ------------------------------------------------------------
 
     fn semanticTokens(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}!Result {
+        const grammar = try s.grammarTokensOf(a, d);
         const toks: []const Token = if (comptime has("tokens"))
-            hooks.tokens(a, d.path, d.text) catch return .{ .failed = "tokens failed" }
+            hooks.tokens(a, d.path, d.text, grammar) catch return .{ .failed = "tokens failed" }
         else
-            try grammarTokens(a, d.text);
+            grammar;
         const lines = try Lines.init(a, d.text, s.encoding);
         var data: std.ArrayList(u32) = .empty;
         var prev: Position = .{ .line = 0, .character = 0 };
@@ -1441,7 +1468,7 @@ const Server = struct {
                 const stop = @min(end, lines.lineEnd(p.line));
                 const len = lines.position(stop).character -| p.character;
                 if (len > 0) {
-                    try data.appendSlice(a, &.{ p.line - prev.line, if (p.line == prev.line) p.character - prev.character else p.character, len, @backingInt(t.scope), 0 });
+                    try data.appendSlice(a, &.{ p.line - prev.line, if (p.line == prev.line) p.character - prev.character else p.character, len, @backingInt(t.scope), @bitCast(t.modifiers) });
                     prev = p;
                 }
                 if (p.line + 1 >= lines.starts.len) break;
@@ -1449,6 +1476,31 @@ const Server = struct {
             }
         }
         return json(a, .{ .data = data.items });
+    }
+
+    /// The semantic tokens of `d` the grammar gives: each token's
+    /// `@highlight` scope, and with `@lsp`, in place of it or beside it, the
+    /// scope and modifiers of its `color` lines (`scopes.tokens`).
+    fn grammarTokensOf(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}![]const Token {
+        const base = try grammarTokens(a, d.text);
+        if (comptime !has_names) return base;
+        const q = try s.nameRequest(a, d);
+        const named = try scopes.tokens(&q.r, q.f);
+        if (named.len == 0) return base;
+        var out: std.ArrayList(Token) = try .initCapacity(a, base.len + named.len);
+        var i: usize = 0;
+        var n: usize = 0;
+        while (i < base.len or n < named.len) {
+            if (n < named.len and (i == base.len or named[n].start <= base[i].start)) {
+                if (i < base.len and base[i].start == named[n].start) i += 1;
+                out.appendAssumeCapacity(named[n]);
+                n += 1;
+            } else {
+                out.appendAssumeCapacity(base[i]);
+                i += 1;
+            }
+        }
+        return out.items;
     }
 
     fn foldingRanges(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}!Result {
@@ -2323,32 +2375,62 @@ fn nodeFolds(a: Allocator, p: *BaseParser, solid: Solid, s: parser.Sexp, out: *s
     for (s.items()) |child| try nodeFolds(a, p, solid, child, out);
 }
 
-/// The words of `language.words` the grammar takes at `at`, in place of the
-/// word the position is in: each word the parse reads past when it follows
-/// the text before that word. None when that text has an error of its own.
+/// The most bytes after the word at the position a trial keeps, which a
+/// lang Lexer may read ahead into.
+const trial_tail = 256;
+
+/// The words of `language.words` the language takes at `at` as keywords,
+/// in place of the word the position is in. The text before that word is
+/// parsed once, through the lang module's `Parser` and `Lexer` when it has
+/// them, up to the word; then each word is read by the lexer from where it
+/// stopped and tested against the parse stack there (`parser.pauseAt`,
+/// `parser.takesAt`). A word is offered where the parser takes it as other
+/// than what a name that is no word (the word with its last letter again)
+/// would be, followed by the text after the word, or by such a name: a
+/// lang Lexer may read a word as a keyword only before a name. None when
+/// the text before the word has an error of its own.
 fn keywordsAt(a: Allocator, text: []const u8, at: u32) error{OutOfMemory}![]const []const u8 {
     var begin: usize = @min(at, text.len);
     while (begin > 0 and language.isWord(text[begin - 1])) begin -= 1;
-    if (!try parsesTo(a, text[0..begin], begin)) return &.{};
-    var out: std.ArrayList([]const u8) = .empty;
+    var end: usize = @min(at, text.len);
+    while (end < text.len and language.isWord(text[end])) end += 1;
+    // The parse pauses before the blanks before the word, whose layout
+    // tokens the lexer reads with each word (a line end before a word is
+    // read the same before any word).
+    var from = begin;
+    while (from > 0 and std.mem.findScalar(u8, " \t\r\n", text[from - 1]) != null) from -= 1;
+    const p = try a.create(parser.Parser);
+    p.* = parser.Parser.init(a, text);
+    const base: *BaseParser = if (parser.Parser == BaseParser) p else &p.base;
+    const paused = (parser.pauseAt(base, start, @intCast(from)) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => null,
+    }) orelse return &.{};
+    const after = text[end..@min(text.len, end + trial_tail)];
     var trial: std.ArrayList(u8) = .empty;
     try trial.appendSlice(a, text[0..begin]);
+    var out: std.ArrayList([]const u8) = .empty;
     for (language.words) |word| {
-        trial.items.len = begin;
-        try trial.appendSlice(a, word);
-        if (try parsesTo(a, trial.items, begin + word.len)) try out.append(a, word);
+        const name = try std.mem.concat(a, u8, &.{ word, word[word.len - 1 ..] });
+        const named = try std.mem.concat(a, u8, &.{ " ", name, after });
+        for ([_][]const u8{ after, named }) |rest| {
+            const sym = (try takes(a, base, &paused, &trial, begin, word, rest)) orelse continue;
+            if (try takes(a, base, &paused, &trial, begin, name, rest) == sym) continue;
+            try out.append(a, word);
+            break;
+        }
     }
     return out.items;
 }
 
-/// Whether the parse of `text` succeeds or fails no earlier than `end`.
-fn parsesTo(a: Allocator, text: []const u8, end: usize) error{OutOfMemory}!bool {
-    var p = BaseParser.init(a, text);
-    _ = p.parse(start) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return if (p.lastError()) |f| f.span.start >= end else false,
-    };
-    return true;
+/// The symbol the paused parse takes `word` at `begin` as, `after` after
+/// it; null when it does not take it. `trial` holds the text up to
+/// `begin`.
+fn takes(a: Allocator, base: *BaseParser, paused: *const parser.Paused, trial: *std.ArrayList(u8), begin: usize, word: []const u8, after: []const u8) error{OutOfMemory}!?u16 {
+    trial.items.len = begin;
+    try trial.appendSlice(a, word);
+    try trial.appendSlice(a, after);
+    return parser.takesAt(base, paused, trial.items, @intCast(begin), @intCast(word.len));
 }
 
 /// The category of the one token `text` is; null when it is not one token.

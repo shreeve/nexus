@@ -147,6 +147,9 @@ const Options = struct {
     coverage: bool = false,
     emitComments: bool = false,
     spans: bool = false,
+    /// `--editor`: the parser module has the language server's completion
+    /// functions.
+    completion: bool = false,
     /// `--editor --lang`: the lang module.
     langModule: ?[]const u8 = null,
     grammarFile: []const u8,
@@ -238,8 +241,10 @@ pub fn main(init: std.process.Init) !void {
             const dir = output orelse usageError("--editor writes a directory: nexus --editor <grammar-file> <directory>", .{});
             if (eql(dir, "-")) usageError("--editor writes a directory, not standard output", .{});
             opts.outputFile = dir;
-            // The server's folds and selection ranges read node spans.
+            // The server's folds and selection ranges read node spans, and
+            // its keyword completion the parse table.
             opts.spans = true;
+            opts.completion = true;
         },
         .generate => opts.outputFile = output orelse usageError("no output file given (nexus <grammar-file> <output-file>)", .{}),
     }
@@ -548,7 +553,13 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
             fail();
         };
         // `@lsp` names the schema's kinds and roles and the lexer's tokens.
-        if (ir.lsp) |lines| lsp = names.analyze(allocator, lines, &ir.schema.?, &lexerSpec, ir.trivia, parsed.source) catch |err| {
+        const oneToken: names.OneToken = .{ .ctx = &lexerGen, .call = struct {
+            fn call(ctx: *const anyopaque, text: []const u8) ?[]const u8 {
+                const gen: *const LexerGenerator = @ptrCast(@alignCast(ctx));
+                return gen.oneToken(text);
+            }
+        }.call };
+        if (ir.lsp) |lines| lsp = names.analyze(allocator, lines, &ir.schema.?, &lexerSpec, ir.trivia, parsed.source, oneToken) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
             fail();
         };
@@ -646,12 +657,19 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
             coverage = report.written();
         }
 
+        // `@lsp words` against the words the grammar offers itself.
+        if (lsp) |*l| if (l.words.len > 0) if (highlighted) |*h| {
+            const offered = try editor.grammarWords(allocator, &g, &lexerSpec, h);
+            names.checkWords(l, offered, h.wordChars, parsed.source) catch fail();
+        };
+
         final = g;
         // Emit the combined lexer + parser module (checked in check mode
         // too: codegen checks names)
         finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerSpec, lexerDecls, .{
             .emitComments = opts.emitComments,
             .spans = opts.spans,
+            .completion = opts.completion,
             .source = parsed.source,
             .messages = entries,
         }) catch |err| {

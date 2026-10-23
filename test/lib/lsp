@@ -43,8 +43,8 @@ Each command is printed after `> `, then what came back: a request's
 result or error, the diagnostics a notification published, or the status
 `exit` ended the server with. Ranges print as `L:C-L:C`, URIs and the
 paths in other notifications relative to ROOT, semantic tokens as
-`L:C len scope` (the scope from the legend `initialize` returned), and a
-list one item a line. A session
+`L:C len scope [modifier ...]` (from the legend `initialize` returned),
+and a list one item a line. A session
 without `exit` ends with shutdown and exit; the server must then exit 0.
 """
 
@@ -95,6 +95,7 @@ class Session:
         self.proc = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         self.next_id = 1
         self.legend = []
+        self.modifiers = []
         self.versions = {}
         self.exited = False
         self.timer = threading.Timer(30, self.proc.kill)
@@ -205,7 +206,9 @@ class Session:
                     name, _, file = args[i + 1].partition("=")
                     params["initializationOptions"].setdefault("modules", {})[name] = os.path.join(self.root, file)
             msg = self.request("initialize", params)
-            self.legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"]
+            legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]
+            self.legend = legend["tokenTypes"]
+            self.modifiers = legend["tokenModifiers"]
             self.notify("initialized", {})
             if "quiet" not in args:
                 self.show(msg)
@@ -289,10 +292,11 @@ class Session:
         out = []
         line = col = 0
         for i in range(0, len(data), 5):
-            dl, dc, n, t, _ = data[i : i + 5]
+            dl, dc, n, t, mods = data[i : i + 5]
             line += dl
             col = col + dc if dl == 0 else dc
-            out.append("%d:%d %d %s" % (line + 1, col + 1, n, self.legend[t]))
+            names = [m for b, m in enumerate(self.modifiers) if mods & (1 << b)]
+            out.append(" ".join(["%d:%d %d %s" % (line + 1, col + 1, n, self.legend[t])] + names))
         return out
 
     def finish(self):

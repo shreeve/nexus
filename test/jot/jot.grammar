@@ -1,0 +1,118 @@
+# jot.grammar: Jot, the smallest language that binds names by assignment
+# (docs/GRAMMAR.md, "Names and scopes"). `x = 1` defines `x` unless a
+# definition of `x` is in sight, which it then assigns; a block's names
+# are its own, and each comes into sight after its assignment. `loop` is
+# a keyword only where it starts a line, which the lang Lexer (jot.zig)
+# decides. The suite builds its language server with the hooks.zig
+# `--editor` writes and replays names/'s sessions on the files of
+# project/ (test/lib/lsp).
+
+@lang = "jot"
+
+@lexer
+
+tokens
+    ident, number, comment, newline
+    kw_def, kw_return, kw_loop
+    assign, plus, bang, lparen, rparen, lbrace, rbrace, comma
+    eof, err
+
+'#' [^\n]*                  → comment
+'\n'                        → newline
+"def"                       → kw_def
+"return"                    → kw_return
+'='                         → assign
+'+'                         → plus
+'!'                         → bang
+'('                         → lparen
+')'                         → rparen
+'{'                         → lbrace
+'}'                         → rbrace
+','                         → comma
+[0-9]+                      → number
+[a-z_]+                     → ident
+.                           → err
+
+@parser
+
+@schema
+    file            ...stmts
+    def             name:leaf params:params body:block
+    params          ...names:leaf
+    block           ...stmts
+    assign          target:leaf value
+    loop            body:block
+    return          value
+    name            id:leaf
+    num             value:leaf
+    add             left right
+    force           value
+    call            callee ...args
+
+# The file and each block are ordered scopes; a def's parameters are its
+# own. An assignment binds; a name after `def` is a function of the
+# scope around the def. The `loop` that starts a loop is a keyword, which
+# no lexer rule makes, and a `!` after a value forces it: each is coloured
+# where the grammar takes it.
+@lsp
+    scope       file
+    scope       def block
+    define      def.name        function  outer
+    define      params.names    variable
+    bind        assign.target   variable
+    use         IDENT
+    builtin     "print"
+    undefined   warning
+    color       def.name        function  declaration
+    color       params.names    variable.parameter  declaration
+    color       loop start      keyword
+    color       force end       storage.modifier
+    words       "loop"
+
+@trivia COMMENT
+
+@repair
+    holes       IDENT
+    terminator  NEWLINE
+
+@highlight
+    language            "Jot"
+    scope-name          source.jot
+    extensions          jot
+    line-comment        "#"
+    indent              '{' [ \t]* line-end
+    dedent              line-start [ \t]* '}'
+
+    keyword             line-start [ \t]* "loop" not before [a-z_]
+    keyword             "def"
+    keyword.control     "return"
+    operator            "=" "+" "!"
+    punctuation         "(" ")" "{" "}" ","
+    constant.numeric    NUMBER
+    comment             COMMENT
+    invalid             ERR
+
+file!    = body                                 → (file ...1)
+
+body     = line                                 → (1)
+         | body NEWLINE line                    → (...1 3)
+
+line     = stmt
+         |                                      → _
+
+stmt     = KW_DEF IDENT "(" [L(IDENT)] ")" block → (def 2 (params ...4) 6)
+         | IDENT "=" expr                       → (assign 1 3)
+         | KW_LOOP block                        → (loop 2)
+         | KW_RETURN expr                       → (return 2)
+         | expr
+
+block    = "{" body "}"                         → (block ...2)
+
+expr     = expr "+" atom                        → (add 1 3)
+         | atom
+
+atom     = IDENT                                → (name 1)
+         | NUMBER                               → (num 1)
+         | atom "!"                             → (force 1)
+         | atom "(" [L(expr)] ")"               → (call 1 ...3)
+         | "(" expr ")"                         → 2

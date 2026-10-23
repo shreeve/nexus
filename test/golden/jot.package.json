@@ -1,0 +1,87 @@
+{
+  "name": "nexus-jot",
+  "displayName": "Jot (Nexus)",
+  "description": "Jot: highlighting and its language server.",
+  "version": "0.1.0",
+  "publisher": "nexus-local",
+  "license": "UNLICENSED",
+  "engines": {"vscode": "^1.82.0"},
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:jot"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The language server is the one the user's own settings name, never a workspace's.",
+      "restrictedConfigurations": ["nexus-jot.server.path"]
+    }
+  },
+  "dependencies": {"vscode-languageclient": "9.0.1"},
+  "contributes": {
+    "languages": [{
+      "id": "jot",
+      "aliases": ["Jot"],
+      "extensions": ["jot"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "jot",
+      "scopeName": "source.jot",
+      "path": "./syntaxes/jot.tmLanguage.json"
+    }],
+    "configuration": {
+      "title": "Jot (Nexus)",
+      "properties": {
+        "nexus-jot.server.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "The language server: a path, or a name on `PATH`, from user settings only. Empty: the extension's own `bin/jot-lsp`, else `jot-lsp` on `PATH`."
+        },
+        "nexus-jot.server.root": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program."
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {"id": "keywordControl", "superType": "keyword", "description": "@highlight keyword.control"},
+      {"id": "keywordOperator", "superType": "keyword", "description": "@highlight keyword.operator"},
+      {"id": "constant", "superType": "enumMember", "description": "@highlight constant"},
+      {"id": "constantNumeric", "superType": "number", "description": "@highlight constant.numeric"},
+      {"id": "constantSymbol", "superType": "enumMember", "description": "@highlight constant.symbol"},
+      {"id": "stringEscape", "superType": "string", "description": "@highlight string.escape"},
+      {"id": "punctuation", "description": "@highlight punctuation"},
+      {"id": "functionBuiltin", "superType": "function", "description": "@highlight function.builtin"},
+      {"id": "storageModifier", "superType": "keyword", "description": "@highlight storage.modifier"},
+      {"id": "variableParameter", "superType": "parameter", "description": "@highlight variable.parameter"},
+      {"id": "variableSpecial", "superType": "variable", "description": "@highlight variable.special"},
+      {"id": "invalid", "description": "@highlight invalid"}
+    ],
+    "semanticTokenScopes": [{
+      "language": "jot",
+      "scopes": {
+        "keyword": ["keyword.other.jot"],
+        "keywordControl": ["keyword.control.jot"],
+        "keywordOperator": ["keyword.operator.word.jot"],
+        "constant": ["constant.language.jot"],
+        "constantNumeric": ["constant.numeric.jot"],
+        "constantSymbol": ["constant.other.symbol.jot"],
+        "string": ["string.quoted.jot"],
+        "stringEscape": ["constant.character.escape.jot"],
+        "comment": ["comment.jot"],
+        "operator": ["keyword.operator.jot"],
+        "punctuation": ["punctuation.jot"],
+        "type": ["entity.name.type.jot"],
+        "function": ["entity.name.function.jot"],
+        "functionBuiltin": ["support.function.jot"],
+        "label": ["entity.name.label.jot"],
+        "storageModifier": ["storage.modifier.jot"],
+        "variableParameter": ["variable.parameter.jot"],
+        "variableSpecial": ["variable.language.jot"],
+        "invalid": ["invalid.illegal.jot"]
+      }
+    }]
+  }
+}

@@ -1,0 +1,37 @@
+# Names bound by assignment (`bind assign.target variable`): the first
+# assignment of a name defines it, unless a definition of the name is in
+# sight there, which the assignment then assigns. Each comes into sight
+# after its assignment: `early` on line 2 is used before line 4 defines
+# it.
+initialize quiet
+open main.jot
+symbols main.jot
+# `total` on line 6 assigns the file's `total`, and so does line 16; the
+# def's `step` is its own, which line 8 assigns, and line 16 cannot see.
+definition main.jot 6:5
+definition main.jot 6:13
+definition main.jot 8:5
+definition main.jot 16:17
+definition main.jot 2:7
+references main.jot 3:1
+references main.jot 7:5
+# The loop's block assigns the file's `count`, and defines its own
+# `last`; `loop` in the middle of line 14 is a name, which nothing
+# defines.
+references main.jot 13:5
+definition main.jot 14:5
+definition main.jot 14:20
+highlight main.jot 11:1
+# Completion: the names in sight, in order (not `early` before line 4,
+# none of the def's on line 16), with the keywords the language takes
+# there: none after `= `, and at a line's start `loop` too, which the
+# lang Lexer reads as the keyword there.
+completion main.jot 2:7
+completion main.jot 9:5
+completion main.jot 16:9
+completion main.jot 16:1
+# Rename the file's `total` at any of its names; renaming `step` to
+# `total` would make line 7 assign the file's `total`.
+rename main.jot 6:13 sum
+rename main.jot 7:5 total
+rename main.jot 8:12 steps

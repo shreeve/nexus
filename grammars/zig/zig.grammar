@@ -486,7 +486,11 @@ tokens
 # (`builtin`), and so does `_`, a discard, which no definition names.
 # grammars/zig/compare-scopes checks every name it resolves against
 # std.zig.AstGen's resolution, and grammars/zig/compare-members every
-# member and import against std.zig.Ast's declarations.
+# member and import against std.zig.Ast's declarations. Semantic tokens
+# colour by meaning: a function's name, a parameter, a constant (one
+# whose value is a container or an error set is a type), an enum's
+# field, an error name, and an enum literal or error value, where each is
+# defined (`declaration`) and wherever a name or a member names it.
 @lsp
     scope       root container_decl unordered
     scope       fn_decl test_decl block if while for switch_case catch
@@ -515,6 +519,15 @@ tokens
                 "noreturn" "comptime_int" "comptime_float" "c_char" "c_short" "c_ushort" "c_int" "c_uint" "c_long"
                 "c_ulong" "c_longlong" "c_ulonglong" "c_longdouble" "_"
     doc         DOC_COMMENT strip "///"
+    color       fn_proto.name           function  declaration
+    color       param.name              variable.parameter  declaration
+    color       var_decl.name           type  declaration  when init:container_decl
+    color       var_decl.name           type  declaration  when init:error_set_decl
+    color       var_decl.name           constant  declaration  readonly  when mut "const"
+    color       container_field.type    constant  declaration  when ^container_decl.kind "enum"
+    color       error_name.name         constant  declaration
+    color       enum_literal.name       constant
+    color       error_value.name        constant
 
 # Every conflict below resolves as Parse.zig decides.
 #

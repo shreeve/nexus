@@ -11,7 +11,9 @@
 // declares, package.json declares no type the legend lacks and no
 // standard type, every `superType` is a standard type, and
 // `semanticTokenScopes` gives a TextMate scope to exactly the legend's
-// types. Prints each disagreement; exit status 1 if there is one.
+// types; and the same of the modifiers of the server's `modifier_legend`
+// and package.json's `semanticTokenModifiers`. Prints each disagreement;
+// exit status 1 if there is one.
 //
 // `client`: runs VSCODE_DIR/extension.js under Node with a stub `vscode`
 // module and a stub `vscode-languageclient/node`, as the scenario
@@ -50,6 +52,12 @@ const standardTypes = new Set([
   "property", "enumMember", "event", "label",
 ]);
 
+/** The token modifiers VS Code knows without a declaration. */
+const standardModifiers = new Set([
+  "declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification",
+  "documentation", "defaultLibrary",
+]);
+
 function legend(pkgPath, templatePath) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
   const template = fs.readFileSync(templatePath, "utf8");
@@ -67,6 +75,19 @@ function legend(pkgPath, templatePath) {
   }
   for (const t of types) {
     if (!standardTypes.has(t) && !declared.has(t)) problems.push(`the server's legend has ${t}, which package.json does not declare`);
+  }
+  const mods = /pub const modifier_legend = \[_\]\[\]const u8\{([^}]*)\};/.exec(template);
+  if (!mods) return fail(`${templatePath}: no modifier_legend`);
+  const modifiers = [...mods[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+  const declaredModifiers = new Set();
+  for (const m of (pkg.contributes && pkg.contributes.semanticTokenModifiers) || []) {
+    if (declaredModifiers.has(m.id)) problems.push(`semanticTokenModifiers declares ${m.id} twice`);
+    declaredModifiers.add(m.id);
+    if (standardModifiers.has(m.id)) problems.push(`semanticTokenModifiers declares ${m.id}, a standard modifier`);
+    if (!modifiers.includes(m.id)) problems.push(`semanticTokenModifiers declares ${m.id}, which the server's legend lacks`);
+  }
+  for (const m of modifiers) {
+    if (!standardModifiers.has(m) && !declaredModifiers.has(m)) problems.push(`the server's legend has the modifier ${m}, which package.json does not declare`);
   }
   const scopes = (pkg.contributes.semanticTokenScopes || []).flatMap((s) => Object.keys(s.scopes || {}));
   for (const t of types) if (!scopes.includes(t)) problems.push(`semanticTokenScopes gives ${t} no scope`);

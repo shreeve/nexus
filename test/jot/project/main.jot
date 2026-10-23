@@ -1,0 +1,16 @@
+# Counting by assignment.
+print(early)
+total = 0
+early = 1
+def add(n) {
+    total = total + n
+    step = n
+    step = step + 1
+    return step!
+}
+count = add(2)
+loop {
+    count = count + 1
+    last = count + loop
+}
+total = count + step

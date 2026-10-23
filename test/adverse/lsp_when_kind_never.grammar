@@ -1,6 +1,6 @@
-# color lines (colours, a later step) are an error that says so.
-# error: lsp_later_color.grammar:47:5:
-# error: `color` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal
+# `when ROLE:KIND` names a kind the role can hold.
+# error: lsp_when_kind_never.grammar:47:32:
+# error: when body:name: the role never holds a 'name' node
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    color    let.name keyword
+    skip     fn.name when body:name
 
 prog!  = body                               → (prog ...1)
 

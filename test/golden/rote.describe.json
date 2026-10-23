@@ -86,6 +86,9 @@
     ],
     "nominals": [
       {"token": "global", "ns": "globals"}
-    ]
+    ],
+    "binds": [],
+    "colors": [],
+    "words": []
   }
 }
