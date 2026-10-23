@@ -1,6 +1,6 @@
 # An @lsp line starts with a key @lsp knows.
 # error: lsp_unknown_line.grammar:47:5:
-# error: unknown @lsp line `define2` (scope, define, use, skip, builtin, doc, undefined)
+# error: unknown @lsp line `define2` (scope, define, use, skip, builtin, doc, undefined, import, member, qualify, nominal)
 @lexer
 
 tokens

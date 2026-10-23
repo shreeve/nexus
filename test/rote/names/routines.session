@@ -1,0 +1,46 @@
+# Qualified and nominal names: `do add^math` names the label `add` of
+# math.rote (`import do.routine file "{}.rote"`, `qualify do.label
+# in:routine`), `do add` a label of the routine itself, and `$count` is
+# one name in every routine (`nominal GLOBAL ns:globals`). The workspace
+# is project/ (`folder`).
+initialize folder quiet
+open main.rote
+symbols main.rote
+# A label of the routine; one of another; the routine; no such label.
+definition main.rote 3:5
+definition main.rote 4:5
+definition main.rote 5:6
+definition main.rote 10:5
+hover main.rote 4:5
+# Every name of math.rote's `add`: its own call, and the qualified ones
+# in main.rote and in other.rote, which is not open.
+references main.rote 4:5
+completion main.rote 4:5
+# A routine's name: the imports of its file, in every routine.
+references main.rote 5:6
+# A global: no definition; its names in every file of the workspace.
+definition main.rote 6:6
+references main.rote 6:6
+highlight main.rote 6:6
+# Rename a label across routines, and a global everywhere.
+rename main.rote 4:5 plus
+rename main.rote 6:6 $sum
+# Refused: `twice` is a label of math.rote already, and `do twice^math`
+# would name the renamed one; `$total` is a global already; a routine's
+# name names a file.
+rename main.rote 4:5 twice
+rename main.rote 6:6 $total
+rename main.rote 5:6 sums
+# From math.rote: the label's own call is lexical, and the global's names
+# are the same as from main.rote.
+open math.rote
+references math.rote 1:1
+references math.rote 2:6
+# Without the routine, `do add` in main.rote is a label of main.rote,
+# which has none: nothing.
+change main.rote
+| start:
+| do add
+| do add^math
+definition main.rote 2:5
+definition main.rote 3:5

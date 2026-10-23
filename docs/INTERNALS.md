@@ -120,8 +120,10 @@ alike. The server itself, `lsp.zig`, is `src/lsp/server_template.zig`
 under a header, written as it is, and with `@lsp` the names engine,
 `scopes.zig`, is `src/lsp/scopes_template.zig` the same way: it indexes
 a text in one walk of its tree by the tables of `language.zig`, so it
-knows no language, and `lsp.zig` reaches it only when `language.zig`
-declares `names`. Like the runtime template both are real Zig files,
+knows no language, and resolves across files through a `World` that
+gives each file's index, which `lsp.zig` makes of its open documents,
+the files on disk and the modules it is told of; `lsp.zig` reaches it
+only when `language.zig` declares `names`. Like the runtime template both are real Zig files,
 seen by `zig fmt`, but they import the `parser.zig`, `language.zig` and
 `hooks.zig` beside them in a server, so they compile only there:
 `editor/*/server` compiles them for every grammar with `@highlight`,
@@ -398,7 +400,7 @@ check them:
 | located errors, exit 1, nothing written | `adverse/*`, `tools/cli` |
 | deterministic output | `determinism/*`, `gen/*`, `describe/*`, `highlight/*/files`, `editor/*/files` (byte-exact goldens) |
 | editor files colour as documented | `highlight/*` (samples through the TextMate and highlight.js references and Vim) |
-| language servers answer as documented | `editor/*` (every server compiles), `editor/full/*`, `editor/names/*` and `editor/stub/*` (sessions), `zig/scopes` (Zig's names against AstGen's) |
+| language servers answer as documented | `editor/*` (every server compiles), `editor/full/*`, `editor/names/*`, `editor/modules/*`, `editor/stub/*` and `rote/names/*` (sessions), `zig/scopes` (Zig's names against AstGen's), `zig/members` (its members and imports against std.zig.Ast) |
 | the bootstrap converges | `bootstrap` |
 | LALR is LALR | `unit/nexus` (lookaheads equal merged canonical LR(1)) |
 | every generated parser compiles and runs | every suite and doc example |

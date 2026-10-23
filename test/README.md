@@ -39,6 +39,8 @@ on macOS and Linux with the systems' own tools.
 | `editor/<grammar>/server` | that server type checks (`zig build-exe -fno-emit-bin src/main.zig`) with the stub `hooks.zig` |
 | `<grammar>/<dir>/<session>` | the language server built from `<suite>/<dir>/` (its `hooks.zig`, else the stub) answers `<suite>/<dir>/<session>.session` as `<session>.out` says (`test/lib/lsp`, see "Language-server sessions") |
 | `<grammar>/client/<scenario>` | the extension `--editor` writes (with `<scenario>.identity.json` as its `identity.json` when there is one, and then `package.json`, `README.md` and `.vscodeignore` equal to `<scenario>.package.json`, `.readme.txt` and `.vscodeignore`), its `extension.js` run under Node against stubs of VS Code as `<suite>/client/<scenario>.js` says, makes the calls `<scenario>.out` lists (`test/lib/vscode client`, see "The VS Code client") |
+| `<grammar>/scopes` | for a suite with `compare-scopes` (`zig`): it finds no disagreement on the cases between the names `@lsp` resolves and the compiler's (AstGen's) |
+| `<grammar>/members` | for a suite with `compare-members` (`zig`): it finds no wrong member or import on the cases and `members/` against a resolution over `std.zig.Ast` |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
@@ -110,7 +112,8 @@ The suites under `test/`:
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `messages` | `@messages` with entries of every kind (`at`, `after`, a choice, a guard on an error token and its unguarded fallback, `name!:`, `{got}`, `{expected}`); its `messages.zig` tests the text of each error, from the strict parse and the tolerant one | hand-written |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
-| `editor` | Tally, a small language with `@schema`, `@repair`, `@messages` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
+| `editor` | Tally, a small language with `@schema`, `@repair`, `@messages`, `@highlight` and `@lsp` (imports and members included), whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `names/` with the stub `--editor` writes (the names from `@lsp` alone, across files), `modules/` with that stub and `resolveImport`, `stub/` with the stub and the grammar without `@lsp` | `full/*.session`, `names/*.session`, `modules/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
+| `rote` | Rote, a language of routines whose `@lsp` has `qualify` (`do add^math`) and `nominal` (`$count`) names | `names/*.session`, replayed on `project/` |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:
@@ -280,7 +283,9 @@ server: the suite runs `nexus --editor` on the suite's grammar, puts the
 subdirectory's `hooks.zig` in place of the stub when it has one, builds
 the server with `zig build`, and replays each session against it with
 `test/lib/lsp`, on the files of `<suite>/project/`. A session is one
-command a line (`initialize`; `open`, with the file's text or, for an
+command a line (`initialize`, with `folder` to make `project/` the
+workspace's folder and `module NAME=FILE` for the `modules` option;
+`open`, with the file's text or, for an
 `untitled:` document or a file not on disk, the `| ` lines after it;
 `change` with its new text on `| ` lines; `hover FILE L:C`;
 `rename FILE L:C NAME`; ...; `test/lib/lsp` lists them all), and its `.out` is each command after `> `, then what

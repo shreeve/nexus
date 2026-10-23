@@ -262,7 +262,6 @@ pub const names: scopes.Table = .{
         .{ .at = .{ .kind = .field_init, .slot = ir.slot(.field_init, .name) } },
         .{ .at = .{ .kind = .asm_output, .slot = ir.slot(.asm_output, .name) } },
         .{ .at = .{ .kind = .asm_input, .slot = ir.slot(.asm_input, .name) } },
-        .{ .at = .{ .kind = .field_access, .slot = ir.slot(.field_access, .name) } },
         .{ .at = .{ .kind = .error_value, .slot = ir.slot(.error_value, .name) } },
         .{ .at = .{ .kind = .@"break", .slot = ir.slot(.@"break", .label) } },
         .{ .at = .{ .kind = .@"continue", .slot = ir.slot(.@"continue", .label) } },
@@ -318,4 +317,14 @@ pub const names: scopes.Table = .{
     .builtin_tokens = &.{},
     .doc_token = .doc_comment,
     .doc_strip = "///",
+    .imports = &.{
+        .{ .at = .{ .kind = .builtin_call, .slot = ir.restSlot(.builtin_call, .args), .rest = true }, .when = &.{ .{ .slot = ir.slot(.builtin_call, .name), .text = "@import" } } },
+    },
+    .members = &.{
+        .{ .at = .{ .kind = .field_access, .slot = ir.slot(.field_access, .name) }, .of = ir.slot(.field_access, .operand) },
+    },
+    .qualifies = &.{},
+    .nominals = &.{},
+    .namespaces = &.{},
+    .extensions = &.{"zig", "zon"},
 };

@@ -1,19 +1,29 @@
-//! scopes.zig: the names and scopes of one file, from the `@lsp` lines of
-//! its grammar (docs/GRAMMAR.md, "Names and scopes"), written by `nexus
-//! --editor` beside the server (`lsp.zig`) for a grammar with `@lsp`.
+//! scopes.zig: the names and scopes of a language's files, from the
+//! `@lsp` lines of its grammar (docs/GRAMMAR.md, "Names and scopes"),
+//! written by `nexus --editor` beside the server (`lsp.zig`) for a grammar
+//! with `@lsp`.
 //!
 //! `index` parses a text (tolerantly, with `@repair`) and walks its tree
-//! once. A node of a scope kind opens a scope. A leaf is skipped when a
+//! once. A node of a scope kind opens a scope, and a node an `import` line
+//! takes is an import of the file its leaf names. A leaf is skipped when a
 //! `skip` line with conditions takes it; else it is a definition when a
 //! `define` line takes it (the first whose conditions hold), of the
 //! nearest scope at or around its node (the one around that, with
 //! `outer`); else it is skipped when a plain `skip` line names its role;
-//! else, a leaf of a `use` token is a use, which resolves up its chain of
-//! scopes to the nearest definition of its name: any in an unordered
-//! scope; in an ordered one, the last whose node ends before it (whose
-//! own leaf does, for an `outer` definition or one of the node that opens
-//! its scope). A name that resolves to none is a builtin when `builtin`
-//! lists it, else unresolved.
+//! else it is a member when a `member` line names its role, a qualified
+//! name when a `qualify` line does and its node imports a file, the name
+//! of an import's file, a name of a namespace when its token is
+//! `nominal`; else, a leaf of a `use` token is a use, which resolves up
+//! its chain of scopes to the nearest definition of its name: any in an
+//! unordered scope; in an ordered one, the last whose node ends before it
+//! (whose own leaf does, for an `outer` definition or one of the node that
+//! opens its scope). A name that resolves to none is a builtin when
+//! `builtin` lists it, else unresolved.
+//!
+//! The rest resolves across files, through a `World` that gives each
+//! file's index (`Resolver`): what an expression denotes (a scope, a file,
+//! a definition's value or declared type), the definition a member or a
+//! qualified name names, references and rename over many files.
 //! The tables come from `language.zig` (`language.names`), so nothing here
 //! knows the language.
 
@@ -73,6 +83,19 @@ pub const Define = struct {
     pub const Detail = union(enum) { none, whole, upto: u16 };
 };
 
+/// `import`: the leaf in `at` (the first of a rest role) names a file;
+/// `file` is its path, `{}` standing for the name.
+pub const Import = struct { at: Slot, when: []const Define.When = &.{}, file: ?[]const u8 = null };
+
+/// `member`: the leaf in `at` is a member of what slot `of` denotes.
+pub const Member = struct { at: Slot, of: u16 };
+
+/// `qualify`: the leaf in `at` is a name of the file slot `in` imports.
+pub const Qualify = struct { at: Slot, in: u16 };
+
+/// `nominal`: a leaf of `cat` is a name of namespace `ns`.
+pub const Nominal = struct { cat: TokenCat, ns: u16 };
+
 pub const Table = struct {
     scopes: []const ScopeKind = &.{},
     /// Whether the file's own scope is unordered when its tree is not
@@ -89,6 +112,14 @@ pub const Table = struct {
     doc_token: ?TokenCat = null,
     doc_strip: []const u8 = "",
     undefined: ?lsp.Severity = null,
+    imports: []const Import = &.{},
+    members: []const Member = &.{},
+    qualifies: []const Qualify = &.{},
+    nominals: []const Nominal = &.{},
+    /// The namespaces of `nominal`, by number.
+    namespaces: []const []const u8 = &.{},
+    /// The extensions of the language's files, which make up a workspace.
+    extensions: []const []const u8 = &.{},
 };
 
 const table: Table = language.names;
@@ -127,15 +158,44 @@ pub const Def = struct {
     type_span: ?[2]u32 = null,
     /// Its doc role's leaves (`doc:ROLE`).
     doc: []const [2]u32 = &.{},
+    /// Whether another file sees it, as a member or a qualified name.
     exported: bool,
+    /// What its value denotes: an import when its node is one, else its
+    /// `value:` role's; and what its `type:` role denotes. Members of the
+    /// name are looked up in the value's scope, else in the type's.
+    value: Expr = .none,
+    typed: Expr = .none,
 };
 
 pub const Resolution = union(enum) { def: u32, builtin, unresolved };
 
 pub const Use = struct { start: u32, end: u32, scope: u32, res: Resolution };
 
-/// A name in the text: a definition's leaf, or a use.
-pub const Occurrence = struct { start: u32, end: u32, what: union(enum) { def: u32, use: u32 } };
+/// What an expression denotes, as far as names tell: what a use resolves
+/// to, a member, an import's file, or a scope its node opens. A node
+/// whose one child is a use denotes what the use does.
+pub const Expr = union(enum) { none, use: u32, member: u32, import: u32, scope: u32 };
+
+/// An import: its leaf, and the name it gives (a string's contents).
+pub const ImportRef = struct { start: u32, end: u32, name: []const u8, line: u16 };
+
+/// A member: its leaf (empty for a hole), and what it is a member of.
+pub const MemberRef = struct { start: u32, end: u32, of: Expr = .none };
+
+/// A qualified name: its leaf (empty for a hole), and the import of its
+/// node that names its file.
+pub const Qualified = struct { start: u32, end: u32, file: u32 };
+
+/// A name of a namespace (`nominal`).
+pub const NominalRef = struct { start: u32, end: u32, ns: u16 };
+
+/// A name in the text: a definition's leaf, a use, a member, a qualified
+/// name, an import's leaf, or a name of a namespace.
+pub const Occurrence = struct {
+    start: u32,
+    end: u32,
+    what: union(enum) { def: u32, use: u32, member: u32, qualified: u32, import: u32, nominal: u32 },
+};
 
 /// A leaf no lookup reads: a skipped one, a definition's, or a hole the
 /// tolerant parse inserted.
@@ -147,11 +207,17 @@ pub const Index = struct {
     scopes: []const Scope,
     defs: []const Def,
     uses: []const Use,
-    /// Every definition's leaf and use, by position.
+    imports: []const ImportRef,
+    members: []const MemberRef,
+    qualified: []const Qualified,
+    nominals: []const NominalRef,
+    /// Every name, by position.
     occurrences: []const Occurrence,
     /// Every other leaf, and every hole, by position: what completion
     /// asks of the word at the cursor.
     others: []const Other,
+    /// The definitions of each name.
+    byName: std.StringHashMapUnmanaged(std.ArrayList(u32)),
 
     /// The name at `at`: the one it is in, else the one it ends.
     pub fn at(self: *const Index, offset: u32) ?Occurrence {
@@ -166,27 +232,16 @@ pub const Index = struct {
         return null;
     }
 
-    /// The definition the name at `offset` is, or resolves to.
-    pub fn defAt(self: *const Index, offset: u32) ?u32 {
-        const o = self.at(offset) orelse return null;
-        return switch (o.what) {
-            .def => |d| d,
-            .use => |u| switch (self.uses[u].res) {
-                .def => |d| d,
-                else => null,
-            },
-        };
+    /// The text of an occurrence.
+    pub fn textOf(self: *const Index, o: Occurrence) []const u8 {
+        return self.text[o.start..o.end];
     }
 
-    /// The leaf of definition `d` and every use that resolves to it, by
-    /// position.
-    pub fn references(self: *const Index, arena: Allocator, d: u32) error{OutOfMemory}![]const [2]u32 {
-        var out: std.ArrayList([2]u32) = .empty;
-        for (self.occurrences) |o| switch (o.what) {
-            .def => |x| if (x == d) try out.append(arena, .{ o.start, o.end }),
-            .use => |u| if (self.uses[u].res == .def and self.uses[u].res.def == d) try out.append(arena, .{ o.start, o.end }),
-        };
-        return out.items;
+    /// Whether a hole at `pos` is where `offset` is: only blanks between.
+    fn holeAt(self: *const Index, pos: u32, offset: u32) bool {
+        const lo = @min(pos, offset);
+        const hi = @max(pos, offset);
+        return hi <= self.text.len and std.mem.trim(u8, self.text[lo..hi], " \t").len == 0;
     }
 
     /// The innermost scope around `offset`.
@@ -206,7 +261,7 @@ pub const Index = struct {
         // The definition being written at `offset` is not offered.
         const here: ?u32 = if (self.at(offset)) |o| switch (o.what) {
             .def => |d| d,
-            .use => null,
+            else => null,
         } else null;
         var scope: ?u32 = self.scopeAt(offset);
         while (scope) |s| : (scope = self.scopes[s].parent) {
@@ -229,21 +284,29 @@ pub const Index = struct {
     }
 
     /// Whether completion at `offset` offers names: unless the word there
-    /// (or the hole the tolerant parse put there) is a definition's or a
-    /// skipped role's, where a name in scope cannot go.
+    /// (or the hole the tolerant parse put there) is a definition's, a
+    /// skipped role's, a member's or another name a scope does not hold,
+    /// where a name in scope cannot go.
     pub fn wantsNames(self: *const Index, offset: u32) bool {
         if (self.at(offset)) |o| return o.what == .use;
         for (self.others) |o| {
             if (o.start == o.end) {
-                const lo = @min(o.start, offset);
-                const hi = @max(o.start, offset);
-                if (hi <= self.text.len and std.mem.trim(u8, self.text[lo..hi], " \t").len == 0) return o.use;
+                if (self.holeAt(o.start, offset)) return o.use;
             } else if (o.start <= offset and offset <= o.end) return o.use;
         }
         return true;
     }
 
-    /// The symbol of definition `d`, for the server.
+    /// The member or qualified name at `offset`, a hole's included.
+    fn memberAt(self: *const Index, offset: u32) ?union(enum) { member: u32, qualified: u32 } {
+        for (self.members, 0..) |m, i| if (if (m.start == m.end) self.holeAt(m.start, offset) else m.start <= offset and offset <= m.end)
+            return .{ .member = @intCast(i) };
+        for (self.qualified, 0..) |q, i| if (if (q.start == q.end) self.holeAt(q.start, offset) else q.start <= offset and offset <= q.end)
+            return .{ .qualified = @intCast(i) };
+        return null;
+    }
+
+    /// The symbol of definition `d` of the file at `path`, for the server.
     pub fn symbol(self: *const Index, arena: Allocator, path: []const u8, d: u32) error{OutOfMemory}!lsp.Symbol {
         const def = self.defs[d];
         return .{
@@ -428,6 +491,7 @@ pub fn index(arena: Allocator, text: []const u8) error{OutOfMemory}!Index {
     try b.lex();
     try b.walk();
     try b.resolve();
+    try b.denote();
     std.mem.sort(Occurrence, b.occurrences.items, {}, struct {
         fn lt(_: void, x: Occurrence, y: Occurrence) bool {
             return x.start < y.start;
@@ -438,14 +502,25 @@ pub fn index(arena: Allocator, text: []const u8) error{OutOfMemory}!Index {
             return x.start < y.start;
         }
     }.lt);
+    var byName: std.StringHashMapUnmanaged(std.ArrayList(u32)) = .empty;
+    for (b.defs.items, 0..) |d, i| {
+        const gop = try byName.getOrPut(arena, d.name);
+        if (!gop.found_existing) gop.value_ptr.* = .empty;
+        try gop.value_ptr.append(arena, @intCast(i));
+    }
     return .{
         .text = text,
         .tokens = b.tokens.items,
         .scopes = b.scopes.items,
         .defs = b.defs.items,
         .uses = b.uses.items,
+        .imports = b.imports.items,
+        .members = b.members.items,
+        .qualified = b.qualified.items,
+        .nominals = b.nominals.items,
         .occurrences = b.occurrences.items,
         .others = b.others.items,
+        .byName = byName,
     };
 }
 
@@ -464,6 +539,21 @@ const Builder = struct {
     opened: std.AutoHashMapUnmanaged(usize, u32) = .empty,
     /// Definitions whose value node's scope is looked up after the walk.
     values: std.ArrayList(struct { def: u32, node: usize }) = .empty,
+    imports: std.ArrayList(ImportRef) = .empty,
+    members: std.ArrayList(MemberRef) = .empty,
+    qualified: std.ArrayList(Qualified) = .empty,
+    nominals: std.ArrayList(NominalRef) = .empty,
+    /// The import each import node makes, and the member each node of a
+    /// member's role is, by the node's items.
+    importOf: std.AutoHashMapUnmanaged(usize, u32) = .empty,
+    memberOf: std.AutoHashMapUnmanaged(usize, u32) = .empty,
+    /// The use at each position.
+    useAt: std.AutoHashMapUnmanaged(u32, u32) = .empty,
+    /// The values whose denotations are found after the walk: of each
+    /// member, what it is a member of; of each definition, its value and
+    /// type roles'.
+    operands: std.ArrayList(struct { member: u32, value: Sexp }) = .empty,
+    defValues: std.ArrayList(struct { def: u32, value: Sexp, typed: Sexp }) = .empty,
 
     fn lex(b: *Builder) error{OutOfMemory}!void {
         var lexer = parser.Lexer.init(b.text);
@@ -542,6 +632,7 @@ const Builder = struct {
                         try b.opened.put(b.arena, @intFromPtr(list.ptr), scope);
                     }
                 }
+                try b.importAt(item, kind);
                 const items = list.items();
                 var n = items.len;
                 while (n > 1) {
@@ -562,6 +653,24 @@ const Builder = struct {
         };
     }
 
+    /// The import a node of `kind` makes: the first `import` line on the
+    /// kind whose conditions hold and whose role holds a leaf.
+    fn importAt(b: *Builder, item: Item, kind: Tag) error{OutOfMemory}!void {
+        const node: Item = .{ .value = item.value, .owner = item.value, .parent = item.owner, .slot = 0, .scope = item.scope };
+        const items = item.value.items();
+        for (table.imports, 0..) |im, line| {
+            if (im.at.kind != kind or im.at.slot >= items.len or items[im.at.slot] != .src) continue;
+            if (!b.holds(node, im.when)) continue;
+            const leaf = items[im.at.slot].src;
+            const start = leaf.pos;
+            const end = b.p.leafEnd(leaf);
+            if (start == end) continue;
+            try b.imports.append(b.arena, .{ .start = start, .end = end, .name = unquote(b.text[start..end]), .line = @intCast(line) });
+            try b.importOf.put(b.arena, @intFromPtr(item.value.list.ptr), @intCast(b.imports.items.len - 1));
+            return;
+        }
+    }
+
     /// Classify a leaf of slot `item.slot` of `item.owner`.
     fn classify(b: *Builder, item: Item, leafv: parser.Src) error{OutOfMemory}!void {
         const start = leafv.pos;
@@ -573,19 +682,77 @@ const Builder = struct {
             for (table.defines, 0..) |d, line| {
                 if (d.at.kind != k or !slotMatches(d.at, item.slot)) continue;
                 if (!b.holds(item, d.when)) continue;
-                // A hole, and a builtin's name, which is never defined.
-                if (start == end or b.builtinAt(start, end)) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+                // A hole, and a builtin's name, which is never defined in
+                // sight; a member, which is never in sight, may have one.
+                if (start == end or (d.visibility != .member and b.builtinAt(start, end))) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
                 return b.define(item, @intCast(line), start, end);
             }
             for (table.skips) |s| if (s.when.len == 0 and s.at.kind == k and slotMatches(s.at, item.slot))
                 return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+            const key = @intFromPtr(item.owner.list.ptr);
+            for (table.members) |m| if (m.at.kind == k and slotMatches(m.at, item.slot)) {
+                const items = item.owner.items();
+                try b.members.append(b.arena, .{ .start = start, .end = end });
+                const id: u32 = @intCast(b.members.items.len - 1);
+                try b.memberOf.put(b.arena, key, id);
+                try b.operands.append(b.arena, .{ .member = id, .value = if (m.of < items.len) items[m.of] else .nil });
+                if (start == end) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+                return b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .member = id } });
+            };
+            const imp = b.importOf.get(key);
+            // Qualified by the file its node imports; without the import,
+            // the leaf is what it would be without the `qualify` line.
+            for (table.qualifies) |q| if (q.at.kind == k and slotMatches(q.at, item.slot)) {
+                const file = imp orelse break;
+                if (importLine(b.imports.items[file].line).at.slot != q.in) break;
+                try b.qualified.append(b.arena, .{ .start = start, .end = end, .file = file });
+                if (start == end) return b.others.append(b.arena, .{ .start = start, .end = end, .use = false });
+                return b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .qualified = @intCast(b.qualified.items.len - 1) } });
+            };
+            if (imp) |i| if (b.imports.items[i].start == start)
+                return b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .import = i } });
         }
         // A hole the tolerant parse inserted has no token of its own.
         if (start == end) return b.others.append(b.arena, .{ .start = start, .end = end, .use = true });
         const tok = b.tokenOf(start) orelse return;
+        for (table.nominals) |n| if (n.cat == tok.cat) {
+            try b.nominals.append(b.arena, .{ .start = start, .end = end, .ns = n.ns });
+            return b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .nominal = @intCast(b.nominals.items.len - 1) } });
+        };
         if (!isUse(tok.cat)) return;
         try b.uses.append(b.arena, .{ .start = start, .end = end, .scope = item.scope, .res = .unresolved });
-        try b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .use = @intCast(b.uses.items.len - 1) } });
+        const id: u32 = @intCast(b.uses.items.len - 1);
+        try b.useAt.put(b.arena, start, id);
+        try b.occurrences.append(b.arena, .{ .start = start, .end = end, .what = .{ .use = id } });
+    }
+
+    /// What each member is a member of, and what each definition's value
+    /// and type denote.
+    fn denote(b: *Builder) error{OutOfMemory}!void {
+        for (b.operands.items) |o| b.members.items[o.member].of = b.exprOf(o.value);
+        for (b.defValues.items) |v| {
+            const d = &b.defs.items[v.def];
+            if (d.value == .none) d.value = b.exprOf(v.value);
+            d.typed = b.exprOf(v.typed);
+        }
+    }
+
+    /// What a value denotes: a use's leaf, a node whose one child is one,
+    /// a member's node, an import, or a node that opens a scope.
+    fn exprOf(b: *Builder, v: Sexp) Expr {
+        switch (v) {
+            .src => |leaf| if (b.useAt.get(leaf.pos)) |u| return .{ .use = u },
+            .list => |list| {
+                const key = @intFromPtr(list.ptr);
+                if (b.memberOf.get(key)) |m| return .{ .member = m };
+                if (b.importOf.get(key)) |i| return .{ .import = i };
+                if (b.opened.get(key)) |s| return .{ .scope = s };
+                const items = list.items();
+                if (v.kind() != null and items.len == 2 and items[1] == .src) return b.exprOf(items[1]);
+            },
+            else => {},
+        }
+        return .none;
     }
 
     fn define(b: *Builder, item: Item, line: u16, start: u32, end: u32) error{OutOfMemory}!void {
@@ -611,11 +778,14 @@ const Builder = struct {
             .visible = node.end,
             .detail_end = node.end,
             .exported = switch (d.@"export") {
-                .none => scope == 0,
+                .none => true,
                 .slot => |s| s < items.len and items[s] != .nil,
                 .parent => |parent| item.parent.kind() == parent,
             },
         };
+        // A definition whose node is an import has the import's file as
+        // its value.
+        if (b.importOf.get(@intFromPtr(item.owner.list.ptr))) |i| def.value = .{ .import = i };
         switch (d.detail) {
             .upto => |s| if (s < items.len and items[s] != .nil) {
                 def.detail_end = b.p.span(items[s]).start;
@@ -642,6 +812,9 @@ const Builder = struct {
         if (d.value) |s| if (s < items.len and items[s] == .list) {
             try b.values.append(b.arena, .{ .def = id, .node = @intFromPtr(items[s].list.ptr) });
         };
+        const value: Sexp = if (d.value) |s| (if (s < items.len) items[s] else .nil) else .nil;
+        const typed: Sexp = if (d.type) |s| (if (s < items.len) items[s] else .nil) else .nil;
+        if (value != .nil or typed != .nil) try b.defValues.append(b.arena, .{ .def = id, .value = value, .typed = typed });
         // A definition of a node that opens a scope has that scope inside.
         if (!d.outer and inner == null) if (b.opened.get(@intFromPtr(item.owner.list.ptr))) |s| {
             if (s != scope) b.defs.items[id].inner = s;
@@ -764,69 +937,373 @@ fn isBuiltin(name: []const u8) bool {
     return false;
 }
 
+/// The name an import's leaf gives: a string's contents (between its
+/// quotes, as written), else its text.
+fn unquote(text: []const u8) []const u8 {
+    if (text.len >= 2 and (text[0] == '"' or text[0] == '\'') and text[text.len - 1] == text[0]) return text[1 .. text.len - 1];
+    return text;
+}
+
+// =============================================================================
+// Files: imports, members and qualified names
+// =============================================================================
+
+/// The files a resolution reads: each one's index, and the files modules
+/// name.
+pub const World = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        /// The index of the file at `path`; null when it cannot be read.
+        load: *const fn (ptr: *anyopaque, path: []const u8) error{OutOfMemory}!?*const Index,
+        /// The file the import `name` of the file at `from` names when
+        /// `name` is a module's; null to take it as a path.
+        module: *const fn (ptr: *anyopaque, from: []const u8, name: []const u8) error{OutOfMemory}!?[]const u8,
+    };
+};
+
+/// A file and its index.
+pub const File = struct { path: []const u8, ix: *const Index };
+
+/// A definition of a file.
+pub const Global = struct { file: File, def: u32 };
+
+/// A scope of a file.
+pub const Place = struct { file: File, scope: u32 };
+
+/// What a name names: a definition, a file (an import's leaf), or a name
+/// of a namespace.
+pub const Target = union(enum) {
+    def: Global,
+    file: File,
+    nominal: struct { ns: u16, name: []const u8 },
+
+    /// The text of every name of the target: a definition's or a
+    /// namespace's name; empty for a file, whose imports spell it many
+    /// ways.
+    pub fn name(t: Target) []const u8 {
+        return switch (t) {
+            .def => |g| g.file.ix.defs[g.def].name,
+            .file => "",
+            .nominal => |n| n.name,
+        };
+    }
+};
+
+/// The most steps a denotation takes (`std.mem.Allocator` takes three, an
+/// alias one more); a cycle of aliases ends there and denotes nothing.
+const max_depth = 64;
+
+/// Resolution across files: what an expression denotes, and what a member
+/// or a qualified name names, each looked up once (in `arena`).
+pub const Resolver = struct {
+    arena: Allocator,
+    world: World,
+    memo: std.AutoHashMapUnmanaged(Key, ?Global) = .empty,
+
+    const Key = struct { ix: usize, qualified: bool, n: u32 };
+
+    pub fn init(arena: Allocator, world: World) Resolver {
+        return .{ .arena = arena, .world = world };
+    }
+
+    /// The file at `path`, indexed; null when it cannot be read.
+    pub fn load(r: *Resolver, path: []const u8) error{OutOfMemory}!?File {
+        const ix = (try r.world.vtable.load(r.world.ptr, path)) orelse return null;
+        return .{ .path = path, .ix = ix };
+    }
+
+    /// The path of the file import `i` of `f` names: a module's file, else
+    /// the name (with `file`, the path it makes of it) relative to `f`'s
+    /// directory.
+    pub fn importPath(r: *Resolver, f: File, i: u32) error{OutOfMemory}!?[]const u8 {
+        const im = f.ix.imports[i];
+        if (im.name.len == 0) return null;
+        if (try r.world.vtable.module(r.world.ptr, f.path, im.name)) |p| return p;
+        const rel = if (importLine(im.line).file) |pattern| try std.mem.replaceOwned(u8, r.arena, pattern, "{}", im.name) else im.name;
+        if (std.fs.path.isAbsolute(rel)) return rel;
+        if (!std.fs.path.isAbsolute(f.path)) return null;
+        return try std.fs.path.resolveAlloc(r.arena, &.{ std.fs.path.dirname(f.path) orelse "/", rel });
+    }
+
+    /// The file import `i` of `f` names, indexed.
+    pub fn importFile(r: *Resolver, f: File, i: u32) error{OutOfMemory}!?File {
+        const path = (try r.importPath(f, i)) orelse return null;
+        return r.load(path);
+    }
+
+    /// The scope the members of definition `g` are in: its value's, else
+    /// its declared type's.
+    pub fn defScope(r: *Resolver, g: Global, depth: u32) error{OutOfMemory}!?Place {
+        const d = g.file.ix.defs[g.def];
+        if (try r.exprScope(g.file, d.value, depth + 1)) |p| return p;
+        return r.exprScope(g.file, d.typed, depth + 1);
+    }
+
+    /// The scope expression `e` of `f` denotes, whose names are members:
+    /// an unordered one its node opens (a container; an ordered scope, a
+    /// block's or a function's, has no members), an import's file, or the
+    /// scope of what a use or a member names.
+    pub fn exprScope(r: *Resolver, f: File, e: Expr, depth: u32) error{OutOfMemory}!?Place {
+        if (depth > max_depth) return null;
+        switch (e) {
+            .none => return null,
+            .scope => |s| return if (f.ix.scopes[s].unordered) .{ .file = f, .scope = s } else null,
+            .import => |i| {
+                const file = (try r.importFile(f, i)) orelse return null;
+                return .{ .file = file, .scope = 0 };
+            },
+            .use => |u| switch (f.ix.uses[u].res) {
+                .def => |d| return r.defScope(.{ .file = f, .def = d }, depth + 1),
+                else => return null,
+            },
+            .member => |m| {
+                const g = (try r.memberDef(f, m, depth + 1)) orelse return null;
+                return r.defScope(g, depth + 1);
+            },
+        }
+    }
+
+    /// The definition member `m` of `f` names.
+    pub fn memberDef(r: *Resolver, f: File, m: u32, depth: u32) error{OutOfMemory}!?Global {
+        const key: Key = .{ .ix = @intFromPtr(f.ix), .qualified = false, .n = m };
+        if (r.memo.get(key)) |g| return g;
+        // A member met again while it is looked up is in a cycle: nothing.
+        try r.memo.put(r.arena, key, null);
+        const ref = f.ix.members[m];
+        var got: ?Global = null;
+        if (ref.start < ref.end) if (try r.exprScope(f, ref.of, depth + 1)) |place| {
+            got = lookup(place, f.ix.text[ref.start..ref.end], f.path);
+        };
+        try r.memo.put(r.arena, key, got);
+        return got;
+    }
+
+    /// The definition qualified name `q` of `f` names: one of the own
+    /// scope of the file its node imports.
+    pub fn qualifiedDef(r: *Resolver, f: File, q: u32) error{OutOfMemory}!?Global {
+        const key: Key = .{ .ix = @intFromPtr(f.ix), .qualified = true, .n = q };
+        if (r.memo.get(key)) |g| return g;
+        const ref = f.ix.qualified[q];
+        var got: ?Global = null;
+        if (ref.start < ref.end) if (try r.importFile(f, ref.file)) |file| {
+            got = lookup(.{ .file = file, .scope = 0 }, f.ix.text[ref.start..ref.end], f.path);
+        };
+        try r.memo.put(r.arena, key, got);
+        return got;
+    }
+
+    /// What occurrence `o` of `f` names.
+    pub fn resolve(r: *Resolver, f: File, o: Occurrence) error{OutOfMemory}!?Target {
+        switch (o.what) {
+            .def => |d| return .{ .def = .{ .file = f, .def = d } },
+            .use => |u| return switch (f.ix.uses[u].res) {
+                .def => |d| .{ .def = .{ .file = f, .def = d } },
+                else => null,
+            },
+            .member => |m| return if (try r.memberDef(f, m, 0)) |g| .{ .def = g } else null,
+            .qualified => |q| return if (try r.qualifiedDef(f, q)) |g| .{ .def = g } else null,
+            .import => |i| return if (try r.importFile(f, i)) |file| .{ .file = file } else null,
+            .nominal => |n| return .{ .nominal = .{ .ns = f.ix.nominals[n].ns, .name = f.ix.textOf(o) } },
+        }
+    }
+
+    /// What the name at `offset` of `f` names.
+    pub fn targetAt(r: *Resolver, f: File, offset: u32) error{OutOfMemory}!?Target {
+        const o = f.ix.at(offset) orelse return null;
+        return r.resolve(f, o);
+    }
+
+    /// The definitions a member or a qualified name at `offset` of `f`
+    /// (a hole's included) can name, one per name; null when no member
+    /// or qualified name is there.
+    pub fn membersAt(r: *Resolver, f: File, offset: u32) error{OutOfMemory}!?[]const Global {
+        const which = f.ix.memberAt(offset) orelse return null;
+        var out: std.ArrayList(Global) = .empty;
+        const place: Place = switch (which) {
+            .member => |m| (try r.exprScope(f, f.ix.members[m].of, 0)) orelse return out.items,
+            .qualified => |q| .{ .file = (try r.importFile(f, f.ix.qualified[q].file)) orelse return out.items, .scope = 0 },
+        };
+        var seen: std.StringHashMapUnmanaged(void) = .empty;
+        for (place.file.ix.defs, 0..) |d, i| {
+            if (!sees(place, @intCast(i), f.path)) continue;
+            if ((try seen.getOrPut(r.arena, d.name)).found_existing) continue;
+            try out.append(r.arena, .{ .file = place.file, .def = @intCast(i) });
+        }
+        return out.items;
+    }
+
+    /// Every name of the files at `paths` that names `t`, by file and
+    /// position.
+    pub fn references(r: *Resolver, t: Target, paths: []const []const u8) error{OutOfMemory}![]const lsp.Span {
+        var out: std.ArrayList(lsp.Span) = .empty;
+        const name = t.name();
+        for (paths) |path| {
+            const f = (try r.load(path)) orelse continue;
+            if (name.len > 0 and std.mem.find(u8, f.ix.text, name) == null) continue;
+            for (f.ix.occurrences) |o| {
+                if (if (t == .file) o.what != .import else !std.mem.eql(u8, f.ix.textOf(o), name)) continue;
+                const got = (try r.resolve(f, o)) orelse continue;
+                if (same(got, t)) try out.append(r.arena, .{ .path = path, .start = o.start, .end = o.end });
+            }
+        }
+        return out.items;
+    }
+};
+
+/// The definition of `name` among the members of `place` that a name of
+/// the file at `from` sees.
+fn lookup(place: Place, name: []const u8, from: []const u8) ?Global {
+    const list = place.file.ix.byName.get(name) orelse return null;
+    for (list.items) |d| if (sees(place, d, from)) return .{ .file = place.file, .def = d };
+    return null;
+}
+
+/// Whether definition `d` is a member of `place` that a name of the file
+/// at `from` sees: one of its scope, not `lexical`, and exported unless
+/// `from` is its file.
+fn sees(place: Place, d: u32, from: []const u8) bool {
+    const def = place.file.ix.defs[d];
+    if (def.scope != place.scope or table.defines[def.line].visibility == .lexical) return false;
+    return def.exported or std.mem.eql(u8, place.file.path, from);
+}
+
+/// Whether two targets are one.
+pub fn same(a: Target, b: Target) bool {
+    return switch (a) {
+        .def => |x| b == .def and std.mem.eql(u8, x.file.path, b.def.file.path) and
+            x.file.ix.defs[x.def].start == b.def.file.ix.defs[b.def.def].start,
+        .file => |x| b == .file and std.mem.eql(u8, x.path, b.file.path),
+        .nominal => |x| b == .nominal and x.ns == b.nominal.ns and std.mem.eql(u8, x.name, b.nominal.name),
+    };
+}
+
 // =============================================================================
 // Rename
 // =============================================================================
 
-/// A rename of definition `d` to `name`: the spans to replace, or why it
-/// is refused. It is refused for a name another file can see, and unless,
-/// the edits made and the text indexed again, every name the definition
-/// had resolves to it under the new name, every other use resolves as it
-/// did, and no other definition of its scope has the new name.
-pub fn rename(arena: Allocator, ix: *const Index, d: u32, name: []const u8) error{OutOfMemory}!union(enum) { spans: []const [2]u32, refused: []const u8 } {
-    const def = ix.defs[d];
-    if (def.exported) return .{ .refused = try arena.print("'{s}' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see", .{def.name}) };
-    const spans = try ix.references(arena, d);
-    // The text with the edits made.
-    var out: std.ArrayList(u8) = .empty;
-    var from: u32 = 0;
+/// A file's text in place of its own.
+pub const Text = struct { path: []const u8, text: []const u8 };
+
+/// The spans a rename of `t` edits over the files at `paths`: every name
+/// of it; or why it is refused.
+pub fn renameSpans(r: *Resolver, t: Target, paths: []const []const u8) error{OutOfMemory}!union(enum) { spans: []const lsp.Span, refused: []const u8 } {
+    if (t == .file) return .{ .refused = "an import's name names a file: rename the file" };
+    return .{ .spans = try r.references(t, paths) };
+}
+
+/// The texts of the files `spans` edit, each span replaced by `name`.
+pub fn renamed(r: *Resolver, spans: []const lsp.Span, name: []const u8) error{OutOfMemory}![]const Text {
+    var out: std.ArrayList(Text) = .empty;
     for (spans) |s| {
-        try out.appendSlice(arena, ix.text[from..s[0]]);
-        try out.appendSlice(arena, name);
-        from = s[1];
+        const seen = for (out.items) |t| {
+            if (std.mem.eql(u8, t.path, s.path)) break true;
+        } else false;
+        if (seen) continue;
+        const f = (try r.load(s.path)) orelse continue;
+        var text: std.ArrayList(u8) = .empty;
+        var from: u32 = 0;
+        for (spans) |x| if (std.mem.eql(u8, x.path, s.path)) {
+            try text.appendSlice(r.arena, f.ix.text[from..x.start]);
+            try text.appendSlice(r.arena, name);
+            from = x.end;
+        };
+        try text.appendSlice(r.arena, f.ix.text[from..]);
+        try out.append(r.arena, .{ .path = s.path, .text = text.items });
     }
-    try out.appendSlice(arena, ix.text[from..]);
-    const again = try index(arena, out.items);
-    const delta: i64 = @as(i64, @intCast(name.len)) - @as(i64, @intCast(def.end - def.start));
-    const Map = struct {
-        spans: []const [2]u32,
-        delta: i64,
-        fn of(m: @This(), pos: u32) u32 {
-            var n: i64 = 0;
-            for (m.spans) |s| {
-                if (s[0] < pos) n += 1 else break;
-            }
-            return @intCast(@as(i64, pos) + n * m.delta);
-        }
-    };
-    const map: Map = .{ .spans = spans, .delta = delta };
+    return out.items;
+}
+
+/// Why the rename of `t` to `name`, which edits `spans`, is refused; null
+/// when it is not. `before` reads the files as they are and `after` with
+/// the edits made (`renamed`). The rename is refused unless, in each file
+/// at `paths` (every file that holds either name), every name of `t`
+/// names it under the new name and every other name names what it did;
+/// and no other definition of its scope, or name of its namespace, has
+/// the new name.
+pub fn renameRefusal(before: *Resolver, after: *Resolver, t: Target, name: []const u8, spans: []const lsp.Span, paths: []const []const u8) error{OutOfMemory}!?[]const u8 {
+    const arena = before.arena;
+    const old = t.name();
+    const m: Shift = .{ .spans = spans, .delta = @as(i64, @intCast(name.len)) - @as(i64, @intCast(old.len)) };
     const changed = "the new name changes what the file's names are";
-    if (again.defs.len != ix.defs.len or again.uses.len != ix.uses.len) return .{ .refused = changed };
-    const renamed = map.of(def.start);
-    for (ix.uses, again.uses) |u, v| {
-        if (map.of(u.start) != v.start) return .{ .refused = changed };
-        const was: ?u32 = switch (u.res) {
-            .def => |x| x,
-            else => null,
-        };
-        if (was != null and was.? == d) {
-            if (v.res != .def or again.defs[v.res.def].start != renamed)
-                return .{ .refused = try arena.print("the use of '{s}' on line {d} would name another '{s}'", .{ def.name, lineOf(ix.text, u.start), name }) };
-            continue;
+    const home = switch (t) {
+        .def => |g| g.file.path,
+        else => "",
+    };
+    if (t == .nominal) for (paths) |path| {
+        const f = (try before.load(path)) orelse continue;
+        for (f.ix.nominals) |n| if (n.ns == t.nominal.ns and std.mem.eql(u8, f.ix.text[n.start..n.end], name))
+            return try arena.print("'{s}' is a name of {s} already", .{ name, namespace(n.ns) });
+    };
+    for (paths) |path| {
+        const a = (try before.load(path)) orelse continue;
+        const b = (try after.load(path)) orelse return changed;
+        if (a.ix.defs.len != b.ix.defs.len or a.ix.occurrences.len != b.ix.occurrences.len) return changed;
+        for (a.ix.occurrences, b.ix.occurrences) |oa, ob| {
+            if (m.of(path, oa.start) != ob.start or std.meta.activeTag(oa.what) != std.meta.activeTag(ob.what)) return changed;
+            const was = try before.resolve(a, oa);
+            const now = try after.resolve(b, ob);
+            const line = lineOf(a.ix.text, oa.start);
+            const of = if (std.mem.eql(u8, path, home)) "" else try arena.print(" of {s}", .{std.fs.path.basename(path)});
+            if (was != null and same(was.?, t)) {
+                if (now == null or !m.same(was.?, now.?, name))
+                    return try arena.print("the use of '{s}' on line {d}{s} would name another '{s}'", .{ old, line, of, name });
+                continue;
+            }
+            const kept = if (was) |x| now != null and m.same(x, now.?, null) else now == null;
+            if (!kept) return try arena.print("'{s}' would capture the use of '{s}' on line {d}{s}", .{ name, a.ix.textOf(oa), line, of });
         }
-        const ok = switch (u.res) {
-            .def => |x| v.res == .def and again.defs[v.res.def].start == map.of(ix.defs[x].start),
-            .builtin => v.res == .builtin,
-            .unresolved => v.res == .unresolved,
+    }
+    if (t == .def) {
+        const g = t.def;
+        const b = (try after.load(g.file.path)) orelse return changed;
+        const at = m.of(g.file.path, g.file.ix.defs[g.def].start);
+        const scope = b.ix.defs[findDef(b.ix, at) orelse return changed].scope;
+        for (b.ix.defs) |o| {
+            if (o.start == at or o.scope != scope) continue;
+            if (std.mem.eql(u8, o.name, name)) return try arena.print("'{s}' is defined in this scope already", .{name});
+        }
+    }
+    return null;
+}
+
+/// Positions of the texts before a rename in the texts after it: each
+/// moves by `delta` for every edited span before it in its file.
+const Shift = struct {
+    spans: []const lsp.Span,
+    delta: i64,
+
+    fn of(m: Shift, path: []const u8, pos: u32) u32 {
+        var n: i64 = 0;
+        for (m.spans) |s| if (s.start < pos and std.mem.eql(u8, s.path, path)) {
+            n += 1;
         };
-        if (!ok) return .{ .refused = try arena.print("'{s}' would capture the use of '{s}' on line {d}", .{ name, ix.text[u.start..u.end], lineOf(ix.text, u.start) }) };
+        return @intCast(@as(i64, pos) + n * m.delta);
     }
-    const scope = again.defs[findDef(&again, renamed) orelse return .{ .refused = changed }].scope;
-    for (again.defs) |o| {
-        if (o.start == renamed or o.scope != scope) continue;
-        if (std.mem.eql(u8, o.name, name)) return .{ .refused = try arena.print("'{s}' is defined in this scope already", .{name}) };
+
+    /// Whether `now`, a target after the rename, is `was` moved by it;
+    /// with `name`, `was` renamed to it.
+    fn same(m: Shift, was: Target, now: Target, name: ?[]const u8) bool {
+        return switch (was) {
+            .def => |x| now == .def and std.mem.eql(u8, x.file.path, now.def.file.path) and
+                m.of(x.file.path, x.file.ix.defs[x.def].start) == now.def.file.ix.defs[now.def.def].start,
+            .file => |x| now == .file and std.mem.eql(u8, x.path, now.file.path),
+            .nominal => |x| now == .nominal and x.ns == now.nominal.ns and std.mem.eql(u8, name orelse x.name, now.nominal.name),
+        };
     }
-    return .{ .spans = spans };
+};
+
+/// The `import` line `line`.
+fn importLine(line: u16) Import {
+    if (comptime table.imports.len == 0) unreachable;
+    return table.imports[line];
+}
+
+/// The name of namespace `ns`.
+fn namespace(ns: u16) []const u8 {
+    if (comptime table.namespaces.len == 0) unreachable;
+    return table.namespaces[ns];
 }
 
 /// The line of `pos`, from 1.

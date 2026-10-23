@@ -1705,12 +1705,14 @@ pattern with no editor form; and a second `@highlight`.
 
 `@lsp` (in the preamble or the @parser section, at most once) declares a
 language's names: which nodes open scopes, which leaves define names and
-which use them. From it the language server `nexus --editor` writes
-([LSP.md](LSP.md)) gives the outline, go to definition, references,
-document highlights, rename, completion of the names in scope and hover,
-with no code in `hooks.zig`. `@lsp` names the kinds and roles of
-`@schema` ([SEMANTICS.md](SEMANTICS.md#schema)), so it needs one; it
-changes nothing in the generated parser.
+which use them, which import files, and which name members of something
+else, names of another file, or names of a namespace. From it the
+language server `nexus --editor` writes ([LSP.md](LSP.md)) gives the
+outline, go to definition, references, document highlights, rename,
+completion of the names in scope and after `.`, and hover, across the
+files of the workspace, with no code in `hooks.zig`. `@lsp` names the
+kinds and roles of `@schema` ([SEMANTICS.md](SEMANTICS.md#schema)), so
+it needs one; it changes nothing in the generated parser.
 
 ```grammar steps.grammar
 @lexer
@@ -1807,8 +1809,8 @@ A file of Steps is a scope whose names are in sight anywhere in it
 one for its `let`s, each in sight from the end of its `let` on. The name
 of a `def` belongs to the scope around the `def` (`outer`), its detail is
 its text up to its body, and its doc is the comment lines just before
-it. A name after `.` is a field, which is not looked up; `print` is a
-builtin. The server, with `hooks.zig` as `--editor` writes it, answers
+it. A name after `.` is a field, which is not looked up here; `print` is
+a builtin. The server, with `hooks.zig` as `--editor` writes it, answers
 this session ([test/README.md, "Language-server
 sessions"](../test/README.md#language-server-sessions)) as shown:
 
@@ -1860,7 +1862,7 @@ main.steps 3:9-3:12
 > rename main.steps 7:10 four
 error -32803 'four' would capture the use of 'four' on line 8
 > rename main.steps 6:6 eight
-error -32803 'four' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+{"changes":{"main.steps":[{"newText":"eight","range":"6:5-6:9"},{"newText":"eight","range":"8:19-8:23"}]}}
 > symbols main.steps
   {"children":[{"kind":13,"name":"n","range":"2:11-2:12","selectionRange":"2:11-2:12"}],"detail":"def twice(n)","kind":12,"name":"twice","range":"2:1-5:4","selectionRange":"2:5-2:10"}
   {"kind":13,"name":"four","range":"6:1-6:20","selectionRange":"6:5-6:9"}
@@ -1889,6 +1891,10 @@ symbol kinds as the server names them (`file`, `module`, `namespace`,
 | `builtin "name" ...` or `builtin TOKEN` | names, or every leaf of a token, that resolve to nothing, silently |
 | `doc TOKEN [strip "text"]` | the token of doc comments, and the text to take off each one's start |
 | `undefined error\|warning` | a use that resolves to nothing is an error or a warning in the editor |
+| `import KIND.ROLE [when ...] [file "{}.ext"]` | a KIND node imports the file its ROLE leaf names (the first leaf of a rest role; a string's contents, else the name): a module's file, else that path (made with `file`, `{}` standing for the name) relative to the importing file |
+| `member KIND.ROLE of:ROLE` | the leaf in ROLE is a member of what the `of` role denotes, looked up among its members |
+| `qualify KIND.ROLE in:ROLE` | the leaf in ROLE names a definition of the file's own scope of the file the `in` role, an import, names (`LABEL^ROUTINE`); without the `in` role, the leaf is what it would be without the line |
+| `nominal TOKEN [ns:NAME]` | every leaf of the token is a name of the namespace NAME (the token's own, without `ns:`): all of one text are one name across the workspace, which no definition declares |
 
 The options of `define`:
 
@@ -1898,17 +1904,18 @@ The options of `define`:
 | `when ROLE` | only when the node has ROLE |
 | `when ^KIND.ROLE ["text"]` | the same of a role of the node's parent, which is a KIND |
 | `outer` | the name belongs to the scope around the nearest one |
-| `member` / `lexical` | the name is only a member of its scope (a field: never in sight by itself), or only in sight (never a member, which a later step of `@lsp` looks up after `.`); by default both |
-| `value:ROLE` | the node's value: when it opens a scope, that scope's names are the name's children in the outline |
-| `type:ROLE` | its declared type: the name's detail when it has no other |
+| `member` / `lexical` | the name is only a member of its scope (a field: never in sight by itself), or only in sight (never a member, which `member` and `qualify` look up); by default both |
+| `value:ROLE` | the node's value: when it opens a scope, that scope's names are the name's children in the outline; the members of the name are those of what the value denotes |
+| `type:ROLE` | its declared type: the name's detail when it has no other; the members of the name are those of what the type denotes, when its value denotes nothing |
 | `doc:ROLE` or `doc:leading` | its doc: the leaves of ROLE, or the doc tokens on the lines just before the node, each without the `strip` text and one blank after it |
-| `export:ROLE` or `export:^KIND` | other files see the name only when ROLE is present, or when the node's parent is a KIND; without it, a name of the file's own scope is seen by other files. The server renames only a name other files cannot see, as it reads one file |
+| `export:ROLE` or `export:^KIND` | other files see the name, as a member or a qualified name, only when ROLE is present (`pub`), or when the node's parent is a KIND; without it, they see every name they reach |
 | `detail` or `detail:..ROLE` | its one-line detail: the node's tokens, or its tokens before ROLE, one blank between two that have any, without comments and without operators at the end |
 
 `when` may be given more than once; every one must hold. Two `define`
 lines for one role differ in their `when`s, and the first whose
 conditions hold defines; a leaf none takes is what it would be without
-them.
+them. `import` takes `when` as `define` does, and so do two `import`
+lines for one role.
 
 ### How names resolve
 
@@ -1922,9 +1929,248 @@ that is in sight: in an unordered scope any, in an ordered one the last
 whose node ends before the use (whose own leaf does, for an `outer`
 definition and for one whose node opens the scope it belongs to, like a
 capture). A use no definition answers is a builtin when `builtin` names
-it, else unresolved; a builtin's name is never a definition. A member
-is never in sight. Members (`a.b`), imports and names that need types
-answer nothing.
+it, else unresolved; a builtin's name is never a definition in sight (a
+`member` definition may have one, as an enum's field `true` does). A
+member is never in sight.
+
+Across files, an expression denotes what names tell: a use what it
+resolves to, a member what it names, an import its file, a node that
+opens an unordered scope that scope, and a node whose one child is a use
+what the use denotes. The members of a definition are the names of the
+scope its value denotes (its node's own import, for a definition whose
+node imports), else of the scope its declared type denotes; the names of
+an unordered scope, a file's or a container's, are members, and those of
+an ordered one (a block's, a function's) are not. A member `a.b` names
+the definition of `b` among the members of what `a` denotes; a
+qualified name `b^f`, the definition of `b` of the own scope of the file
+`f` imports. Both see a `lexical` definition never, and one of another
+file only when it is exported. What needs a value's type (a call's
+result, a generic, a pointer) denotes nothing, so a member of it answers
+nothing, and an alias in a cycle the same. Names of a namespace are one
+when their texts are.
+
+### Files and members
+
+Pieces imports a file with `use NAME`: NAME.pcs beside the importing
+file. A name after `.` is a member of what is before it, the file of a
+`use` or what a `let`'s value denotes:
+
+```grammar pieces.grammar
+@lexer
+
+tokens
+    ident, number, newline, kw_use, kw_let, eq, dot
+    eof, err
+
+'\n'                        → newline
+"use"                       → kw_use
+"let"                       → kw_let
+'='                         → eq
+'.'                         → dot
+[0-9]+                      → number
+[a-z_]+                     → ident
+.                           → err
+
+@parser
+
+@schema
+    file        ...items
+    use         name:leaf
+    let         name:leaf value
+    name        id:leaf
+    num         value:leaf
+    get         object field:leaf
+
+@repair
+    holes       IDENT
+    terminator  NEWLINE
+
+@highlight
+    language            "Pieces"
+    scope-name          source.pieces
+    extensions          pcs
+    keyword             "use" "let"
+    operator            "=" "."
+    constant.numeric    NUMBER
+    invalid             ERR
+
+@lsp
+    scope       file unordered
+    define      use.name        module
+    define      let.name        variable  value:value
+    use         IDENT
+    import      use.name        file "{}.pcs"
+    member      get.field       of:object
+
+file!  = lines                                      → (file ...1)
+
+lines  = line                                       → (1)
+       | lines NEWLINE line                         → (...1 3)
+
+line   = KW_USE IDENT                               → (use 2)
+       | KW_LET IDENT "=" expr                      → (let 2 4)
+       |                                            → _
+
+expr   = IDENT                                      → (name 1)
+       | NUMBER                                     → (num 1)
+       | expr "." IDENT                             → (get 1 3)
+```
+
+With two files open, the server answers across them: definition and
+hover of a member in the other file, its references in both, the
+members after `.`, and a rename of both:
+
+```session
+initialize quiet
+open sizes.pcs
+| let small = 1
+| let large = 9
+open main.pcs
+| use sizes
+| let s = sizes
+| let a = sizes.small
+| let b = s.large
+| let c = s.
+definition main.pcs 3:16
+definition main.pcs 4:12
+references main.pcs 3:16
+completion main.pcs 5:11
+rename main.pcs 3:16 tiny
+rename main.pcs 3:16 large
+```
+
+```out
+> initialize quiet
+> open sizes.pcs
+> open main.pcs
+diagnostics main.pcs
+  {"message":"expected ident, got newline","range":"5:11-6:1","severity":1,"source":"pieces"}
+> definition main.pcs 3:16
+sizes.pcs 1:5-1:10
+> definition main.pcs 4:12
+sizes.pcs 2:5-2:10
+> references main.pcs 3:16
+  main.pcs 3:15-3:20
+  sizes.pcs 1:5-1:10
+> completion main.pcs 5:11
+  {"kind":6,"label":"small"}
+  {"kind":6,"label":"large"}
+> rename main.pcs 3:16 tiny
+{"changes":{"main.pcs":[{"newText":"tiny","range":"3:15-3:20"}],"sizes.pcs":[{"newText":"tiny","range":"1:5-1:10"}]}}
+> rename main.pcs 3:16 large
+error -32803 'large' would capture the use of 'large' on line 4 of main.pcs
+```
+
+The second `let` names `sizes` by `s`, so `s.large` is a member of the
+file too; after `s.` completion offers the file's names, alone, though
+the line does not parse yet. Renaming `small` to `large` is refused:
+`s.large` would name the renamed one.
+
+### Qualified and nominal names
+
+In Rounds, a file is a routine of labels: `do add^math` calls the label
+`add` of math.rnd, `do add` a label of the same routine, and `$count` is
+a global, one name in every routine:
+
+```grammar rounds.grammar
+@lexer
+
+tokens
+    ident, global, number, newline, kw_do, kw_set, caret, colon, eq
+    eof, err
+
+'\n'                        → newline
+"do"                        → kw_do
+"set"                       → kw_set
+'^'                         → caret
+':'                         → colon
+'='                         → eq
+'$' [a-z]+                  → global
+[0-9]+                      → number
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    routine     ...lines
+    label       name:leaf
+    do          label:leaf? routine:leaf?
+    set         target:leaf value:leaf
+
+@highlight
+    language            "Rounds"
+    scope-name          source.rounds
+    extensions          rnd
+    keyword             "do" "set"
+    operator            "=" "^"
+    invalid             ERR
+
+@lsp
+    scope       routine unordered
+    define      label.name      function
+    use         IDENT
+    import      do.routine      file "{}.rnd"
+    qualify     do.label        in:routine
+    nominal     GLOBAL          ns:globals
+
+routine! = lines                                    → (routine ...1)
+
+lines    = line                                     → (1)
+         | lines NEWLINE line                       → (...1 3)
+
+line     = IDENT ":"                                → (label 1)
+         | KW_DO IDENT                              → (do 2 _)
+         | KW_DO IDENT "^" IDENT                    → (do 2 4)
+         | KW_SET GLOBAL "=" NUMBER                 → (set 2 4)
+         |                                          → _
+```
+
+```session
+initialize quiet
+open math.rnd
+| add:
+| set $count = 1
+open main.rnd
+| start:
+| do add^math
+| do start
+| set $count = 2
+definition main.rnd 2:5
+definition main.rnd 2:9
+definition main.rnd 3:5
+references main.rnd 2:5
+references main.rnd 4:6
+definition main.rnd 4:6
+rename main.rnd 4:6 $total
+```
+
+```out
+> initialize quiet
+> open math.rnd
+> open main.rnd
+> definition main.rnd 2:5
+math.rnd 1:1-1:4
+> definition main.rnd 2:9
+math.rnd 1:1-1:1
+> definition main.rnd 3:5
+main.rnd 1:1-1:6
+> references main.rnd 2:5
+  main.rnd 2:4-2:7
+  math.rnd 1:1-1:4
+> references main.rnd 4:6
+  main.rnd 4:5-4:11
+  math.rnd 2:5-2:11
+> definition main.rnd 4:6
+null
+> rename main.rnd 4:6 $total
+{"changes":{"main.rnd":[{"newText":"$total","range":"4:5-4:11"}],"math.rnd":[{"newText":"$total","range":"2:5-2:11"}]}}
+```
+
+The routine's name in `do add^math` goes to its file, and `do start`,
+without one, is a label of the routine itself. A global has no
+definition; its names are its references, and a rename renames them
+all.
 
 ### Checks
 
@@ -1941,9 +2187,18 @@ parent; `outer` on a kind that is no scope and no scope kind holds;
 line; `doc:ROLE` on a role of nodes; a `use` token of `@trivia`; a
 `builtin TOKEN` that no `use` line names; an empty or repeated builtin
 name; an `@lsp` without a `define` line; a second `doc` or `undefined`
-line. The lines of imports, members, binding, colours and completion
-words (`import`, `member`, `qualify`, `nominal`, `bind`, `color`,
-`words`) are a later step of `@lsp`: each is an error that says so.
+line; an `import`, `member` or `qualify` line on a role that holds no
+token, two `import` lines with the same conditions, an `import` option
+other than `when` and `file`, `file` twice, without a string, or with no
+`{}` in it; a `member` or `qualify` line without its `of:` or `in:`, or
+with another option, one whose role is the name's own, a rest role, a
+tag (`of:`) or a role that holds no token (`in:`), a role that is a
+member or qualified twice, both, or also defined or skipped by a line
+without `when`, and an `in:` role no `import` line names; a `nominal`
+token twice, of `@trivia`, a `use` token too, or with an option other
+than `ns:NAME` of letters, digits and `_`. The lines of binding,
+colours and completion words (`bind`, `color`, `words`) are a later
+step of `@lsp`: each is an error that says so.
 
 ```grammar steps_bad.grammar rejects
 @lexer

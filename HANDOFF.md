@@ -21,11 +21,13 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   [docs/LSP.md](docs/LSP.md)), `@messages` (syntax-error messages
   given by example, keyed on parser states, with `nexus check
   --messages` for coverage; the Zig grammar has 31), and `@lsp`'s
-  lexical lines (names and scopes in the grammar, which give the server
-  the outline, definition, references, highlights, checked rename, the
-  names in scope and hover; the Zig grammar's agree with AstGen on every
-  name of the corpus); CHANGELOG.md, "Unreleased".
-- **The suite is green on macOS (arm64):** `./test/run` → 957 passed, 0
+  lexical lines and its lines of files and members (names, scopes,
+  imports and members in the grammar, which give the server the outline,
+  definition, references, highlights, checked rename, the names in scope
+  and after `.`, and hover, across files; the Zig grammar's agree with
+  AstGen on every name of the corpus, and with a resolution over
+  std.zig.Ast on every member and import); CHANGELOG.md, "Unreleased".
+- **The suite is green on macOS (arm64):** `./test/run` → 1070 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
@@ -76,20 +78,26 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `test/vscode/run` of the LSP plan is to check it.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
-   - `@lsp` has its lexical lines (step 1 of the approved plan,
-     `.git/lsp/panel/lsp-approved.md`). Next: step 2, files and members
-     (`import`, `member`, `qualify`, `nominal`: definition and
-     references across files, rename of the names other files see,
-     member completion through `value:` and `type:`), then step 3
-     (`bind`, `color`, `words`). Then hooks in TypeScript or JavaScript
-     over JSON lines; `rig lsp` onto the generated server, then servers
-     for em and nexis; a formatter from the grammar.
+   - `@lsp` has its lexical lines and its lines of files and members
+     (steps 1 and 2 of the approved plan,
+     `.git/lsp/panel/lsp-approved.md`): definition, references, rename
+     and member completion across files, through imports (the client's
+     `modules` setting, else `resolveImport`), members, qualified names
+     and names of namespaces. Next: step 3 (`bind`, `color`, `words`).
+     Then hooks in TypeScript or JavaScript over JSON lines; `rig lsp`
+     onto the generated server, then servers for em and nexis; a
+     formatter from the grammar.
    - Step 1 reads `when` beyond the approved syntax (repeated, `^KIND.ROLE`
      of the parent, a role's presence), `skip ... when`, `define` and
      `skip` on untyped roles, and bare `detail`: Zig needs each to agree
      with AstGen (enum fields kept in Ast's type slot, function types'
-     and extern functions' parameters, `_`). `@lsp` is not in
-     `--describe` yet.
+     and extern functions' parameters, `_`).
+   - The server indexes the open file again on every change (63 ms for
+     Sema.zig's 1.5 MB in safe mode, 510 ms in debug); a request after
+     that takes about 1 ms (safe), cross-file ones included. Workspace
+     references and rename read every file of the workspace that holds
+     the name; a very large workspace (VistA's 24,704 routines) reads
+     them all from disk on each such request.
 5. **`@messages`, deferred by the owner:** a `then` guard that looks one
    token past the error (Rig's `;` before another statement, Zig's `&&`
    against an `&` with whitespace on one side only, which are one token

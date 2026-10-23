@@ -1,0 +1,69 @@
+> initialize folder quiet
+> open main.rote
+> symbols main.rote
+  {"kind":12,"name":"start","range":"2:1-2:7","selectionRange":"2:1-2:6"}
+  {"kind":12,"name":"setup","range":"8:1-8:7","selectionRange":"8:1-8:6"}
+> definition main.rote 3:5
+main.rote 8:1-8:6
+> definition main.rote 4:5
+math.rote 1:1-1:4
+> definition main.rote 5:6
+math.rote 1:1-1:1
+> definition main.rote 10:5
+null
+> hover main.rote 4:5
+{"contents":{"kind":"markdown","value":"```rote\nadd\n```"}}
+> references main.rote 4:5
+  main.rote 4:4-4:7
+  math.rote 1:1-1:4
+  math.rote 4:4-4:7
+  other.rote 2:4-2:7
+> completion main.rote 4:5
+  {"kind":3,"label":"add"}
+  {"kind":3,"label":"twice"}
+> references main.rote 5:6
+  main.rote 4:8-4:12
+  main.rote 5:5-5:9
+  main.rote 7:10-7:14
+  main.rote 10:12-10:16
+  other.rote 2:8-2:12
+> definition main.rote 6:6
+null
+> references main.rote 6:6
+  main.rote 6:5-6:11
+  main.rote 6:14-6:20
+  math.rote 2:5-2:11
+  math.rote 2:14-2:20
+  math.rote 5:23-5:29
+  other.rote 3:5-3:11
+> highlight main.rote 6:6
+  {"range":"6:5-6:11"}
+  {"range":"6:14-6:20"}
+> rename main.rote 4:5 plus
+{"changes":{"main.rote":[{"newText":"plus","range":"4:4-4:7"}],"math.rote":[{"newText":"plus","range":"1:1-1:4"},{"newText":"plus","range":"4:4-4:7"}],"other.rote":[{"newText":"plus","range":"2:4-2:7"}]}}
+> rename main.rote 6:6 $sum
+{"changes":{"main.rote":[{"newText":"$sum","range":"6:5-6:11"},{"newText":"$sum","range":"6:14-6:20"}],"math.rote":[{"newText":"$sum","range":"2:5-2:11"},{"newText":"$sum","range":"2:14-2:20"},{"newText":"$sum","range":"5:23-5:29"}],"other.rote":[{"newText":"$sum","range":"3:5-3:11"}]}}
+> rename main.rote 4:5 twice
+error -32803 'twice' would capture the use of 'twice' on line 7 of main.rote
+> rename main.rote 6:6 $total
+error -32803 '$total' is a name of globals already
+> rename main.rote 5:6 sums
+error -32803 an import's name names a file: rename the file
+> open math.rote
+> references math.rote 1:1
+  main.rote 4:4-4:7
+  math.rote 1:1-1:4
+  math.rote 4:4-4:7
+  other.rote 2:4-2:7
+> references math.rote 2:6
+  main.rote 6:5-6:11
+  main.rote 6:14-6:20
+  math.rote 2:5-2:11
+  math.rote 2:14-2:20
+  math.rote 5:23-5:29
+  other.rote 3:5-3:11
+> change main.rote
+> definition main.rote 2:5
+null
+> definition main.rote 3:5
+math.rote 1:1-1:4

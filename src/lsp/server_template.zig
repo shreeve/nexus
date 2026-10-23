@@ -6,12 +6,13 @@
 //! From the grammar alone it gives syntax errors as you type, semantic
 //! tokens, folding, selection ranges and keyword completion; with `@lsp`,
 //! also the outline, definition, references, highlights, rename, the names
-//! in scope and hover, from the names and scopes the grammar declares
+//! in scope and after `.`, and hover, across the files of the workspace,
+//! from the names, scopes, imports and members the grammar declares
 //! (scopes.zig). Every other feature waits behind a function of
 //! `hooks.zig`, and a function left as `lsp.todo` is never called: its
 //! features are not advertised. A function the language writes replaces
 //! the grammar's answers (`parseDiagnostics`, `tokens`, `symbols`, `folds`,
-//! and with `@lsp` `symbolAt`, `describe` and `visible`).
+//! and with `@lsp` `symbolAt`, `describe`, `visible` and `members`).
 //!
 //! Messages are JSON-RPC, each after a `Content-Length` header. Positions
 //! count UTF-16 code units, or bytes when the client offers `utf-8`.
@@ -233,7 +234,7 @@ const NameIndex = if (has_names) scopes.Index else void;
 /// with `@lsp`, until the language writes it. `symbolAt` stands for
 /// definition, references, document highlight and rename; `symbols` for
 /// the outline; `describe` for hover; `visible` for the names completion
-/// offers.
+/// offers; `members` for those it offers after `.`.
 fn byNames(comptime name: []const u8) bool {
     return has_names and !has(name);
 }
@@ -614,6 +615,28 @@ const Doc = struct {
 /// arena of its own.
 const Names = struct { arena: std.heap.ArenaAllocator, version: u64, index: NameIndex };
 
+/// The index of a file not open, read from disk, in an arena of its own:
+/// the text it read, and the request that last used it.
+const Cached = struct {
+    arena: std.heap.ArenaAllocator,
+    text: []const u8,
+    index: NameIndex,
+    used: u64,
+
+    fn destroy(c: *Cached, gpa: Allocator) void {
+        c.arena.deinit();
+        gpa.destroy(c);
+    }
+};
+
+/// The most files read from disk whose indexes the server keeps; reading
+/// one more drops the one used least recently, unless the request under
+/// way uses them all.
+const max_cached = 256;
+
+/// The most files of the workspace references and rename read.
+const max_workspace_files = 20000;
+
 /// The most analyses the server holds; making one more drops the one used
 /// least recently.
 const max_analyses = 8;
@@ -678,6 +701,16 @@ const Server = struct {
     /// The ids, as JSON, of the `nexus/idle` requests waiting for every
     /// analysis asked for to finish.
     idle: std.ArrayList([]u8) = .empty,
+    /// The workspace's folders (`workspaceFolders`, else `rootUri`), whose
+    /// files of the language's extensions references and rename search.
+    folders: std.ArrayList([]u8) = .empty,
+    /// The files of module names (`initializationOptions.modules`).
+    modules: std.array_hash_map.String([]u8) = .empty,
+    /// The indexes of files read from disk (`@lsp`), by path, each kept
+    /// while its text on disk is the one it read.
+    cached: std.array_hash_map.String(*Cached) = .empty,
+    /// Counts the requests, for the cache's eviction.
+    requests: u64 = 0,
 
     const Pending = struct { root: []u8, uri: []u8 };
 
@@ -696,6 +729,18 @@ const Server = struct {
         s.pending.deinit(s.gpa);
         for (s.idle.items) |i| s.gpa.free(i);
         s.idle.deinit(s.gpa);
+        for (s.folders.items) |f| s.gpa.free(f);
+        s.folders.deinit(s.gpa);
+        for (s.modules.keys(), s.modules.values()) |k, v| {
+            s.gpa.free(k);
+            s.gpa.free(v);
+        }
+        s.modules.deinit(s.gpa);
+        for (s.cached.keys(), s.cached.values()) |k, c| {
+            s.gpa.free(k);
+            c.destroy(s.gpa);
+        }
+        s.cached.deinit(s.gpa);
     }
 
     fn tick(s: *Server) u64 {
@@ -799,6 +844,7 @@ const Server = struct {
         if (eql(u8, method, "textDocument/didSave")) return s.didSave(a, params);
         if (eql(u8, method, "textDocument/didClose")) return s.didClose(a, params);
         const i = id orelse return; // other notifications
+        s.requests += 1;
         const doc = s.docOf(params) orelse return s.respondError(a, i, .invalid_params, "no open document");
         const result: Result = if (eql(u8, method, "textDocument/semanticTokens/full"))
             try s.semanticTokens(a, doc)
@@ -849,6 +895,18 @@ const Server = struct {
         };
         if (str(field(params, &.{ "initializationOptions", "root" }))) |r| if (r.len > 0) {
             s.root = try s.gpa.dupe(u8, r);
+        };
+        if (field(params, &.{ "initializationOptions", "modules" })) |m| if (m == .object) {
+            var it = m.object.iterator();
+            while (it.next()) |e| if (str(e.value_ptr.*)) |path| if (path.len > 0 and !s.modules.contains(e.key_ptr.*)) {
+                try s.modules.put(s.gpa, try s.gpa.dupe(u8, e.key_ptr.*), try s.gpa.dupe(u8, path));
+            };
+        };
+        if (field(params, &.{"workspaceFolders"})) |fs| if (fs == .array) {
+            for (fs.array.items) |f| if (try uriToPath(a, str(field(f, &.{"uri"})) orelse continue)) |p| try s.folders.append(s.gpa, try s.gpa.dupe(u8, p));
+        };
+        if (s.folders.items.len == 0) if (str(field(params, &.{"rootUri"}))) |uri| if (try uriToPath(a, uri)) |p| {
+            try s.folders.append(s.gpa, try s.gpa.dupe(u8, p));
         };
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
@@ -1528,6 +1586,19 @@ const Server = struct {
             const symbols = hooks.visible(an, a, pos) catch &.{};
             for (symbols) |m| try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(m.detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
         };
+        // After `.` (a member) or where a qualified name goes: the members
+        // of what is before it, without keywords.
+        if (comptime byNames("members")) {
+            const q = try s.nameRequest(a, d);
+            if (try q.r.membersAt(q.f, at)) |members| {
+                for (members) |g| {
+                    const m = try g.file.ix.symbol(a, g.file.path, g.def);
+                    const detail = if (m.detail.len > 0) m.detail else try g.file.ix.typeText(a, g.def);
+                    try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
+                }
+                return json(a, .{ .isIncomplete = false, .items = items.items });
+            }
+        }
         if (comptime byNames("visible")) {
             const ix = try s.nameIndex(d);
             if (ix.wantsNames(at)) for (try ix.visibleAt(a, at)) |di| {
@@ -1740,81 +1811,316 @@ const Server = struct {
         return &n.index;
     }
 
+    /// The index of `text`, the text of the file at `path` on disk: the
+    /// one kept while the file's text is the one it read.
+    fn diskIndex(s: *Server, a: Allocator, path: []const u8, text: []const u8) error{OutOfMemory}!*const NameIndex {
+        if (comptime !has_names) unreachable;
+        if (s.cached.get(path)) |c| {
+            if (std.mem.eql(u8, c.text, text)) {
+                c.used = s.requests;
+                return &c.index;
+            }
+            // Read already by this request, in another text: this one is
+            // the request's own.
+            if (c.used == s.requests) {
+                const ix = try a.create(NameIndex);
+                ix.* = try scopes.index(a, text);
+                return ix;
+            }
+            const kv = s.cached.fetchSwapRemove(path).?;
+            s.gpa.free(kv.key);
+            kv.value.destroy(s.gpa);
+        }
+        if (s.cached.count() >= max_cached) {
+            var oldest: ?usize = null;
+            for (s.cached.values(), 0..) |c, i| if (c.used < s.requests and (oldest == null or c.used < s.cached.values()[oldest.?].used)) {
+                oldest = i;
+            };
+            if (oldest) |i| {
+                const key = s.cached.keys()[i];
+                const c = s.cached.values()[i];
+                s.cached.swapRemoveAt(i);
+                s.gpa.free(key);
+                c.destroy(s.gpa);
+            }
+        }
+        const c = try s.gpa.create(Cached);
+        c.* = .{ .arena = .init(s.gpa), .text = "", .index = undefined, .used = s.requests };
+        const ca = c.arena.allocator();
+        c.text = ca.dupe(u8, text) catch |err| {
+            c.destroy(s.gpa);
+            return err;
+        };
+        c.index = scopes.index(ca, c.text) catch |err| {
+            c.destroy(s.gpa);
+            return err;
+        };
+        const key = s.gpa.dupe(u8, path) catch |err| {
+            c.destroy(s.gpa);
+            return err;
+        };
+        s.cached.put(s.gpa, key, c) catch |err| {
+            s.gpa.free(key);
+            c.destroy(s.gpa);
+            return err;
+        };
+        return &c.index;
+    }
+
+    /// The files of one request: each one's index (a text in place of the
+    /// file's, the open document's, else the file on disk's), and the
+    /// files of module names (the `modules` setting, else the language's
+    /// `resolveImport`).
+    const Workspace = struct {
+        s: *Server,
+        a: Allocator,
+        /// The document of the request, which may have no path.
+        doc: *Doc,
+        /// Texts in place of the files' own (a rename's, made).
+        texts: []const scopes.Text = &.{},
+        loaded: std.StringHashMapUnmanaged(?*const NameIndex) = .empty,
+        read: std.StringHashMapUnmanaged(?[]const u8) = .empty,
+
+        const vtable: scopes.World.VTable = .{ .load = load, .module = module };
+
+        fn world(w: *Workspace) scopes.World {
+            return .{ .ptr = w, .vtable = &vtable };
+        }
+
+        fn load(ptr: *anyopaque, path: []const u8) error{OutOfMemory}!?*const NameIndex {
+            const w: *Workspace = @ptrCast(@alignCast(ptr));
+            if (w.loaded.get(path)) |ix| return ix;
+            const ix = try w.indexOf(path);
+            try w.loaded.put(w.a, try w.a.dupe(u8, path), ix);
+            return ix;
+        }
+
+        fn indexOf(w: *Workspace, path: []const u8) error{OutOfMemory}!?*const NameIndex {
+            for (w.texts) |t| if (std.mem.eql(u8, t.path, path)) {
+                const ix = try w.a.create(NameIndex);
+                ix.* = try scopes.index(w.a, t.text);
+                return ix;
+            };
+            if (std.mem.eql(u8, path, w.doc.path)) return try w.s.nameIndex(w.doc);
+            if (w.s.docAt(path)) |d| return try w.s.nameIndex(d);
+            const text = (try w.textOf(path)) orelse return null;
+            return try w.s.diskIndex(w.a, path, text);
+        }
+
+        /// The text of the file at `path`: its text in place, the open
+        /// document's, else the file on disk's; null when it cannot be
+        /// read.
+        fn textOf(w: *Workspace, path: []const u8) error{OutOfMemory}!?[]const u8 {
+            for (w.texts) |t| if (std.mem.eql(u8, t.path, path)) return t.text;
+            if (std.mem.eql(u8, path, w.doc.path)) return w.doc.text;
+            if (w.s.docAt(path)) |d| return d.text;
+            if (w.read.get(path)) |t| return t;
+            const got: ?[]const u8 = if (!std.fs.path.isAbsolute(path)) null else std.Io.Dir.cwd().readFileAlloc(w.s.io, path, w.a, .limited(max_message_bytes)) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => null,
+            };
+            try w.read.put(w.a, try w.a.dupe(u8, path), got);
+            return got;
+        }
+
+        fn module(ptr: *anyopaque, from: []const u8, name: []const u8) error{OutOfMemory}!?[]const u8 {
+            const w: *Workspace = @ptrCast(@alignCast(ptr));
+            if (w.s.modules.get(name)) |path| return path;
+            if (comptime has("resolveImport")) return hooks.resolveImport(w.a, from, name) catch null;
+            return null;
+        }
+
+        /// The files at `paths` that hold any of `names`, and `extra`'s,
+        /// each once, by path.
+        fn holding(w: *Workspace, paths: []const []const u8, needles: []const []const u8, extra: []const []const u8) error{OutOfMemory}![]const []const u8 {
+            var out: std.ArrayList([]const u8) = .empty;
+            var seen: std.StringHashMapUnmanaged(void) = .empty;
+            for (extra) |p| if (!(try seen.getOrPut(w.a, p)).found_existing) try out.append(w.a, p);
+            for (paths) |p| {
+                if ((try seen.getOrPut(w.a, p)).found_existing) continue;
+                const t = (try w.textOf(p)) orelse continue;
+                for (needles) |n| if (n.len == 0 or std.mem.find(u8, t, n) != null) {
+                    try out.append(w.a, p);
+                    break;
+                };
+            }
+            std.mem.sort([]const u8, out.items, {}, struct {
+                fn lt(_: void, x: []const u8, y: []const u8) bool {
+                    return std.mem.order(u8, x, y) == .lt;
+                }
+            }.lt);
+            return out.items;
+        }
+    };
+
+    /// The files of the workspace: every open document's, and each file
+    /// of the language's extensions under the workspace's folders (in none
+    /// whose name starts with `.`).
+    fn workspaceFiles(s: *Server, a: Allocator) error{OutOfMemory}![]const []const u8 {
+        var out: std.ArrayList([]const u8) = .empty;
+        for (s.docs.items) |d| if (d.path.len > 0) try out.append(a, d.path);
+        for (s.folders.items) |folder| {
+            var dir = std.Io.Dir.cwd().openDir(s.io, folder, .{ .iterate = true }) catch continue;
+            defer dir.close(s.io);
+            var walker = try dir.walkSelectively(a);
+            defer walker.deinit();
+            while (walker.next(s.io) catch null) |entry| switch (entry.kind) {
+                .directory => if (entry.basename[0] != '.') walker.enter(s.io, entry) catch {},
+                .file => {
+                    const ext = std.fs.path.extension(entry.basename);
+                    const ours = for (language.names.extensions) |e| {
+                        if (ext.len > 1 and std.mem.eql(u8, ext[1..], e)) break true;
+                    } else false;
+                    if (!ours) continue;
+                    if (out.items.len >= max_workspace_files) break;
+                    try out.append(a, try std.fs.path.join(a, &.{ folder, entry.path }));
+                },
+                else => {},
+            };
+        }
+        return out.items;
+    }
+
+    /// A request's names: its workspace, a resolver over it, and `d`.
+    const Request = struct {
+        w: *Workspace,
+        r: scopes.Resolver,
+        f: scopes.File,
+
+        /// The text of the file at `path` the request read.
+        fn textIn(q: *Request, path: []const u8) error{OutOfMemory}![]const u8 {
+            const f = (try q.r.load(path)) orelse return "";
+            return f.ix.text;
+        }
+    };
+
+    fn nameRequest(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}!*Request {
+        const w = try a.create(Workspace);
+        w.* = .{ .s = s, .a = a, .doc = d };
+        const q = try a.create(Request);
+        q.* = .{ .w = w, .r = .init(a, w.world()), .f = .{ .path = d.path, .ix = try s.nameIndex(d) } };
+        return q;
+    }
+
     /// The request's position in `d`'s text now.
     fn offsetIn(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!?u32 {
         const lines = try Lines.init(a, d.text, s.encoding);
         return lines.offset(position(field(params, &.{"position"})) orelse return null);
     }
 
+    /// The location of `from..to` of the file at `path`, whose text is
+    /// `text`: `d`'s URI for its own path.
+    fn locationOf(s: *Server, a: Allocator, d: *Doc, path: []const u8, text: []const u8, from: u32, to: u32) error{OutOfMemory}!struct { uri: []const u8, range: Range } {
+        const lines = try Lines.init(a, text, s.encoding);
+        return .{ .uri = if (std.mem.eql(u8, path, d.path)) d.uri else try pathToUri(a, path), .range = lines.range(from, to) };
+    }
+
     fn namesDefinition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        const ix = try s.nameIndex(d);
+        const q = try s.nameRequest(a, d);
         const at = try s.offsetIn(a, d, params) orelse return json(a, null);
-        const def = ix.defs[ix.defAt(at) orelse return json(a, null)];
-        const lines = try Lines.init(a, d.text, s.encoding);
-        return json(a, .{ .uri = d.uri, .range = lines.range(def.start, def.end) });
+        const t = (try q.r.targetAt(q.f, at)) orelse return json(a, null);
+        return switch (t) {
+            .def => |g| json(a, try s.locationOf(a, d, g.file.path, g.file.ix.text, g.file.ix.defs[g.def].start, g.file.ix.defs[g.def].end)),
+            .file => |f| json(a, try s.locationOf(a, d, f.path, f.ix.text, 0, 0)),
+            // A name of a namespace has no definition.
+            .nominal => json(a, null),
+        };
     }
 
     fn namesReferences(s: *Server, a: Allocator, d: *Doc, params: Value, here: bool) error{OutOfMemory}!Result {
-        const ix = try s.nameIndex(d);
+        const q = try s.nameRequest(a, d);
         const at = try s.offsetIn(a, d, params) orelse return json(a, null);
-        const def = ix.defAt(at) orelse return json(a, null);
+        const t = (try q.r.targetAt(q.f, at)) orelse return json(a, null);
         const withDecl = if (field(params, &.{ "context", "includeDeclaration" })) |v| v == .bool and v.bool else here;
-        const lines = try Lines.init(a, d.text, s.encoding);
         if (here) {
+            const lines = try Lines.init(a, d.text, s.encoding);
             const H = struct { range: Range };
             var out: std.ArrayList(H) = .empty;
-            for (try ix.references(a, def)) |sp| try out.append(a, .{ .range = lines.range(sp[0], sp[1]) });
+            for (try q.r.references(t, &.{d.path})) |sp| try out.append(a, .{ .range = lines.range(sp.start, sp.end) });
             return json(a, out.items);
         }
+        const home: []const u8 = switch (t) {
+            .def => |g| g.file.path,
+            .file => |f| f.path,
+            .nominal => d.path,
+        };
+        // A file's imports hold its name, or a module's that names it.
+        var needles: std.ArrayList([]const u8) = .empty;
+        if (t == .file) {
+            const base = std.fs.path.basename(t.file.path);
+            try needles.append(a, base[0 .. base.len - std.fs.path.extension(base).len]);
+            for (s.modules.keys(), s.modules.values()) |name, path| if (std.mem.eql(u8, path, t.file.path)) try needles.append(a, name);
+        } else try needles.append(a, t.name());
+        const paths = try q.w.holding(try s.workspaceFiles(a), needles.items, &.{ d.path, home });
         const L = struct { uri: []const u8, range: Range };
         var out: std.ArrayList(L) = .empty;
-        for (try ix.references(a, def)) |sp| {
-            if (!withDecl and sp[0] == ix.defs[def].start) continue;
-            try out.append(a, .{ .uri = d.uri, .range = lines.range(sp[0], sp[1]) });
+        for (try q.r.references(t, paths)) |sp| {
+            if (!withDecl and t == .def and std.mem.eql(u8, sp.path, home) and sp.start == t.def.file.ix.defs[t.def.def].start) continue;
+            const loc = try s.locationOf(a, d, sp.path, try q.textIn(sp.path), sp.start, sp.end);
+            try out.append(a, .{ .uri = loc.uri, .range = loc.range });
         }
         return json(a, out.items);
     }
 
     fn namesRename(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        const ix = try s.nameIndex(d);
+        const q = try s.nameRequest(a, d);
         const at = try s.offsetIn(a, d, params) orelse return .{ .failed = "no position" };
         const name = str(field(params, &.{"newName"})) orelse return .{ .failed = "no new name" };
-        const di = ix.defAt(at) orelse return .{ .failed = "nothing to rename here" };
-        const def = ix.defs[di];
+        const t = (try q.r.targetAt(q.f, at)) orelse return .{ .failed = "nothing to rename here" };
         // The new name must lex as one token of the old name's category.
-        const old = oneToken(d.text[def.start..def.end]) orelse return .{ .failed = "the declaration is not one token" };
-        const new = oneToken(name) orelse return .{ .failed = "the new name is not one token" };
-        if (new != old) return .{ .failed = "the new name is not a name of the same kind" };
-        const spans = switch (try scopes.rename(a, ix, di, name)) {
+        if (t != .file) {
+            const old = oneToken(t.name()) orelse return .{ .failed = "the declaration is not one token" };
+            const new = oneToken(name) orelse return .{ .failed = "the new name is not one token" };
+            if (new != old) return .{ .failed = "the new name is not a name of the same kind" };
+        }
+        const home: []const u8 = switch (t) {
+            .def => |g| g.file.path,
+            else => d.path,
+        };
+        const paths = try q.w.holding(try s.workspaceFiles(a), &.{ t.name(), name }, &.{ d.path, home });
+        const spans = switch (try scopes.renameSpans(&q.r, t, paths)) {
             .spans => |got| got,
             .refused => |why| return .{ .failed = why },
         };
-        const lines = try Lines.init(a, d.text, s.encoding);
-        const E = struct { range: Range, newText: []const u8 };
-        var edits: std.ArrayList(E) = .empty;
-        for (spans) |sp| try edits.append(a, .{ .range = lines.range(sp[0], sp[1]), .newText = name });
+        const after = try a.create(Workspace);
+        after.* = .{ .s = s, .a = a, .doc = d, .texts = try scopes.renamed(&q.r, spans, name) };
+        var r2: scopes.Resolver = .init(a, after.world());
+        if (try scopes.renameRefusal(&q.r, &r2, t, name, spans, paths)) |why| return .{ .failed = why };
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
         j.beginObject() catch return error.OutOfMemory;
         j.objectField("changes") catch return error.OutOfMemory;
         j.beginObject() catch return error.OutOfMemory;
-        j.objectField(d.uri) catch return error.OutOfMemory;
-        j.write(edits.items) catch return error.OutOfMemory;
+        var done: std.ArrayList([]const u8) = .empty;
+        for (spans) |sp| {
+            if (containsPath(done.items, sp.path)) continue;
+            try done.append(a, sp.path);
+            const E = struct { range: Range, newText: []const u8 };
+            var edits: std.ArrayList(E) = .empty;
+            for (spans) |x| if (std.mem.eql(u8, x.path, sp.path)) {
+                const loc = try s.locationOf(a, d, x.path, try q.textIn(x.path), x.start, x.end);
+                try edits.append(a, .{ .range = loc.range, .newText = name });
+            };
+            j.objectField(if (std.mem.eql(u8, sp.path, d.path)) d.uri else try pathToUri(a, sp.path)) catch return error.OutOfMemory;
+            j.write(edits.items) catch return error.OutOfMemory;
+        }
         j.endObject() catch return error.OutOfMemory;
         j.endObject() catch return error.OutOfMemory;
         return .{ .json = out.written() };
     }
 
-    /// Markdown for the name at the position: its detail (else its name)
-    /// as code, its type, and its doc.
+    /// Markdown for the name at the position: the detail of what it names
+    /// (else its name) as code, its type, and its doc.
     fn namesHover(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        const ix = try s.nameIndex(d);
+        const q = try s.nameRequest(a, d);
         const at = try s.offsetIn(a, d, params) orelse return json(a, null);
-        const di = ix.defAt(at) orelse return json(a, null);
-        const sym = try ix.symbol(a, d.path, di);
+        const t = (try q.r.targetAt(q.f, at)) orelse return json(a, null);
+        if (t != .def) return json(a, null);
+        const g = t.def;
+        const sym = try g.file.ix.symbol(a, g.file.path, g.def);
         var md: std.ArrayList(u8) = .empty;
         try md.print(a, "```{s}\n{s}\n```", .{ language.id, if (sym.detail.len > 0) sym.detail else sym.name });
-        const ty = try ix.typeText(a, di);
+        const ty = try g.file.ix.typeText(a, g.def);
         if (sym.detail.len == 0 and ty.len > 0) try md.print(a, "\n\nType: `{s}`", .{ty});
         if (sym.doc.len > 0) try md.print(a, "\n\n{s}", .{sym.doc});
         return json(a, .{ .contents = .{ .kind = "markdown", .value = md.items } });

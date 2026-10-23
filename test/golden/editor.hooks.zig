@@ -36,6 +36,12 @@ pub const folds = lsp.todo;
 /// pub fn format(arena: std.mem.Allocator, path: []const u8, text: []const u8) !?[]const u8
 pub const format = lsp.todo;
 
+/// The file an import of `@lsp` names when its name is a module's, not
+/// a path; null to take the name as a path relative to the file `from`.
+/// The client's `modules` setting answers before it.
+/// pub fn resolveImport(arena: std.mem.Allocator, from: []const u8, name: []const u8) !?[]const u8
+pub const resolveImport = lsp.todo;
+
 // --- The analysis: the program checked as a whole -------------------------
 
 /// What `analyze` keeps for the functions below.

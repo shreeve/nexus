@@ -1,0 +1,82 @@
+# rote.grammar: Rote, the smallest language whose names need `qualify`
+# and `nominal` (docs/GRAMMAR.md, "Names and scopes"). A file is a
+# routine of labels; `do add^math` calls the label `add` of the routine in
+# math.rote, `do ^math` its first line, `do add` a label of the same
+# routine; `$count` is a global, one name in every routine. The suite
+# builds its language server with the hooks.zig `--editor` writes and
+# replays names/'s sessions on the files of project/ (test/lib/lsp).
+
+@lexer
+
+tokens
+    ident, global, number, comment, newline
+    kw_do, kw_set, caret, colon, eq, plus
+    eof, err
+
+';' [^\n]*                  → comment
+'\n'                        → newline
+"do"                        → kw_do
+"set"                       → kw_set
+'^'                         → caret
+':'                         → colon
+'='                         → eq
+'+'                         → plus
+'$' [a-z]+                  → global
+[0-9]+                      → number
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    routine         ...lines
+    label           name:leaf
+    do              label:leaf? routine:leaf?
+    set             target:global value
+    global          name:leaf
+    num             value:leaf
+    add             left right
+
+@lsp
+    scope       routine unordered
+    define      label.name      function
+    use         IDENT
+    import      do.routine      file "{}.rote"
+    qualify     do.label        in:routine
+    nominal     GLOBAL          ns:globals
+
+@trivia COMMENT
+
+@highlight
+    language            "Rote"
+    scope-name          source.rote
+    extensions          rote
+    line-comment        ";"
+
+    keyword             "do" "set"
+    operator            "=" "+" "^"
+    punctuation         ":"
+    variable.special    GLOBAL
+    constant.numeric    NUMBER
+    comment             COMMENT
+    invalid             ERR
+
+routine! = lines                                → (routine ...1)
+
+lines    = line                                 → (1)
+         | lines NEWLINE line                   → (...1 3)
+
+line     = IDENT ":"                            → (label 1)
+         | KW_DO IDENT                          → (do 2 _)
+         | KW_DO IDENT "^" IDENT                → (do 2 4)
+         | KW_DO "^" IDENT                      → (do _ 3)
+         | KW_SET global "=" expr               → (set 2 4)
+         |                                      → _
+
+expr     = expr "+" atom                        → (add 1 3)
+         | atom
+
+atom     = global
+         | NUMBER                               → (num 1)
+
+global   = GLOBAL                               → (global 1)

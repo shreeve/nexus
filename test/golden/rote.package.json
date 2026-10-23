@@ -1,0 +1,93 @@
+{
+  "name": "nexus-rote",
+  "displayName": "Rote (Nexus)",
+  "description": "Rote: highlighting and its language server.",
+  "version": "0.1.0",
+  "publisher": "nexus-local",
+  "license": "UNLICENSED",
+  "engines": {"vscode": "^1.82.0"},
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:rote"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The language server is the one the user's own settings name, never a workspace's.",
+      "restrictedConfigurations": ["nexus-rote.server.path"]
+    }
+  },
+  "dependencies": {"vscode-languageclient": "9.0.1"},
+  "contributes": {
+    "languages": [{
+      "id": "rote",
+      "aliases": ["Rote"],
+      "extensions": ["rote"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "rote",
+      "scopeName": "source.rote",
+      "path": "./syntaxes/rote.tmLanguage.json"
+    }],
+    "configuration": {
+      "title": "Rote (Nexus)",
+      "properties": {
+        "nexus-rote.server.path": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "The language server: a path, or a name on `PATH`, from user settings only. Empty: the extension's own `bin/rote-lsp`, else `rote-lsp` on `PATH`."
+        },
+        "nexus-rote.server.root": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program."
+        },
+        "nexus-rote.server.modules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {"type": "string"},
+          "markdownDescription": "The file of each module name an import names, by name; a relative path is relative to the first workspace folder. An import of another name names a file relative to the importing file."
+        }
+      }
+    },
+    "semanticTokenTypes": [
+      {"id": "keywordControl", "superType": "keyword", "description": "@highlight keyword.control"},
+      {"id": "keywordOperator", "superType": "keyword", "description": "@highlight keyword.operator"},
+      {"id": "constant", "superType": "enumMember", "description": "@highlight constant"},
+      {"id": "constantNumeric", "superType": "number", "description": "@highlight constant.numeric"},
+      {"id": "constantSymbol", "superType": "enumMember", "description": "@highlight constant.symbol"},
+      {"id": "stringEscape", "superType": "string", "description": "@highlight string.escape"},
+      {"id": "punctuation", "description": "@highlight punctuation"},
+      {"id": "functionBuiltin", "superType": "function", "description": "@highlight function.builtin"},
+      {"id": "storageModifier", "superType": "keyword", "description": "@highlight storage.modifier"},
+      {"id": "variableParameter", "superType": "parameter", "description": "@highlight variable.parameter"},
+      {"id": "variableSpecial", "superType": "variable", "description": "@highlight variable.special"},
+      {"id": "invalid", "description": "@highlight invalid"}
+    ],
+    "semanticTokenScopes": [{
+      "language": "rote",
+      "scopes": {
+        "keyword": ["keyword.other.rote"],
+        "keywordControl": ["keyword.control.rote"],
+        "keywordOperator": ["keyword.operator.word.rote"],
+        "constant": ["constant.language.rote"],
+        "constantNumeric": ["constant.numeric.rote"],
+        "constantSymbol": ["constant.other.symbol.rote"],
+        "string": ["string.quoted.rote"],
+        "stringEscape": ["constant.character.escape.rote"],
+        "comment": ["comment.rote"],
+        "operator": ["keyword.operator.rote"],
+        "punctuation": ["punctuation.rote"],
+        "type": ["entity.name.type.rote"],
+        "function": ["entity.name.function.rote"],
+        "functionBuiltin": ["support.function.rote"],
+        "label": ["entity.name.label.rote"],
+        "storageModifier": ["storage.modifier.rote"],
+        "variableParameter": ["variable.parameter.rote"],
+        "variableSpecial": ["variable.language.rote"],
+        "invalid": ["invalid.illegal.rote"]
+      }
+    }]
+  }
+}

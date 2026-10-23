@@ -42,6 +42,12 @@
           "type": "string",
           "default": "",
           "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program."
+        },
+        "nexus-zig.server.modules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {"type": "string"},
+          "markdownDescription": "The file of each module name an import names, by name; a relative path is relative to the first workspace folder. An import of another name names a file relative to the importing file."
         }
       }
     },

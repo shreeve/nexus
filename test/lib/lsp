@@ -8,9 +8,12 @@ SERVER is a language server `nexus --editor` wrote, built; ROOT the
 directory of the files the session names; SESSION a file of commands, one
 a line (`#` starts a comment):
 
-  initialize [utf-8] [root FILE] [quiet]
-                                   the first command: the client's options;
-                                     `quiet` prints nothing of the result
+  initialize [utf-8] [root FILE] [folder] [module NAME=FILE]... [quiet]
+                                   the first command: the client's options
+                                     (`folder`: ROOT is the workspace's
+                                     folder; `module`: NAME's file in the
+                                     `modules` option); `quiet` prints
+                                     nothing of the result
   open FILE                        didOpen with FILE's text, or with the
                                      `| ` lines after it; a FILE that starts
                                      with `untitled:` is an unsaved document
@@ -195,6 +198,12 @@ class Session:
                 params["capabilities"]["general"] = {"positionEncodings": ["utf-8", "utf-16"]}
             if "root" in args:
                 params["initializationOptions"]["root"] = os.path.join(self.root, args[args.index("root") + 1])
+            if "folder" in args:
+                params["workspaceFolders"] = [{"uri": "file://" + self.root, "name": "root"}]
+            for i, a in enumerate(args):
+                if a == "module":
+                    name, _, file = args[i + 1].partition("=")
+                    params["initializationOptions"].setdefault("modules", {})[name] = os.path.join(self.root, file)
             msg = self.request("initialize", params)
             self.legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"]
             self.notify("initialized", {})

@@ -1,6 +1,6 @@
 # words lines (completion words, a later step) are an error that says so.
 # error: lsp_later_words.grammar:47:5:
-# error: `words` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc and undefined
+# error: `words` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal
 @lexer
 
 tokens

@@ -1,0 +1,5 @@
+add:
+set $count = $count + 2
+twice:
+do add
+set $total = $total + $count

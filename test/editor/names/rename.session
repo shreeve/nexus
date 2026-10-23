@@ -1,6 +1,6 @@
-# Rename from @lsp: the definition and every use of it in the file, after
-# a check that indexes the renamed text again and refuses (-32803) any
-# rename that changes what another name resolves to.
+# Rename from @lsp: the definition and every name of it, after a check
+# that indexes the renamed texts again and refuses (-32803) any rename
+# that changes what another name resolves to.
 initialize
 open main.tally
 # A parameter and a local.
@@ -13,7 +13,8 @@ rename main.tally 8:9 x
 # `factor` -> `x`: two parameters named `x`, and the use of the first
 # would name the second.
 rename main.tally 7:13 x
-# A name in the file's own scope is visible to other files.
+# Names of the file's own scope, which no other file uses (renames
+# across files: files.session).
 rename main.tally 7:5 grow
 rename main.tally 4:6 sum
 # Not a name, not one token, not a name of the same kind.

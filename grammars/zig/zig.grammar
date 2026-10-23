@@ -471,15 +471,22 @@ tokens
 # function's name belongs to the scope around the function (`outer`), and
 # an extern function's (a proto without a body) to the scope it is in; a
 # function's parameters are the function's, and those of an extern
-# function or a function type (a proto without a name) are no names at all. Fields and error names are members, never
-# names in scope; a field of an enum or a union written as a bare name is
-# its type role in Ast (`enum { a, b }`), which AstGen reads as its name. A name after `.` (a member of a value or a namespace),
-# a builtin's name, an enum literal, a field initializer's name, an asm
-# operand's name and a label after `break`/`continue` are not looked up.
-# Primitives resolve to nothing (`builtin`), and so does `_`, a discard,
-# which no definition names.
+# function or a function type (a proto without a name) are no names at
+# all. Fields and error names are members, never names in scope; a field
+# of an enum or a union written as a bare name is its type role in Ast
+# (`enum { a, b }`), which AstGen reads as its name. `@import("x.zig")`
+# imports a file beside the importing one, and `@import("std")` the file
+# of a module (the client's `modules` setting). A name after `.` is a
+# member of what is before it: a file, a container, or what a constant's
+# value or a name's declared type denotes (`std.mem.eql`, `p.x` with
+# `p: Point`); a value whose type needs inference (a call's result, a
+# generic's) answers nothing. A builtin's name, an enum literal, a field
+# initializer's name, an asm operand's name and a label after
+# `break`/`continue` are not looked up. Primitives resolve to nothing
+# (`builtin`), and so does `_`, a discard, which no definition names.
 # grammars/zig/compare-scopes checks every name it resolves against
-# std.zig.AstGen's resolution.
+# std.zig.AstGen's resolution, and grammars/zig/compare-members every
+# member and import against std.zig.Ast's declarations.
 @lsp
     scope       root container_decl unordered
     scope       fn_decl test_decl block if while for switch_case catch
@@ -499,8 +506,10 @@ tokens
     define      error_name.name         enum_member  member  doc:doc
     use         IDENTIFIER
     skip        builtin_call.name enum_literal.name field_init.name asm_output.name asm_input.name
-    skip        field_access.name error_value.name break.label continue.label param.name
+    skip        error_value.name break.label continue.label param.name
     skip        param.name  when ^fn_proto.modifier "extern"
+    member      field_access.name       of:operand
+    import      builtin_call.args       when name "@import"
     builtin     "u8" "u16" "u32" "u64" "usize" "isize" "bool" "void" "type" "anytype" "true" "false" "null" "undefined"
                 "i8" "i16" "i32" "i64" "i128" "u1" "u128" "f16" "f32" "f64" "f80" "f128" "anyerror" "anyframe" "anyopaque"
                 "noreturn" "comptime_int" "comptime_float" "c_char" "c_short" "c_ushort" "c_int" "c_uint" "c_long"

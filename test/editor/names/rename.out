@@ -14,9 +14,9 @@ diagnostics main.tally
 > rename main.tally 7:13 x
 error -32803 'x' would capture the use of 'x' on line 8
 > rename main.tally 7:5 grow
-error -32803 'scale' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+{"changes":{"main.tally":[{"newText":"grow","range":"7:4-7:9"},{"newText":"grow","range":"12:1-12:6"}]}}
 > rename main.tally 4:6 sum
-error -32803 'total' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+{"changes":{"main.tally":[{"newText":"sum","range":"4:5-4:10"},{"newText":"sum","range":"12:7-12:12"},{"newText":"sum","range":"13:10-13:15"}]}}
 > rename main.tally 7:1 g
 error -32803 nothing to rename here
 > rename main.tally 15:2 something

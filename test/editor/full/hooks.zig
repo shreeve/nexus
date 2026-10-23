@@ -120,6 +120,15 @@ pub fn format(arena: Allocator, path: []const u8, text: []const u8) !?[]const u8
     return if (std.mem.eql(u8, out.items, text)) null else out.items;
 }
 
+/// Tally has no modules: every `use` names `<name>.tally` beside the file,
+/// as the grammar's `import` line says.
+pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]const u8 {
+    _ = arena;
+    _ = from;
+    _ = name;
+    return null;
+}
+
 // --- The analysis --------------------------------------------------------------
 
 const Type = enum(lsp.TypeId) { unknown, int, str, @"fn" };

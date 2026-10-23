@@ -11,7 +11,8 @@ definition main.tally 12:1
 definition main.tally 8:13
 definition main.tally 9:24
 definition main.tally 7:4
-# A member (skipped), a keyword, a name nothing defines, a blank: nothing.
+# A member, the `add` of util.tally (files.session); a keyword, a name
+# nothing defines, a blank: nothing.
 definition main.tally 4:18
 definition main.tally 7:1
 definition main.tally 15:1
@@ -29,7 +30,8 @@ hover main.tally 13:10
 hover main.tally 8:17
 hover main.tally 4:18
 # Completion: the names in scope where a name is used, nearest first, then
-# the keywords; none after `.` (a member) or where a name is defined.
+# the keywords; after `.` the members of what is before it, alone; none
+# where a name is defined.
 completion main.tally 8:13
 completion main.tally 13:5
 completion main.tally 4:18
