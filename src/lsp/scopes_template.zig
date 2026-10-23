@@ -3,10 +3,12 @@
 //! --editor` beside the server (`lsp.zig`) for a grammar with `@lsp`.
 //!
 //! `index` parses a text (tolerantly, with `@repair`) and walks its tree
-//! once. A node of a scope kind opens a scope; a leaf in a role a `define`
-//! line names is a definition, of the nearest scope at or around its node
-//! (the one around that, with `outer`); a leaf of a `use` token in any
-//! other role but a skipped one is a use, which resolves up its chain of
+//! once. A node of a scope kind opens a scope. A leaf is skipped when a
+//! `skip` line with conditions takes it; else it is a definition when a
+//! `define` line takes it (the first whose conditions hold), of the
+//! nearest scope at or around its node (the one around that, with
+//! `outer`); else it is skipped when a plain `skip` line names its role;
+//! else, a leaf of a `use` token is a use, which resolves up its chain of
 //! scopes to the nearest definition of its name: any in an unordered
 //! scope; in an ordered one, the last whose node ends before it (whose
 //! own leaf does, for an `outer` definition or one of the node that opens
@@ -160,8 +162,7 @@ pub const Index = struct {
             const mid = (lo + hi) / 2;
             if (occ[mid].start <= offset) lo = mid + 1 else hi = mid;
         }
-        if (lo > 0 and offset < occ[lo - 1].end) return occ[lo - 1];
-        if (lo > 0 and offset == occ[lo - 1].end) return occ[lo - 1];
+        if (lo > 0 and offset <= occ[lo - 1].end) return occ[lo - 1];
         return null;
     }
 
@@ -202,6 +203,11 @@ pub const Index = struct {
     pub fn visibleAt(self: *const Index, arena: Allocator, offset: u32) error{OutOfMemory}![]const u32 {
         var out: std.ArrayList(u32) = .empty;
         var seen: std.StringHashMapUnmanaged(void) = .empty;
+        // The definition being written at `offset` is not offered.
+        const here: ?u32 = if (self.at(offset)) |o| switch (o.what) {
+            .def => |d| d,
+            .use => null,
+        } else null;
         var scope: ?u32 = self.scopeAt(offset);
         while (scope) |s| : (scope = self.scopes[s].parent) {
             const unordered = self.scopes[s].unordered;
@@ -213,7 +219,7 @@ pub const Index = struct {
                 const d = self.defs[i];
                 if (d.scope != s or table.defines[d.line].visibility == .member) continue;
                 if (!unordered and d.visible >= offset) continue;
-                if (self.at(offset)) |o| if (o.what == .def and o.what.def == i) continue;
+                if (here != null and here.? == i) continue;
                 const gop = try seen.getOrPut(arena, d.name);
                 if (gop.found_existing) continue;
                 try out.append(arena, @intCast(i));

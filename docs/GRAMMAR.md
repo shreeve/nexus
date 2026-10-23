@@ -1898,11 +1898,11 @@ The options of `define`:
 | `when ROLE` | only when the node has ROLE |
 | `when ^KIND.ROLE ["text"]` | the same of a role of the node's parent, which is a KIND |
 | `outer` | the name belongs to the scope around the nearest one |
-| `member` / `lexical` | the name is only a member of its scope (a field: in the outline, never in sight by itself), or only in sight (not in the outline as a member); by default both |
+| `member` / `lexical` | the name is only a member of its scope (a field: never in sight by itself), or only in sight (never a member, which a later step of `@lsp` looks up after `.`); by default both |
 | `value:ROLE` | the node's value: when it opens a scope, that scope's names are the name's children in the outline |
 | `type:ROLE` | its declared type: the name's detail when it has no other |
 | `doc:ROLE` or `doc:leading` | its doc: the leaves of ROLE, or the doc tokens on the lines just before the node, each without the `strip` text and one blank after it |
-| `export:ROLE` or `export:^KIND` | other files see the name only when ROLE is present, or when the node's parent is a KIND; without it, a name of the file's own scope is seen by other files |
+| `export:ROLE` or `export:^KIND` | other files see the name only when ROLE is present, or when the node's parent is a KIND; without it, a name of the file's own scope is seen by other files. The server renames only a name other files cannot see, as it reads one file |
 | `detail` or `detail:..ROLE` | its one-line detail: the node's tokens, or its tokens before ROLE, one blank between two that have any, without comments and without operators at the end |
 
 `when` may be given more than once; every one must hold. Two `define`
