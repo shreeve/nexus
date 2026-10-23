@@ -2262,6 +2262,7 @@ pub const BaseParser = struct {
     /// it completed none), and the offending token by its name, or by its
     /// text when it is not a token of the grammar (`got '?'`).
     pub fn writeFailure(self: *const BaseParser, w: *std.Io.Writer, f: Failure) std.Io.Writer.Error!void {
+        if (messageFor(&f, self.source)) |text| return writeMessage(self, w, f, text);
         const at = self.lineCol(f.at);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
         var buf: [maxExpected][]const u8 = undefined;
@@ -2541,6 +2542,77 @@ pub const BaseParser = struct {
 
 
 // =============================================================================
+// Messages (`@messages`)
+// =============================================================================
+
+/// An `@messages` entry: the message for an error at `symbol` whose failure
+/// state (`after` false) or anchor (`after` true) is `state`, when the
+/// offending token's text is `guard` (any text when null).
+const Message = struct {
+    after: bool,
+    state: u16,
+    symbol: u16,
+    guard: ?[]const u8,
+    text: []const u8,
+};
+
+/// The grammar's message for `f`, whose token's text is in `source`: an
+/// `at` entry on its failure state first, then an `after` entry on its
+/// anchor (the first state of its expectation); of each kind, an entry
+/// whose guard is the token's text before one without a guard. Null when
+/// none matches. Only `writeFailure` calls it, on the error path.
+fn messageFor(f: *const Failure, source: []const u8) ?[]const u8 {
+    const text = f.span.text(source);
+    for ([_]bool{ false, true }) |after| {
+        if (after and f.expectation.len == 0) continue;
+        const state = if (after) f.expectation.states[0] else f.state;
+        var unguarded: ?[]const u8 = null;
+        for (messages) |m| {
+            if (m.after != after or m.state != state or m.symbol != f.symbol) continue;
+            const guard = m.guard orelse {
+                unguarded = m.text;
+                continue;
+            };
+            if (std.mem.eql(u8, guard, text)) return m.text;
+        }
+        if (unguarded) |t| return t;
+    }
+    return null;
+}
+
+/// `line:col: ` and the message `text` for `f`, at its `at`: `{got}` is
+/// the offending token as `writeFailure` names it, `{expected}` what it
+/// lists as expected ("A, B or C").
+fn writeMessage(p: *const BaseParser, w: *std.Io.Writer, f: Failure, text: []const u8) std.Io.Writer.Error!void {
+    const at = p.lineCol(f.at);
+    try w.print("{d}:{d}: ", .{ at.line, at.col });
+    var rest = text;
+    while (std.mem.findScalar(u8, rest, '{')) |open| {
+        // Generation checks that each `{` opens `{got}` or `{expected}`.
+        const close = std.mem.findScalarPos(u8, rest, open, '}') orelse break;
+        try w.writeAll(rest[0..open]);
+        if (std.mem.eql(u8, rest[open + 1 .. close], "got")) {
+            const got = symbolName(f.symbol);
+            const shown = f.span.text(p.source);
+            if (f.symbol == errorSymbol and BaseParser.shownText(shown)) {
+                try w.print("'{s}'", .{shown});
+            } else try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
+        } else {
+            var buf: [maxExpected][]const u8 = undefined;
+            const want = BaseParser.failureNames(&f, &buf);
+            for (want, 0..) |name, i| {
+                if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
+                try w.writeAll(name);
+            }
+            if (want.len == 0) try w.writeAll("nothing");
+        }
+        rest = rest[close + 1 ..];
+    }
+    try w.writeAll(rest);
+}
+
+
+// =============================================================================
 // Grammar
 // =============================================================================
 
@@ -2746,6 +2818,13 @@ fn symbolName(sym: u16) []const u8 {
         else => "",
     };
 }
+
+/// `@messages`: the message for an error at `symbol` in failure state
+/// `state` (`at`) or with anchor `state` (`after`), when the token's text
+/// is `guard` (any text when null).
+const messages = [_]Message{
+    .{ .after = true, .state = 37, .symbol = 11, .guard = null, .text = "expected ',' between arguments, got {got}" },
+};
 
 /// `@trivia` tokens: kept on the trivia channel, never parsed.
 fn isTrivia(cat: TokenCat) bool {

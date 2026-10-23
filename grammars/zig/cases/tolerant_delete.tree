@@ -11,6 +11,6 @@
         (switch _ `y` (switch_case _ ((enum_literal `a`)@48..50)@48..50 _ _ `1`)@48..55)@35..60)@31..60)@25..63)@13..63
   (var_decl _ _ _ _ _ _ `const` `c` _ _ _ _ `3`)@64..75)@0..76
 !tolerant 1 repairs (0 inserted, 1 deleted, 0 dropped)
-!first 3:30: expected ',' or '}' after a switch prong, got a number literal
+!first 3:30: expected ',' after switch prong
     x = switch (y) { .a => 1 2, };
                              ^

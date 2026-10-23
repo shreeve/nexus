@@ -1,7 +1,7 @@
 //! nexus — generate a standalone Zig lexer + LR parser from a .grammar file.
 //!
 //! Usage: nexus [options] <grammar-file> <output-file>
-//!        nexus check <grammar-file>
+//!        nexus check [--messages] <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
 //!        nexus --describe <grammar-file> [output-file]
 //!        nexus --highlight <target> <grammar-file> [output-file]
@@ -14,7 +14,8 @@
 //! @schema: actions resolved against the schema) -> expand (desugared
 //! Grammar) -> semantics.checkTypes (with @schema) -> check (defined
 //! symbols, reachable rules, token binding, `X "c"` hint resolution) -> lr
-//! (automaton, lookaheads, table) -> codegen (the parser module).
+//! (automaton, lookaheads, table) -> messages (with @messages: the
+//! examples run through the table) -> codegen (the parser module).
 //! `--describe`, `--highlight` and `--editor` run the whole pipeline, then
 //! write the grammar's JSON description, one of its editor files, or its
 //! VS Code extension and language server (lsp/editor.zig).
@@ -37,6 +38,7 @@ const codegen = @import("codegen/codegen.zig");
 const highlight = @import("highlight/highlight.zig");
 const emit = @import("highlight/emit.zig");
 const describe = @import("describe.zig");
+const messages = @import("messages.zig");
 const editor = @import("lsp/editor.zig");
 const identity = @import("lsp/identity.zig");
 
@@ -62,7 +64,7 @@ test {
 
 const usage =
     \\Usage: nexus [options] <grammar-file> <output-file>
-    \\       nexus check <grammar-file>
+    \\       nexus check [--messages] <grammar-file>
     \\       nexus --dump-sexp <grammar-file> [output-file]
     \\       nexus --describe <grammar-file> [output-file]
     \\       nexus --highlight <target> <grammar-file> [output-file]
@@ -82,7 +84,11 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\Commands:
     \\  <grammar-file> <output-file>
     \\                  Generate the parser module into output-file
-    \\  check           Check the grammar without writing anything
+    \\  check           Check the grammar without writing anything; with
+    \\                  --messages, print the coverage of its @messages on
+    \\                  standard output: each place a message can key on
+    \\                  that has none, with the shortest example that
+    \\                  reaches it and its automatic message
     \\  --dump-sexp     Write the frontend's S-expression tree of the grammar
     \\                  file to output-file (default: standard output)
     \\  --describe      Write the grammar as JSON (tokens, lexer rules, keywords,
@@ -135,6 +141,8 @@ const version = @import("version.zig").version;
 
 const Options = struct {
     checkMode: bool = false,
+    /// `check --messages`: write the coverage of `@messages`.
+    coverage: bool = false,
     emitComments: bool = false,
     spans: bool = false,
     /// `--editor --lang`: the lang module.
@@ -176,6 +184,8 @@ pub fn main(init: std.process.Init) !void {
                 if (!eql(args[a], "all")) target = emit.Target.parse(args[a]) orelse
                     usageError("unknown --highlight target '{s}' (textmate, language-configuration, highlightjs, vim or all)", .{args[a]});
             }
+        } else if (eql(arg, "--messages")) {
+            opts.coverage = true;
         } else if (eql(arg, "--lang")) {
             a += 1;
             if (a == args.len) usageError("--lang needs the lang module's file", .{});
@@ -207,6 +217,7 @@ pub fn main(init: std.process.Init) !void {
         else => {},
     }
     if (opts.langModule != null and command != .editor) usageError("--lang is an option of --editor", .{});
+    if (opts.coverage and command != .check) usageError("--messages is an option of check", .{});
     switch (command) {
         .dump => return dumpSexp(allocator, io, positional[0], output orelse "-"),
         .check => {
@@ -237,7 +248,10 @@ pub fn main(init: std.process.Init) !void {
             try writeOutput(io, opts.outputFile, built.code);
             diag.info("Generated: {s}", .{if (eql(opts.outputFile, "-")) "standard output" else opts.outputFile});
         },
-        .check => diag.info("{s}: no errors", .{opts.grammarFile}),
+        .check => {
+            diag.info("{s}: no errors", .{opts.grammarFile});
+            if (opts.coverage) writeStdout(io, built.coverage);
+        },
         .describe => {
             const bytes = try describe.write(allocator, .{
                 .version = version,
@@ -458,6 +472,8 @@ const Built = struct {
     highlight: ?highlight.Highlight,
     /// The parser module; empty in check mode.
     code: []const u8,
+    /// `check --messages`: the coverage report.
+    coverage: []const u8 = "",
 };
 
 /// Runs the whole pipeline on the grammar file; any error is reported and
@@ -514,6 +530,7 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
     // Without parser rules the output is the lexer alone
     var finalCode: []const u8 = "";
     var final: ?Grammar = null;
+    var coverage: []const u8 = "0 of 0 places have a message\n";
 
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
@@ -594,6 +611,29 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
         if (g.widest) |w| if (w.rules >= widestNote)
             diag.info("   Expanded: rule '{s}' (line {d}): one alternative makes {d} rules, one per combination of its [...] groups and choices", .{ w.rule, w.line, w.rules });
 
+        // The `@messages` examples, through the table the parser has.
+        const msgInput: messages.Input = .{
+            .g = &g,
+            .auto = &result.automaton,
+            .tbl = &result.table,
+            .la = &result.lookaheads,
+            .spec = &lexerSpec,
+            .lexer = &lexerGen,
+            .path = grammarFile,
+        };
+        const entries: ?[]const messages.Entry = if (ir.messages) |list|
+            messages.compute(allocator, msgInput, list) catch |err| {
+                if (err == error.OutOfMemory) diag.err("out of memory", .{});
+                fail();
+            }
+        else
+            null;
+        if (opts.coverage) {
+            var report: std.Io.Writer.Allocating = .init(allocator);
+            try messages.writeCoverage(allocator, &report.writer, msgInput, entries orelse &.{});
+            coverage = report.written();
+        }
+
         final = g;
         // Emit the combined lexer + parser module (checked in check mode
         // too: codegen checks names)
@@ -601,6 +641,7 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
             .emitComments = opts.emitComments,
             .spans = opts.spans,
             .source = parsed.source,
+            .messages = entries,
         }) catch |err| {
             // Generation errors are reported where they are found.
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
@@ -609,7 +650,7 @@ fn build(allocator: Allocator, io: Io, opts: Options) !Built {
     } else {
         finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
     }
-    return .{ .ir = ir, .spec = lexerSpec, .g = final, .highlight = highlighted, .code = finalCode };
+    return .{ .ir = ir, .spec = lexerSpec, .g = final, .highlight = highlighted, .code = finalCode, .coverage = coverage };
 }
 
 /// Exit with status 1 after the error has been reported.

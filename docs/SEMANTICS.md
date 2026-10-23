@@ -767,7 +767,10 @@ A failed parse returns `error.ParseError`; `lastError()` gives the
 offending token's span, category and state, and `at`, and `writeError(w)`
 writes `line:col: expected X, Y or Z after R, got W` at `at`.
 `writeFailure(w, failure)` writes the same for any error of the parser's
-last parse, such as each of a tolerant parse's `failures`.
+last parse, such as each of a tolerant parse's `failures`. An error a
+grammar has an example of in `@messages` is worded by that entry instead,
+`line:col: message` ([GRAMMAR.md, "Messages"](GRAMMAR.md#messages)); only
+the error path looks for one.
 `writeExcerpt(w, span)` writes the source line holding a span and a line
 marking it with `^~~` (tabs kept, one column per character), for a
 diagnostic under that message.

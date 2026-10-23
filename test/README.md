@@ -31,6 +31,7 @@ on macOS and Linux with the systems' own tools.
 | `gen/<grammar>` | the generated parser (with the suite's `flags`) equals `test/golden/<grammar>.zig` byte for byte; every suite has one but `nexus`, whose generated parser is `src/frontend/parser.zig` (`bootstrap`) |
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
 | `determinism/<grammar>` | two generations (with the suite's `flags`), and two runs each of `--dump-sexp`, `--describe` and (with `@highlight`) every `--highlight` target, are identical |
+| `messages/<grammar>` | for a grammar with `@messages`: `nexus check --messages` (its coverage report) equals `test/golden/<grammar>.messages.txt` |
 | `describe/<grammar>` | `nexus --describe` equals `test/golden/<grammar>.describe.json`; every grammar file has one, under the first suite that uses it |
 | `highlight/<grammar>/files` | for a grammar with `@highlight`: `nexus --highlight all` writes exactly its four files, each equal to `--highlight <target>` and to its golden (`test/golden/<grammar>.tmLanguage.json`, `.language-configuration.json`, `.hljs.js`, `.vim`), and the grammar without `@highlight` generates the same parser |
 | `highlight/<grammar>/<sample>` | the grammar's TextMate grammar, highlight.js language and Vim syntax file colour `<suite>/highlight/<sample>` as `<sample>.hl` says (`test/lib/highlight`, see "Highlight checks") |
@@ -107,8 +108,9 @@ The suites under `test/`:
 | `highlight` | Lamp, whose `@highlight` uses every construct and scope: metadata, literals and a caseless `@keywords` group, tokens, captures, every context (around several literals and a top-level alternation too), `line-start`, `line-end`, three regions | `highlight/sample.lamp`, coloured |
 | `word_chars` | Mint, a small M-like language whose `@highlight` sets `word-chars [%A-Za-z0-9]` (`_` an operator, `%` part of a name) and puts contexts around `@keywords` groups and a `line-start` alternation | `highlight/sample.mint`, coloured |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
+| `messages` | `@messages` with entries of every kind (`at`, `after`, a choice, a guard on an error token and its unguarded fallback, `name!:`, `{got}`, `{expected}`); its `messages.zig` tests the text of each error, from the strict parse and the tolerant one | hand-written |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
-| `editor` | Tally, a small language with `@schema`, `@repair` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
+| `editor` | Tally, a small language with `@schema`, `@repair`, `@messages` and `@highlight`, whose language server the suite builds and drives: `full/` with a `hooks.zig` that writes every function but `references`, `stub/` with the stub `--editor` writes | `full/*.session` and `stub/*.session`, replayed on `project/`; `client/*.js`, the VS Code client's scenarios; two parse cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:

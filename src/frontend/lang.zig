@@ -29,6 +29,8 @@
 //!     trailing blanks excluded; none when the line has only the word). A
 //!     line indented further than the block's first line continues the
 //!     entry above: its text is one more `pattern`.
+//!   - `@messages` entries. An arrow does not start an action: the
+//!     message after it is a `string`. `X` and `L` are plain words.
 //!   - Unicode: `→` is an arrow.
 //!   - Words. An identifier immediately followed by `:` is a `label`
 //!     (`role:element`, `expr: "expression"`); the colon is consumed.
@@ -58,14 +60,15 @@
 //!     `= ! & , ( ) { }`. Any other run of characters is `err`. An
 //!     unterminated literal or class, an unterminated quoted byte, and a
 //!     line that is not a rule are `err` tokens with a `problem` message.
-//!   - Actions. After an arrow outside brackets (and outside `@conflicts`)
-//!     the rest of the line is an action, scanned in action mode: `(` `)`,
-//!     positions (`integer`), `...N` (`dots` + `integer`), `~N` (`tilde` +
-//!     `integer`), `!N` (`bang` + `integer`), `_`/`nil` (`kw_nil`),
-//!     `role:` (`label`), and any other run of non-blank characters is a
-//!     `word` (a tag). An open parenthesis continues the action onto
-//!     indented lines. A `#` outside parentheses starts a comment; `~`
-//!     outside parentheses before a string is the coverage opt-out.
+//!   - Actions. After an arrow outside brackets (and outside `@conflicts`
+//!     and `@messages`) the rest of the line is an action, scanned in
+//!     action mode: `(` `)`, positions (`integer`), `...N` (`dots` +
+//!     `integer`), `~N` (`tilde` + `integer`), `!N` (`bang` + `integer`),
+//!     `_`/`nil` (`kw_nil`), `role:` (`label`), and any other run of
+//!     non-blank characters is a `word` (a tag). An open parenthesis
+//!     continues the action onto indented lines. A `#` outside parentheses
+//!     starts a comment; `~` outside parentheses before a string is the
+//!     coverage opt-out.
 //!   - Limits. A token is at most 65535 bytes long, and rules and actions
 //!     nest `(` and `[` at most 64 deep; past either, the token is `err`
 //!     with a `problem` message.
@@ -125,7 +128,7 @@ pub const Lexer = struct {
     pub const maxTokenLen = std.math.maxInt(@FieldType(Token, "len"));
 
     const Mode = enum { normal, action };
-    const Block = enum { none, as, conflicts, infix, schema, keywords, highlight, other };
+    const Block = enum { none, as, conflicts, infix, schema, keywords, highlight, messages, other };
     pub const Section = enum { preamble, lexer, parser };
 
     /// A scanning error the parser reports instead of "unexpected err":
@@ -421,7 +424,7 @@ pub const Lexer = struct {
     }
 
     fn arrow(self: *Lexer, tok: Token) Token {
-        if (self.bracketDepth == 0 and self.block != .conflicts) {
+        if (self.bracketDepth == 0 and self.block != .conflicts and self.block != .messages) {
             self.mode = .action;
             self.parenDepth = 0;
         }
@@ -512,6 +515,7 @@ pub const Lexer = struct {
                     .kw_schema => .schema,
                     .kw_keywords => .keywords,
                     .kw_highlight => .highlight,
+                    .kw_messages => .messages,
                     else => .other,
                 };
                 self.keywordLine = false;
@@ -524,8 +528,10 @@ pub const Lexer = struct {
             self.base.pos = @intCast(end + 1);
             return .label;
         }
-        if (eql(t, "X") and isHintLiteral(s, end)) return .kw_x;
-        if (eql(t, "L") and end < s.len and s[end] == '(') return .kw_list;
+        if (self.block != .messages) {
+            if (eql(t, "X") and isHintLiteral(s, end)) return .kw_x;
+            if (eql(t, "L") and end < s.len and s[end] == '(') return .kw_list;
+        }
         switch (self.block) {
             .infix => {
                 if (eql(t, "left")) return .kw_left;
@@ -548,7 +554,7 @@ pub const Lexer = struct {
             .{ "tags", .kw_tags },           .{ "trivia", .kw_trivia },
             .{ "repair", .kw_repair },       .{ "wrapper", .kw_wrapper },
             .{ "keywords", .kw_keywords },   .{ "longtokens", .kw_longtokens },
-            .{ "highlight", .kw_highlight },
+            .{ "highlight", .kw_highlight }, .{ "messages", .kw_messages },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;

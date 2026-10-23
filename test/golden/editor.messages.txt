@@ -1,0 +1,11 @@
+after infix
+    # expected end of input, end of line, "+", "-" or "*" after an expression
+after KW_RETURN infix
+    # expected end of input, end of line, "+", "-" or "*" after an expression
+after "(" infix
+    # expected ")", "+", "-" or "*" after an expression
+after KW_LET IDENT "=" infix
+    # expected end of input, end of line, "+", "-" or "*" after an expression
+after atom "(" infix "," infix
+    # expected ",", ")", "+", "-" or "*" after an expression
+1 of 6 places have a message

@@ -27,6 +27,15 @@
     (name_pair `NEWLINE` `"end of line"`))
   (errors
     (name_pair `expr` `"an expression"`))
+  (messages
+    (message
+      `after`
+      _
+      `"expected ',' between arguments, got {got}"`
+      (msg_sym `IDENT` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `IDENT` _)))
   (trivia `COMMENT`)
   (repair
     (repair_line `holes` `IDENT`)

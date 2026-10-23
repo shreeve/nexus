@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `kw_highlight` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `kw_highlight` `kw_messages` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -69,6 +69,7 @@
     (name_pair `KW_REPAIR` `"repair"`)
     (name_pair `KW_KEYWORDS` `"keywords"`)
     (name_pair `KW_HIGHLIGHT` `"highlight"`)
+    (name_pair `KW_MESSAGES` `"messages"`)
     (name_pair `KEYWORD` `"a keyword"`)
     (name_pair `KW_WRAPPER` `"wrapper"`)
     (name_pair `KW_VIA` `"via"`)
@@ -113,7 +114,7 @@
         (role
           rest
           `entries`
-          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `highlight` `rule`)
+          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `highlight` `messages` `rule`)
           _))
       _
       _)
@@ -685,6 +686,66 @@
           `texts`
           (type `leaf`)
           _))
+      _
+      _)
+    (kind_decl
+      (kinds `messages`)
+      (roles
+        (role
+          rest
+          `lines`
+          (type `message`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `message`)
+      (roles
+        (role
+          _
+          `kind`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `start`
+          (type `leaf`)
+          opt)
+        (role
+          _
+          `text`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `parts`
+          (type `msg_sym` `msg_choice`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `msg_choice`)
+      (roles
+        (role
+          rest
+          `alts`
+          (type `msg_sym`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `msg_sym`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `guard`
+          (type `leaf`)
+          opt))
       _
       _)
     (kind_decl
@@ -1491,6 +1552,15 @@
           `lines`
           (ref `highlight_lines`)))
       (node `highlight`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_MESSAGES`)
+        (label
+          `lines`
+          (ref `message_lines`)))
+      (node `messages`)
       _))
   (rule
     (name `conflict_lines`)
@@ -2272,6 +2342,144 @@
       (list
         (spread `1`)
         (pos `2`))
+      _))
+  (rule
+    (name `message_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `message_line`))
+      (list
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `message_lines`)
+        (tok `CONT`)
+        (ref `message_line`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `message_line`)
+    (alt
+      _
+      ((label
+          `kind`
+          (tok `IDENT`))
+        (group
+          opt
+          ((label
+              `start`
+              (ref `message_start`))))
+        (label
+          `parts`
+          (ref `message_parts`))
+        (tok `ARROW`)
+        (label
+          `text`
+          (tok `STRING`)))
+      (node `message`)
+      _))
+  (rule
+    (name `message_start`)
+    (alt
+      _
+      ((tok `IDENT`)
+        (lit `"!"`)
+        (lit `":"`))
+      (pos `1`)
+      _))
+  (rule
+    (name `message_parts`)
+    (alt
+      _
+      ((ref `message_part`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `message_parts`)
+        (ref `message_part`))
+      (list
+        (spread `1`)
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `message_parts`)
+        (tok `CONT`))
+      (pos `1`)
+      _))
+  (rule
+    (name `message_part`)
+    (alt
+      _
+      ((ref `message_sym`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (label
+          `alts`
+          (ref `message_alts`))
+        (lit `")"`))
+      (node `msg_choice`)
+      _))
+  (rule
+    (name `message_alts`)
+    (alt
+      _
+      ((ref `message_sym`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `message_alts`)
+        (lit `"|"`)
+        (ref `message_sym`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `message_sym`)
+    (alt
+      _
+      ((label
+          `name`
+          (group
+            _
+            ((tok `IDENT`))
+            ((tok `TOKEN`))))
+        (exclude `"("`))
+      (node `msg_sym`)
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (group
+            _
+            ((tok `IDENT`))
+            ((tok `TOKEN`))))
+        (lit `"("`)
+        (label
+          `guard`
+          (tok `STRING`))
+        (lit `")"`))
+      (node `msg_sym`)
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (tok `STRING`)))
+      (node `msg_sym`)
       _))
   (rule
     (name `production`)

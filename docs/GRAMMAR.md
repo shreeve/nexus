@@ -11,7 +11,7 @@ Contents: [Layout](#layout) · [The @lexer section](#the-lexer-section) ·
 [The @parser section](#the-parser-section) · [Actions](#actions) ·
 [Operators and keywords](#operators-and-keywords) ·
 [Conflicts and hints](#conflicts-and-hints) · [Directives](#directives) ·
-[Editor support](#editor-support) ·
+[Messages](#messages) · [Editor support](#editor-support) ·
 [Describing a grammar](#describing-a-grammar) · [Limits](#limits) ·
 [Errors](#errors)
 
@@ -1200,6 +1200,7 @@ when it decides a cell for any rule its alternative expands into.
 | `@trivia T ...` | any | tokens kept on a side channel, never parsed |
 | `@repair` | any | the tokens tolerant parsing may insert |
 | `@highlight` | any | how editors colour the language ([Editor support](#editor-support)) |
+| `@messages` | any | messages of their own for syntax errors, by example ([Messages](#messages)) |
 
 "Any" means the preamble or the @parser section; a directive of the
 @lexer section anywhere else is an error. Each directive appears at most
@@ -1236,6 +1237,167 @@ that uses `@display`, `@errors`, `@trivia` and `@repair`.
 - `@repair` classes: `holes` (value tokens that may be inserted with empty
   text), `structure` (layout tokens), `terminator` (structure that ends a
   statement). See [tolerant parsing](SEMANTICS.md#tolerant-parsing).
+
+## Messages
+
+`@messages` (in the preamble or the @parser section, at most once) gives
+the syntax errors a grammar knows to be common messages of their own.
+Each indented line is an example of the mistake and its message:
+
+```text
+at | after   [start!:]   sentence   →   "message"
+```
+
+The sentence is grammar symbols, written as rules write them: rule
+names, token names and literals. Its last element is the token the
+parser cannot take, or a choice of such tokens, `( A | B )`. A token
+written against a `(` takes a text guard, `ERR("?")`: the entry matches
+only when the offending token's text is `?`. The arrow and the message
+may go on an indented line of their own.
+
+```grammar sums.grammar
+@lexer
+
+tokens
+    ident, number, kw_print, eq, semi, lt, plus, lparen, rparen, eof, err
+
+'\n'                        → skip, skip
+'='                         → eq
+';'                         → semi
+'<'                         → lt
+'+'                         → plus
+'('                         → lparen
+')'                         → rparen
+"print"                     → kw_print
+[a-z]+                      → ident
+[0-9]+                      → number
+.                           → err
+
+@parser
+
+@display
+    IDENT: "a name", NUMBER: "a number", KW_PRINT: "'print'"
+
+@errors
+    stmt: "a statement", expr: "an expression"
+
+@messages
+    after  IDENT "=" expr (IDENT | KW_PRINT)
+                                    → "expected ';' after the value, got {got}"
+    at     IDENT "=" IDENT "<" IDENT "<"
+                                    → "comparison operators cannot be chained"
+    after  stmt ERR("?")            → "`?` is no operator here"
+    after  stmt ERR                 → "unexpected {got}; expected {expected}"
+    at     expr!: "(" IDENT EOF     → "`(` is never closed"
+
+program! = stmt+                    → (program ...1)
+expr!    = expr
+
+stmt     = IDENT "=" expr ";"       → (set 1 3)
+         | KW_PRINT expr ";"        → (print 2)
+
+expr     = sum
+         | sum "<" sum              → (lt 1 3)
+
+sum      = term
+         | sum "+" term             → (add 1 3)
+
+term     = IDENT
+         | NUMBER
+         | "(" expr ")"             → 2
+```
+
+```zig test
+const std = @import("std");
+const testing = std.testing;
+const parser = @import("parser.zig");
+
+fn expectError(start: parser.Start, src: []const u8, want: []const u8) !void {
+    var p = parser.BaseParser.init(testing.allocator, src);
+    defer p.deinit();
+    try testing.expectError(error.ParseError, p.parse(start));
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try p.writeError(&out.writer);
+    try testing.expectEqualStrings(want, out.written());
+}
+
+test "@messages words the errors it has examples of" {
+    // `after`: the value is complete, whatever it ends in.
+    try expectError(.program, "x = (a + 1) y = 2;", "1:13: expected ';' after the value, got a name");
+    // `at`: the state that rejects the second `<`.
+    try expectError(.program, "x = a < b + c < d;", "1:15: comparison operators cannot be chained");
+    // A guard before the unguarded entry; {got} and {expected}.
+    try expectError(.program, "x = 1; ?", "1:8: `?` is no operator here");
+    try expectError(.program, "x = 1; !", "1:8: unexpected '!'; expected a statement or end of input");
+    // An `at` entry keys on a state, whichever start symbol reached it.
+    try expectError(.expr, "(a", "1:3: `(` is never closed");
+    try expectError(.program, "x = (a", "1:7: `(` is never closed");
+    // Without an entry, the automatic message.
+    try expectError(.program, "x = 1 )", "1:7: expected \";\" after an expression, got \")\"");
+}
+```
+
+How an example is read:
+
+- **Symbols, not text.** A rule name stands for any derivation of it:
+  the generator takes the rule's goto (after the reductions the parser
+  makes on a token that can begin the rule, when the state has no goto
+  on it). A token the lexer gives but the parser grammar does not use
+  (an `err` token, say) reaches the parser as the `error` symbol and is
+  written by its name, `ERR`; `EOF` is the end of input. Layout and the
+  tokens a lang `Lexer` makes are written as tokens too: the lang module
+  never runs at generation time. A sentence starts at the first start
+  symbol; `name!:` starts it at another.
+- **`at` keys on the failure state.** The generator runs the sentence
+  through the parse table as the parser runs input: each token after the
+  reductions the table makes on it. On the last token it makes the
+  reductions, and the state that rejects the token is the failure state.
+  An `at` entry applies wherever the parser rejects that token in that
+  state, which tokens alone describe best.
+- **`after` keys on the construct being finished:** the anchor of the
+  error's reduction chain, the state the last `@errors`-named rule the
+  chain completes leads to (or the failure state, when it completes
+  none; see [SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
+  Whatever the named rule's last token was, the chain ends at the same
+  anchor, so an `after` sentence ends in an `@errors`-named rule, then
+  the token.
+- **Which entry.** `writeFailure` (and so `writeError`, every one of a
+  tolerant parse's `failures`, and the language server's diagnostics)
+  takes an `at` entry for the failure state and the token first, then an
+  `after` entry for the anchor and the token; of each kind, one whose
+  guard is the token's text before one without a guard. With none, the
+  message is the automatic one.
+- **Placeholders.** `{got}` is the offending token as the automatic
+  message names it, and `{expected}` the automatic list (`A, B or C`).
+  Any other `{` is an error.
+- **States are what the parser knows.** LALR(1) gives contexts with the
+  same items one state, so two such contexts get one message; a context
+  the parser reaches in several states (after a first statement, after a
+  later one) needs an example for each.
+
+Every mistake is an error at its place: a sentence the parser takes
+whole (`this example is not a syntax error`); one it rejects before the
+last token (`the parser fails here, before the example's last token`);
+two entries for one key, with different messages (`the parser cannot
+tell them apart`) or the same (`duplicate message`); a name that is no
+rule, token or literal, or no start symbol; a choice or a guard before
+the last element; a rule as the last element; a guard on a rule, or one
+whose text the lexer never gives the token (`IDENT("if")` when `if` is a
+keyword; a token only a lang `Lexer` makes is not checked); and an
+unknown placeholder. The examples are run again on every generation, so
+a grammar change cannot move a message silently: its example still
+reaches an error, perhaps in another state, or generation fails.
+
+`nexus check --messages grammar` writes the coverage on standard output.
+A place is an anchor an `after` entry can key on: the state the parser
+enters on an `@errors`-named rule, when an error right after the rule is
+anchored there. For each place without an entry it writes the shortest
+example that reaches it, ready to complete with a token and a message
+(`after KW_PRINT expr`), and on the next line, after `#`, its automatic
+message (`expected ";" after an expression`); then how many places have
+one (`N of M places have a message`). `./test/run` pins the report of
+every grammar with `@messages` (`test/golden/<grammar>.messages.txt`).
 
 ## Editor support
 
@@ -1626,7 +1788,9 @@ early:
 | `X "[" on expr → ... names OPEN, as X "(" does` | two hints of one alternative name one terminal |
 | `X "%" on expr → ... the token @as promotes` | a hint names the promotable token |
 | ``keywords `HA[LT]` and `H[ANG]` (3:9) both accept `HA` `` | two `@keywords` entries of a group accept one word |
+| `this example is not a syntax error: the parser takes its last token` | an `@messages` example the parser accepts ([Messages](#messages)) |
 
 `nexus check grammar` runs every check generation runs, and writes
-nothing.
+nothing; `nexus check --messages grammar` also writes the coverage of
+`@messages` on standard output ([Messages](#messages)).
 

@@ -21,6 +21,7 @@ grammar file
   │  semantics.zig checkTypes: static result types
   │  check.zig     every symbol defined, every rule reachable, tokens bound, X hints resolved
   │  lr/           grammar facts → LR(0) → lookaheads → table → checks
+  │  messages.zig  @messages examples run through the table → keyed entries
   ▼  codegen/      generated sections + runtime template
 parser module
 ```
@@ -319,7 +320,12 @@ compiles and has its own tests against a small hand-written fixture.
 `// @slot NAME` lines (lexgen emits the `longEnds` section); everything outside the sections (the fixture, the
 tests) is never emitted. The template refers to a fixed set of generated
 names (`parseTable`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
-at its top.
+at its top. A grammar with `@messages` also gets the `messages` section and
+its `messages` table, and `writeFailure`'s `messageLookup` slot calls
+`messageFor`; a grammar without one gets neither, and the same bytes as if
+the feature did not exist. `src/messages.zig` follows the reduction chain
+as the runtime's `expectationOf` does, step for step, so an entry's key is
+the one the parser computes at that error.
 
 At run time the parser keeps the state stack, the value stack, the spare
 capacity of lists being extended (indexed like the value stack), and with
@@ -431,6 +437,7 @@ current numbers and how to compare two builds.
 | `src/semantics.zig` | schema, placement, coverage, static types |
 | `src/expand.zig` | desugaring to BNF |
 | `src/check.zig` | defined symbols, reachable rules, token binding, hint resolution |
+| `src/messages.zig` | `@messages`: the examples run through the table as the parser runs input (its reduction chain mirrored), their keys and checks; `check --messages` coverage |
 | `src/lr/` | grammar facts, automaton, lookaheads, table, conflicts, expected sets, repair |
 | `src/codegen/codegen.zig` | module composition and grammar-specific code |
 | `src/codegen/actions.zig` | action trees to Zig |

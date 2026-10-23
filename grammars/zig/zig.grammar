@@ -581,6 +581,94 @@ tokens
     container_field: "a container field", param_decl: "a parameter",
     field_init: "a field initializer", switch_prong: "a switch prong"
 
+# Syntax errors Parse.zig words in its own way, given by example
+# (docs/GRAMMAR.md, "Messages"): each entry serves every input that fails
+# where its example does. A statement or declaration that runs into the
+# next line fails on the token that starts that line; the examples list
+# the tokens a statement or declaration starts with.
+@messages
+    # expected_semi_after_stmt: an expression statement, an assignment, a
+    # local declaration, `comptime`, `defer`, an if-else statement.
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" expr_s (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" expr_s "=" expr (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}" | INVALID)
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "const" IDENTIFIER "=" expr (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}" | INVALID)
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "comptime" expr_c (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "defer" assign_c (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "if" "(" expr ")" assign_c "else" statement_semi (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "if" "(" expr ")" block_expr "else" statement_semi (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' after statement"
+    # expected_semi_or_else: the if, while and for statements whose body is
+    # an assignment.
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "if" "(" expr ")" assign_c (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' or 'else' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "while" "(" expr ")" assign_c (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' or 'else' after statement"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" "for" "(" expr ")" ptr_list_payload assign_c (IDENTIFIER | BUILTIN | "var" | "const" | "return" | "if" | "while" | "for" | "switch" | "defer" | "errdefer" | "comptime" | "try" | "break" | "continue" | "}")
+                                    → "expected ';' or 'else' after statement"
+    # expected_semi_after_decl: a top-level declaration.
+    after  "const" IDENTIFIER "=" expr (EOF | IDENTIFIER | "pub" | "const" | "var" | "fn" | "test" | "comptime" | "export" | "extern" | "inline" | "threadlocal")
+                                    → "expected ';' after declaration"
+    # expected_comma_after_arg, _param, _field, _switch_prong. The items of
+    # `.{ 1, 2 }` are parsed in the states of an argument list (one L(expr)
+    # rule), so expected_comma_after_initializer has no place of its own.
+    after  "const" IDENTIFIER "=" IDENTIFIER "(" expr (IDENTIFIER | NUMBER_LITERAL | STRING_LITERAL | CHAR_LITERAL | BUILTIN | "." | "&")
+                                    → "expected ',' after argument"
+    after  "fn" IDENTIFIER "(" param_decl (IDENTIFIER | LABEL | "comptime" | "noalias" | "anytype" | "...")
+                                    → "expected ',' after parameter"
+    after  "const" IDENTIFIER "=" "struct" "{" container_field (IDENTIFIER | ":" | ";" | "]" | ")" | BAD_DOC_COMMENT)
+                                    → "expected ',' after field"
+    after  container_field "," container_field (IDENTIFIER | ":" | ";" | "]" | ")" | BAD_DOC_COMMENT)
+                                    → "expected ',' after field"
+    after  "const" IDENTIFIER "=" "switch" "(" expr ")" "{" switch_prong (IDENTIFIER | NUMBER_LITERAL | CHAR_LITERAL | STRING_LITERAL | "." | "else" | "inline")
+                                    → "expected ',' after switch prong"
+    # chained_comparison_operators
+    at     "const" IDENTIFIER "=" IDENTIFIER "==" IDENTIFIER ("==" | "!=" | "<" | ">" | "<=" | ">=")
+                                    → "comparison operators cannot be chained"
+    # mismatched_binary_op_whitespace: an operator with whitespace on one
+    # side only, where a binary operator goes, is a prefix one to the lexer,
+    # or BAD_OPERATOR, whose text the message cannot name.
+    after  container_field (MINUS_PREFIX | MINUS_PERCENT_PREFIX | ASTERISK_PREFIX)
+                                    → "binary operator {got} has whitespace on one side, but not the other"
+    after  "fn" IDENTIFIER "(" ")" IDENTIFIER "{" expr_s BAD_OPERATOR
+                                    → "binary operator has whitespace on one side, but not the other"
+    # decl_between_fields: Ast reports it at the declaration, the parser
+    # at the field after it.
+    after  "const" IDENTIFIER "=" "struct" "{" container_field "," container_decl (IDENTIFIER | LABEL)
+                                    → "declarations are not allowed between container fields"
+    after  "const" IDENTIFIER "=" "struct" "{" container_field "," container_decl container_decl (IDENTIFIER | LABEL)
+                                    → "declarations are not allowed between container fields"
+    # unattached_doc_comment, test_doc_comment, comptime_doc_comment: Ast
+    # reports them at the doc comment, the parser at the token after it.
+    at     DOC_COMMENT EOF          → "unattached documentation comment"
+    at     DOC_COMMENT "test"       → "documentation comments cannot be attached to tests"
+    at     DOC_COMMENT "comptime" "{"
+                                    → "documentation comments cannot be attached to comptime blocks"
+    # same_line_doc_comment
+    at     container_field "," BAD_DOC_COMMENT
+                                    → "same line documentation comment"
+    # invalid_bit_range, extra_align_qualifier, ptr_mod_on_array_child_type
+    at     "const" IDENTIFIER ":" "[" PTR_STAR "]" "align" "(" expr ":"
+                                    → "bit range only allowed on single item pointers"
+    at     "const" IDENTIFIER ":" "*" "align" "(" expr ")" "align"
+                                    → "extra align qualifier"
+    at     "const" IDENTIFIER ":" "[" expr "]" ("align" | "const" | "volatile" | "allowzero")
+                                    → "pointer modifier {got} not allowed on array child type"
+    # wrong_equal_var_decl
+    at     "const" IDENTIFIER ":" type_expr "=="
+                                    → "variable initialized with '==' instead of '='"
+    # varargs_nonfinal
+    at     "fn" IDENTIFIER "(" "..." "," (IDENTIFIER | LABEL | "comptime" | "noalias" | "anytype" | "...")
+                                    → "function prototype has parameter after varargs"
+    # expected_semi_or_lbrace
+    at     "fn" "(" ")" type_expr (EOF | IDENTIFIER | "pub" | "const" | "var" | "fn" | "test" | "comptime")
+                                    → "expected ';' or block after function prototype"
+
 # Tolerant parsing (parseTolerant, for editors) may insert an empty
 # identifier, the brackets, `=`, `=>` and `|` that close declarations,
 # switch prongs and captures, and the `;` that ends a statement or

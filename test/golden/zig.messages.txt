@@ -1,0 +1,281 @@
+after container_docs container_decl
+    # expected a container field, a declaration or EOF after a declaration
+after container_docs decls container_field
+    # expected EOF or ',' after a container field
+after container_docs decls container_decl
+    # expected a container field, a declaration or EOF after a declaration
+after container_docs "[" bool_or_expr
+    # expected ':' or ']' after an expression
+after container_docs "[" bool_or_expr_k
+    # expected 'or' after an expression
+after container_docs "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "[" ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs suffix_expr_n "[" index_expr
+    # expected ']' or '..' after an expression
+after container_docs suffix_expr_n "[" bool_or_expr_pk
+    # expected 'or' after an expression
+after container_docs "if" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "for" "(" bool_or_expr
+    # expected ',', ')' or '..' after an expression
+after container_docs "." "{" field_init
+    # expected ',' or '}' after a field initializer
+after container_docs "switch" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs container_arg_kind "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "union" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" block_statement
+    # expected a statement or '}' after a statement
+after container_docs "comptime" "{" bool_or_expr_sk
+    # expected 'or' after an expression
+after container_docs type_expr_f "align" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs var_mut var_name ":" type_expr
+    # expected ';', '=', 'align', 'linksection' or 'addrspace' after a type expression
+after container_docs "?" suffix_expr "[" index_expr
+    # expected ']' or '..' after an expression
+after container_docs "[" PTR_STAR ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "[" bool_or_expr ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "[" "asm" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "[" "if" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "[" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs container_layout container_arg_kind "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs container_layout "union" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "comptime" bool_or_expr_ck
+    # expected 'or' after an expression
+after container_docs "comptime" "{" "nosuspend" assign_c
+    # expected ';' after an assignment
+after container_docs "comptime" "{" "suspend" assign_c
+    # expected ';' after an assignment
+after container_docs "comptime" "{" "errdefer" assign_c
+    # expected ';' after an assignment
+after container_docs "[" "asm" "volatile" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "[" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs suffix_expr_n "(" bool_or_expr "," bool_or_expr
+    # expected ',' or ')' after an expression
+after container_docs suffix_expr_n "[" index_expr ".." bool_or_expr
+    # expected ':' or ']' after an expression
+after container_docs "*" ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "*" ptr_quals "addrspace" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "for" "(" bool_or_expr ".." bool_or_expr
+    # expected ',' or ')' after an expression
+after container_docs "." "{" field_init "," field_init
+    # expected ',' or '}' after a field initializer
+after container_docs "union" "(" ENUM_TAG "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" destructure_s "=" bool_or_expr
+    # expected ';' after an expression
+after container_docs "comptime" "{" destructure_s "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" "if" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "inline" for_prefix assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "comptime" "{" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" suffix_expr_s "[" index_expr
+    # expected ']' or '..' after an expression
+after container_docs "fn" "(" param_decl "," param_decl
+    # expected ',' or ')' after a parameter
+after container_docs "?" suffix_expr "[" index_expr ".." bool_or_expr
+    # expected ':' or ']' after an expression
+after container_docs "?" LABEL ":" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "?" LABEL ":" "switch" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "[" LABEL ":" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs suffix_expr_n "[" index_expr ".." ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "switch" "(" bool_or_expr ")" "{" bool_or_expr
+    # expected ',', '...' or '=>' after an expression
+after container_docs container_layout "union" "(" ENUM_TAG "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "comptime" var_decl_proto "=" bool_or_expr
+    # expected ';' after an expression
+after container_docs "comptime" "{" "comptime" bool_or_expr_c assign_op bool_or_expr
+    # expected ';' after an expression
+after container_docs "comptime" "{" "comptime" destructure_c "=" bool_or_expr
+    # expected ';' after an expression
+after container_docs "comptime" "{" "comptime" suffix_expr_c "[" index_expr
+    # expected ']' or '..' after an expression
+after container_docs "comptime" "{" "nosuspend" bool_or_expr_c "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" "nosuspend" destructure_ec "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" for_prefix block_expr "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" for_prefix assign_c "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" for_prefix assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "comptime" "{" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "?" suffix_expr "[" index_expr ".." ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "?" LABEL ":" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "[" LABEL ":" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs suffix_expr_n "[" index_expr ".." bool_or_expr ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "*" ptr_quals addr_space ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs "*" ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals addr_space ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs "comptime" "{" LABEL ":" "inline" for_prefix assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "comptime" "{" LABEL ":" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "inline" for_prefix block_expr "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" "inline" for_prefix assign_c "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" suffix_expr_s "[" index_expr ".." bool_or_expr
+    # expected ':' or ']' after an expression
+after container_docs "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "fn" param_decl_list var_align var_addrspace "linksection" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "?" suffix_expr "[" index_expr ".." bool_or_expr ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "while" "(" bool_or_expr ")" ptr_payload ":" "(" assign_expr
+    # expected ')' after an assignment
+after container_docs "switch" "(" bool_or_expr ")" "{" switch_prong "," switch_prong
+    # expected ',' or '}' after a switch prong
+after container_docs "switch" "(" bool_or_expr ")" "{" bool_or_expr "..." bool_or_expr
+    # expected ',' or '=>' after an expression
+after container_docs "comptime" "{" "comptime" suffix_expr_c "[" index_expr ".." bool_or_expr
+    # expected ':' or ']' after an expression
+after container_docs "comptime" "{" for_prefix block_expr "else" bool_or_expr_s "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" for_prefix block_expr "else" destructure_es "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" LABEL ":" for_prefix block_expr "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" for_prefix assign_c "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" suffix_expr_s "[" index_expr ".." ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "pub" "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "fn" param_decl_list var_align var_addrspace var_section "callconv" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs fn_prefix "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' or '{' after a type expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals addr_space ptr_quals "align" "(" bool_or_expr
+    # expected ':' or ')' after an expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs "*" ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs "*" ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs "switch" "(" bool_or_expr ")" "{" "inline" "while" "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "comptime" suffix_expr_c "[" index_expr ".." ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "comptime" "{" LABEL ":" "inline" for_prefix block_expr "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "inline" for_prefix assign_c "else" statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" suffix_expr_s "[" index_expr ".." bool_or_expr ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "pub" "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "pub" fn_prefix "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "extern" "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' after a type expression
+after container_docs fn_prefix "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "[" "asm" "(" bool_or_expr ":" asm_output_list ":" asm_input_list ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs "while" "(" bool_or_expr ")" ptr_payload ":" "(" bool_or_expr "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "while" "(" bool_or_expr ")" ptr_payload ":" "(" destructure "," bool_or_expr
+    # expected ',' or '=' after an expression
+after container_docs "comptime" "{" "comptime" suffix_expr_c "[" index_expr ".." bool_or_expr ":" bool_or_expr
+    # expected ']' after an expression
+after container_docs "comptime" "{" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "pub" "extern" "fn" param_decl_list var_align var_addrspace var_section fn_callconv type_expr
+    # expected ';' after a type expression
+after container_docs "pub" fn_prefix "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' or '{' after a type expression
+after container_docs "extern" "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' after a type expression
+after container_docs "[" "asm" "volatile" "(" bool_or_expr ":" asm_output_list ":" asm_input_list ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr
+    # expected ':' after an expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs "*" ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs ASTERISK_PREFIX ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" LABEL ":" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "pub" "extern" "fn" param_decl_list var_align var_addrspace var_section fn_callconv "!" type_expr
+    # expected ';' after a type expression
+after container_docs "[" "asm" "(" bool_or_expr ":" "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr
+    # expected ')' after a type expression
+after container_docs "comptime" "{" LABEL ":" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c
+    # expected ';' or 'else' after an assignment
+after container_docs "comptime" "{" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "[" "asm" "(" bool_or_expr ":" asm_output_list ":" "[" IDENTIFIER "]" STRING_LITERAL "(" bool_or_expr
+    # expected ')' after an expression
+after container_docs suffix_expr_n "[" PTR_STAR ptr_quals addr_space ptr_quals "align" "(" bool_or_expr ":" bool_or_expr ":" bool_or_expr
+    # expected ')' after an expression
+after container_docs "comptime" "{" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+    # expected ';' after a statement
+after container_docs "comptime" "{" LABEL ":" "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+    # expected ';' after a statement
+18 of 158 places have a message

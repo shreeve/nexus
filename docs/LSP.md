@@ -196,8 +196,9 @@ With every function of `hooks.zig` a stub, the server gives:
 - **Syntax errors as you type.** On every change, every error the
   tolerant parse repairs past for a grammar with `@repair`
   ([SEMANTICS.md, "Tolerant parsing"](SEMANTICS.md#tolerant-parsing)),
-  else the strict parse's error; each worded as `writeError` words it,
-  at the token where the parse failed, or, when that token is on a
+  else the strict parse's error; each worded as `writeError` words it
+  (with the grammar's message for it, when `@messages` has one;
+  [GRAMMAR.md, "Messages"](GRAMMAR.md#messages)), at the token where the parse failed, or, when that token is on a
   later line than the one before it, zero width at the end of that one
   ([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its

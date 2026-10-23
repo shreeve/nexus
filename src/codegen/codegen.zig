@@ -30,6 +30,7 @@ const Table = @import("../lr/table.zig").Table;
 const actions = @import("actions.zig");
 const semantics = @import("../semantics.zig");
 const runtime = @import("runtime.zig");
+const messages = @import("../messages.zig");
 
 pub const Options = struct {
     /// Write each rule as a comment above its action.
@@ -38,6 +39,9 @@ pub const Options = struct {
     spans: bool = false,
     /// The grammar file, for `file:line:col` in generation errors.
     source: ?diag.Source = null,
+    /// `@messages`: the keyed entries (src/messages.zig); null without
+    /// the directive, whose module then has no message table.
+    messages: ?[]const messages.Entry = null,
 };
 
 /// Generate the parser module. `lexerDecls` is lexgen's declarations
@@ -171,6 +175,7 @@ const Codegen = struct {
         try self.emitExcludes(w);
         try self.emitStarts(w);
         try self.emitDiagnostics(w);
+        try self.emitMessages(w);
         try self.emitTrivia(w);
         try self.emitRepair(w);
         try self.emitSideLabels(w);
@@ -338,7 +343,15 @@ const Codegen = struct {
                 \\
             , .{ try capitalized(self.allocator, name), name });
         }
-        try runtime.writeSection(w, "parser", &.{.{ .name = "startMethods", .text = methods.written() }});
+        const lookup = if (self.options.messages != null)
+            "        if (messageFor(&f, self.source)) |text| return writeMessage(self, w, f, text);\n"
+        else
+            "";
+        try runtime.writeSection(w, "parser", &.{
+            .{ .name = "startMethods", .text = methods.written() },
+            .{ .name = "messageLookup", .text = lookup },
+        });
+        if (self.options.messages != null) try runtime.writeSection(w, "messages", &.{});
 
         if (self.schema()) |s| {
             var views: std.Io.Writer.Allocating = .init(self.allocator);
@@ -917,6 +930,19 @@ const Codegen = struct {
             try w.print("        {d} => \"{f}\",\n", .{ sym.id, std.zig.fmtString(name) });
         }
         try w.writeAll("        else => \"\",\n    };\n}\n");
+    }
+
+    /// `@messages`: the table `messageFor` reads, sorted by kind, state,
+    /// symbol and guard (src/messages.zig).
+    fn emitMessages(self: *Codegen, w: *std.Io.Writer) !void {
+        const entries = self.options.messages orelse return;
+        try w.writeAll("\n/// `@messages`: the message for an error at `symbol` in failure state\n/// `state` (`at`) or with anchor `state` (`after`), when the token's text\n/// is `guard` (any text when null).\nconst messages = [_]Message{\n");
+        for (entries) |e| {
+            try w.print("    .{{ .after = {}, .state = {d}, .symbol = {d}, .guard = ", .{ e.kind == .after, e.state, e.symbol });
+            if (e.guard) |g| try w.print("\"{f}\"", .{std.zig.fmtString(g)}) else try w.writeAll("null");
+            try w.print(", .text = \"{f}\" }},\n", .{std.zig.fmtString(e.text)});
+        }
+        try w.writeAll("};\n");
     }
 
     // -------------------------------------------------------------------------

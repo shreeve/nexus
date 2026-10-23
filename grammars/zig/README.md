@@ -140,9 +140,18 @@ before when the offending token starts a later line. The grammar names
 tokens as `std.zig.Token.Tag.symbol()` does (`';'`, `'fn'`, `an
 identifier`, `EOF`) and the places that wait for an expression, a type
 expression, a statement, a block, a declaration or a parameter by that
-name (`@display`, `@errors`). Side by side with Ast's message, for inputs
-of `messages_test.zig`, which checks that each is at Ast's line and
-column:
+name (`@display`, `@errors`). Where Parse.zig has a message of its own
+for a mistake, the grammar gives it by example in `@messages`
+([GRAMMAR.md, "Messages"](../../docs/GRAMMAR.md#messages)): 31 entries
+for a statement, declaration, argument, parameter, field or switch prong
+that runs into the next line, chained comparisons, bit ranges and
+`align` where Zig forbids them, `==` for `=` in a declaration, a
+parameter after `...`, a function prototype with no `;` or body,
+declarations between fields, doc comments on nothing, on tests and on
+`comptime` blocks, and an operator with whitespace on one side only
+after a field. Side by side with Ast's message, for inputs of
+`messages_test.zig`, which checks each one's line and column, and its
+text where `@messages` gives it:
 
 ```text
 const x = ;
@@ -150,42 +159,43 @@ const x = ;
   zig    1:11: expected expression, found ';'
 const std = @import("std")
 pub fn main() void {}
-  nexus  1:27: expected ';' after an expression, got 'pub'
+  nexus  1:27: expected ';' after declaration
   zig    1:27: expected ';' after declaration
 test {
     f(a b);
 }
-  nexus  2:9: expected ',' or ')' after an expression, got an identifier
+  nexus  2:9: expected ',' after argument
   zig    2:9: expected ',' after argument
-fn f() void
-  nexus  1:12: expected ';' or '{' after a type expression, got EOF
-  zig    1:12: expected ';' or block after function prototype
+const x = a == b == c;
+  nexus  1:18: comparison operators cannot be chained
+  zig    1:18: comparison operators cannot be chained
 ```
 
 Over the 98 inputs both parsers reject (39 corpus files and 59 inline
-sources), `compare-accept --messages` prints both messages: 89 of Nexus's
-name at most six expected items, and 88 are at the line and column Ast
-reports. The rest fall short of Ast's in three ways that the grammar
-cannot change:
+sources), `compare-accept --messages` prints both messages: 95 of
+Nexus's name at most six expected items or are a message of
+`@messages`, 88 are at the line and column Ast reports, and 43 are Ast's
+text word for word (without `@messages`: 89, 88 and 0). The rest fall
+short of Ast's in ways the grammar cannot change:
 
-- **Constructs that go on.** After an expression statement the parser
-  may still take an assignment, so it lists `';'` with `','` and every
-  assignment operator, where Ast says `expected ';' after statement`;
-  a chained comparison, which the grammar rejects by the shape of its
-  operator levels, ends in `expected 'or' after an expression`.
 - **Position.** Ast reports some mistakes at an earlier token than the
   one the parser cannot take (a declaration between container fields, a
-  doc comment on a `comptime` block, an `extern` function with a body).
-- **Specific diagnoses.** Ast has messages for particular mistakes
-  (`declarations are not allowed between container fields`, `extern
-  functions have no body`, `comparison operators cannot be chained`,
-  `binary operator '+' has whitespace on one side, but not the other`).
-  Nexus rejects the same inputs at a token, with an expected set; a
-  grammar has no way to attach a message to a mistake. The strict parser
-  also stops at the first error, where Ast.parse can recover and go on;
-  the grammar's `@repair` section gives Nexus's tolerant parser
-  (`parseTolerant`) a different recovery, for editors, that reports
-  every error it repairs past, as the `tolerant_*` cases show
+  doc comment on a test or a `comptime` block, an `extern` function with
+  a body); `@messages` can name such a mistake, not move it.
+- **One state, several mistakes.** A message keys on a parser state and
+  a token. The items of `.{ 1, 2 }` are parsed in the states of an
+  argument list, so they take its message, or none; an `if` statement
+  whose `else` branch has an assignment body is one state whether Ast
+  then expects `';'` or `';' or 'else'`; and an `&` before `&` (`&&`) is
+  the same token as an `&` with whitespace on one side only, which Ast
+  words differently, so neither has an entry. An operator with
+  whitespace on one side only that the lexer cannot read as a prefix one
+  is BAD_OPERATOR, whose text a message cannot name.
+- **Recovery.** The strict parser stops at the first error, where
+  Ast.parse can recover and go on; the grammar's `@repair` section gives
+  Nexus's tolerant parser (`parseTolerant`) a different recovery, for
+  editors, that reports every error it repairs past, each worded as the
+  strict parse words it, as the `tolerant_*` cases show
   (`tolerant_errors`: three separate mistakes, three errors, though
   `g(a b c d)` deletes three tokens).
 

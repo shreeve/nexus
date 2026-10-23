@@ -4,6 +4,29 @@
 
 ### Added
 
+- `@messages` (preamble or @parser section): syntax errors a grammar
+  knows to be common get messages of their own, by example
+  ([GRAMMAR.md, "Messages"](docs/GRAMMAR.md#messages)). Each line is
+  `at|after [start!:] sentence → "message"`: the sentence is grammar
+  symbols as rules write them, its last element the token the parser
+  cannot take, or a choice `( A | B )`; `TOKEN("text")` guards on the
+  token's text; `{got}` and `{expected}` are the automatic message's
+  token and list. Generation runs each example through the parse table
+  as the parser runs input and keys it on the failure state (`at`) or on
+  the anchor of the error's reduction chain (`after`), checked on every
+  generation: an example the parser takes, one it rejects early, two
+  entries for one key, an unknown name or placeholder, a guard on a rule
+  or with a text the lexer never gives the token are located errors.
+  `writeFailure` (so `writeError`, every one of a tolerant parse's
+  `failures`, and the generated language server) uses the matching
+  entry: `at` first, then `after`, a guarded entry before an unguarded
+  one. Only the error path looks; a grammar without `@messages`
+  generates the same bytes as before. `nexus check --messages grammar`
+  prints the coverage: each place an `after` entry can key on that has
+  none, with its shortest example and automatic message, then how many
+  have one. The Zig grammar has 31 entries: over the 98 inputs both it
+  and std.zig.Ast reject, 43 errors are now Ast's text word for word
+  ([grammars/zig/README.md](grammars/zig/README.md#syntax-errors)).
 - Clause rules: a rule with no actions whose every alternative labels the
   same roles in the same order fills those roles of the node of every
   alternative that uses it, as if its labels were written there, and is
@@ -163,6 +186,17 @@
   number matched anywhere.
 
 Additive: no migration required. Downstream:
+- Rig, em, nexis: `@messages` is new syntax (`@messages` was an error),
+  so no grammar changes meaning, and a grammar without it generates the
+  same parser. Optional: write the messages a language words by hand in
+  its grammar, as examples, and drop the hand-written code:
+  `nexus check --messages GRAMMAR` lists the places that have none, each
+  with an example to complete. A token the parser grammar does not use
+  (Rig's `err`) is written by its name, `ERR`, with a guard for its text:
+  Rig's `after stmt ERR(";") → "…"` needs `stmt` in `@errors` (it is).
+  An entry keys on a parser state, and one construct may be parsed in
+  several (the first statement of a body and a later one): the coverage
+  lists each place, and each needs an example of its own.
 - Rig, em, nexis: every syntax error `writeError` writes changes text,
   and many move to the end of the line before; tests that pin its text
   or position change with it. A lang module that words its own message

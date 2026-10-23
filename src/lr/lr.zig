@@ -25,6 +25,7 @@ pub const Options = struct {
 pub const Result = struct {
     automaton: automaton.Automaton,
     table: table.Table,
+    lookaheads: lookahead.Lookaheads,
 };
 
 pub const Error = error{ GenerationFailed, OutOfMemory };
@@ -79,7 +80,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         else => return error.GenerationFailed,
     };
 
-    return .{ .automaton = auto, .table = tbl };
+    return .{ .automaton = auto, .table = tbl, .lookaheads = la };
 }
 
 /// Whether the `@infix` table `decl` of the checked chain grammar `g`
@@ -135,7 +136,7 @@ pub fn runFolded(folded: *Grammar, chain: *const Grammar, chainTbl: *const table
         if (!try sameRule(a, folded, x.rule, chain, y.rule)) return null;
         if (x.kind == .reduce and !try sameRule(a, folded, x.over, chain, y.over)) return null;
     }
-    return .{ .automaton = auto, .table = tbl };
+    return .{ .automaton = auto, .table = tbl, .lookaheads = la };
 }
 
 fn sameRule(a: Allocator, g1: *const Grammar, r1: u16, g2: *const Grammar, r2: u16) Allocator.Error!bool {

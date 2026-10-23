@@ -1,0 +1,15 @@
+# @messages needs parser rules: a grammar without them generates the lexer alone.
+# error: messages_lexer_only.grammar:4:1:
+# error: @messages needs parser rules
+@messages
+    at IDENT                        → "x"
+
+@lexer
+
+tokens
+    ident, eof, err
+
+[a-z]+                      → ident
+.                           → err
+
+@parser
