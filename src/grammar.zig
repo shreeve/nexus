@@ -224,6 +224,8 @@ pub const GrammarIR = struct {
     /// `@messages`: its entries in the order written; null when the file
     /// has none.
     messages: ?[]const Message = null,
+    /// `@lsp`: its lines as written; null when the file has none.
+    lsp: ?LspLines = null,
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
 };
@@ -564,6 +566,18 @@ pub const HighlightLines = struct {
             return pos;
         }
     };
+};
+
+/// `@lsp` as written: each line's first word and the words after it,
+/// each with its offset in the grammar file. src/lsp/names.zig reads them.
+pub const LspLines = struct {
+    /// The offset of the directive's `@`.
+    pos: u32,
+    lines: []const Line,
+
+    pub const Word = struct { text: []const u8, pos: u32 };
+
+    pub const Line = struct { key: Word, words: []const Word };
 };
 
 /// One `@messages` entry: an example mistake, written as grammar symbols

@@ -1,0 +1,50 @@
+# @lsp names the kinds and roles of @schema, so it needs one.
+# error: lsp_no_schema.grammar:30:1:
+# error: @lsp needs @schema: its lines name the schema's kinds and roles
+@lexer
+
+tokens
+    ident, number, comment, newline, kw_let, kw_fn, eq, plus, minus
+    lbrace, rbrace, lparen, rparen, comma, eof, err
+
+'#' [^\n]*                  → comment
+'\n'                        → newline
+"let"                       → kw_let
+"fn"                        → kw_fn
+'='                         → eq
+'+'                         → plus
+'-'                         → minus
+'{'                         → lbrace
+'}'                         → rbrace
+'('                         → lparen
+')'                         → rparen
+','                         → comma
+[0-9]+                      → number
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@trivia COMMENT
+
+@lsp
+    scope    prog
+    define   let.name variable
+    use      IDENT
+
+prog!  = body                               → (prog ...1)
+
+body   = stmt                               → (1)
+       | body NEWLINE stmt                  → (...1 3)
+
+stmt   = KW_LET IDENT eq:"=" expr           → (let 2 4)
+       | KW_FN IDENT "(" [L(IDENT)] ")" block
+                                            → (fn 2 4 6)
+       | expr
+
+block  = "{" body "}"                       → (block ...2)
+
+expr   = IDENT                              → (name 1)
+       | NUMBER                             → (num 1)
+       | "-" expr                           → (neg 2)
+       | IDENT "(" [L(expr)] ")"            → (call 1 ...3)

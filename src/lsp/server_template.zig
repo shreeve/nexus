@@ -4,11 +4,14 @@
 //! language's functions (`hooks.zig`, docs/LSP.md).
 //!
 //! From the grammar alone it gives syntax errors as you type, semantic
-//! tokens, folding, selection ranges and keyword completion. Every other
-//! feature waits behind a function of `hooks.zig`, and a function left as
-//! `lsp.todo` is never called: its features are not advertised. The
-//! overrides (`parseDiagnostics`, `tokens`, `symbols`, `folds`) replace the
-//! grammar's answers with the language's own.
+//! tokens, folding, selection ranges and keyword completion; with `@lsp`,
+//! also the outline, definition, references, highlights, rename, the names
+//! in scope and hover, from the names and scopes the grammar declares
+//! (scopes.zig). Every other feature waits behind a function of
+//! `hooks.zig`, and a function left as `lsp.todo` is never called: its
+//! features are not advertised. A function the language writes replaces
+//! the grammar's answers (`parseDiagnostics`, `tokens`, `symbols`, `folds`,
+//! and with `@lsp` `symbolAt`, `describe` and `visible`).
 //!
 //! Messages are JSON-RPC, each after a `Content-Length` header. Positions
 //! count UTF-16 code units, or bytes when the client offers `utf-8`.
@@ -218,6 +221,21 @@ comptime {
     for ([_][]const u8{ "symbolAt", "typeAt", "members", "visible", "signatures", "describe", "modules", "references", "renamable" }) |name| {
         if (has(name) and !has("analyze")) @compileError("hooks." ++ name ++ " reads an analysis: write hooks.analyze too");
     }
+}
+
+/// Whether the grammar declares its names and scopes (`@lsp`), which
+/// scopes.zig indexes each open file by.
+const has_names = @hasDecl(language, "names");
+const scopes = if (has_names) language.scopes else struct {};
+const NameIndex = if (has_names) scopes.Index else void;
+
+/// Whether the grammar's names answer for the language's function `name`:
+/// with `@lsp`, until the language writes it. `symbolAt` stands for
+/// definition, references, document highlight and rename; `symbols` for
+/// the outline; `describe` for hover; `visible` for the names completion
+/// offers.
+fn byNames(comptime name: []const u8) bool {
+    return has_names and !has(name);
 }
 
 const BaseParser = parser.BaseParser;
@@ -522,12 +540,22 @@ const Doc = struct {
     log: std.ArrayList(Edit) = .empty,
     log_from: u64,
     failed: ?[]const u8 = null,
+    /// The names of a version of its text (`@lsp`).
+    names: ?*Names = null,
 
     fn deinit(d: *Doc, gpa: Allocator) void {
         gpa.free(d.uri);
         gpa.free(d.path);
         gpa.free(d.text);
         d.log.deinit(gpa);
+        d.dropNames(gpa);
+    }
+
+    fn dropNames(d: *Doc, gpa: Allocator) void {
+        const n = d.names orelse return;
+        n.arena.deinit();
+        gpa.destroy(n);
+        d.names = null;
     }
 
     /// Offset `at` of the text of version `from`, in the text now; null
@@ -581,6 +609,10 @@ const Doc = struct {
         d.log_from = from;
     }
 };
+
+/// The index of the names of one version of a document's text, in an
+/// arena of its own.
+const Names = struct { arena: std.heap.ArenaAllocator, version: u64, index: NameIndex };
 
 /// The most analyses the server holds; making one more drops the one used
 /// least recently.
@@ -772,23 +804,23 @@ const Server = struct {
             try s.semanticTokens(a, doc)
         else if (eql(u8, method, "textDocument/foldingRange"))
             try s.foldingRanges(a, doc)
-        else if ((comptime has("symbols")) and eql(u8, method, "textDocument/documentSymbol"))
+        else if ((comptime has("symbols") or byNames("symbols")) and eql(u8, method, "textDocument/documentSymbol"))
             try s.documentSymbols(a, doc)
         else if ((comptime parser.nodeStore) and eql(u8, method, "textDocument/selectionRange"))
             try s.selectionRanges(a, doc, params)
         else if (eql(u8, method, "textDocument/completion"))
             try s.completion(a, doc, params)
-        else if ((comptime canHover()) and eql(u8, method, "textDocument/hover"))
+        else if ((comptime canHover() or byNames("describe")) and eql(u8, method, "textDocument/hover"))
             try s.hover(a, doc, params)
-        else if ((comptime has("symbolAt")) and eql(u8, method, "textDocument/definition"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/definition"))
             try s.definition(a, doc, params)
         else if ((comptime has("typeAt") and has("describe")) and eql(u8, method, "textDocument/typeDefinition"))
             try s.typeDefinition(a, doc, params)
-        else if ((comptime has("symbolAt")) and eql(u8, method, "textDocument/references"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/references"))
             try s.references(a, doc, params, false)
-        else if ((comptime has("symbolAt")) and eql(u8, method, "textDocument/documentHighlight"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/documentHighlight"))
             try s.references(a, doc, params, true)
-        else if ((comptime has("symbolAt")) and eql(u8, method, "textDocument/rename"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/rename"))
             try s.rename(a, doc, params)
         else if ((comptime has("signatures")) and eql(u8, method, "textDocument/signatureHelp"))
             try s.signatureHelp(a, doc, params)
@@ -847,17 +879,17 @@ const Server = struct {
             try j.objectField("selectionRangeProvider");
             try j.write(true);
         }
-        if (has("symbols")) {
+        if (has("symbols") or byNames("symbols")) {
             try j.objectField("documentSymbolProvider");
             try j.write(true);
         }
         try j.objectField("completionProvider");
         try j.write(.{ .triggerCharacters = triggers });
-        if (canHover()) {
+        if (canHover() or byNames("describe")) {
             try j.objectField("hoverProvider");
             try j.write(true);
         }
-        if (has("symbolAt")) {
+        if (has("symbolAt") or byNames("symbolAt")) {
             inline for (.{ "definitionProvider", "referencesProvider", "documentHighlightProvider", "renameProvider" }) |name| {
                 try j.objectField(name);
                 try j.write(true);
@@ -893,6 +925,7 @@ const Server = struct {
             s.gpa.free(d.text);
             d.text = try s.gpa.dupe(u8, text);
             d.version = s.tick();
+            d.dropNames(s.gpa);
             d.log.clearRetainingCapacity();
             d.log_from = d.version;
         } else {
@@ -929,6 +962,7 @@ const Server = struct {
             s.gpa.free(d.text);
             d.text = text;
             d.version = s.tick();
+            d.dropNames(s.gpa);
             if (d.log.items.len == max_edits) {
                 d.log.clearRetainingCapacity();
                 d.log_from = d.version;
@@ -1199,10 +1233,16 @@ const Server = struct {
         for (stale.items) |uri| try s.sendDiagnostics(a, uri, "[]");
     }
 
-    /// Publish an open document's diagnostics: its parse errors, then its
-    /// program's analysis's while it read this text.
+    /// Publish an open document's diagnostics: its parse errors, its uses
+    /// of names nothing defines (with `@lsp`'s `undefined`, when the
+    /// language has no `analyze`), then its program's analysis's while it
+    /// read this text.
     fn publish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
-        const parsed = try parseDiagnostics(a, d.path, d.text);
+        var parsed = try parseDiagnostics(a, d.path, d.text);
+        if (comptime has_names and !has("analyze") and language.names.undefined != null) {
+            const ix = try s.nameIndex(d);
+            parsed = try std.mem.concat(a, Diagnostic, &.{ parsed, try ix.undefinedNames(a, d.path) });
+        }
         try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .version = d.version, .failed = d.failed, .uri = d.uri });
     }
 
@@ -1382,8 +1422,12 @@ const Server = struct {
     }
 
     fn documentSymbols(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}!Result {
-        if (comptime !has("symbols")) unreachable;
-        const items = hooks.symbols(a, d.path, d.text) catch return .{ .failed = "symbols failed" };
+        const items = if (comptime has("symbols"))
+            hooks.symbols(a, d.path, d.text) catch return .{ .failed = "symbols failed" }
+        else if (comptime has_names)
+            try (try s.nameIndex(d)).outline(a)
+        else
+            unreachable;
         const lines = try Lines.init(a, d.text, s.encoding);
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
@@ -1484,6 +1528,14 @@ const Server = struct {
             const symbols = hooks.visible(an, a, pos) catch &.{};
             for (symbols) |m| try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(m.detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
         };
+        if (comptime byNames("visible")) {
+            const ix = try s.nameIndex(d);
+            if (ix.wantsNames(at)) for (try ix.visibleAt(a, at)) |di| {
+                const m = try ix.symbol(a, d.path, di);
+                const detail = if (m.detail.len > 0) m.detail else try ix.typeText(a, di);
+                try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
+            };
+        }
         for (try keywordsAt(a, d.text, at)) |k| {
             const seen = for (items.items) |it| {
                 if (std.mem.eql(u8, it.label, k)) break true;
@@ -1523,6 +1575,7 @@ const Server = struct {
     }
 
     fn hover(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
+        if (comptime !canHover()) return s.namesHover(a, d, params);
         const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         var desc: ?Description = null;
@@ -1537,7 +1590,7 @@ const Server = struct {
     }
 
     fn definition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        if (comptime !has("symbolAt")) unreachable;
+        if (comptime !has("symbolAt")) return s.namesDefinition(a, d, params);
         const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
@@ -1585,6 +1638,7 @@ const Server = struct {
     }
 
     fn references(s: *Server, a: Allocator, d: *Doc, params: Value, here: bool) error{OutOfMemory}!Result {
+        if (comptime !has("symbolAt")) return s.namesReferences(a, d, params, here);
         const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
@@ -1610,6 +1664,7 @@ const Server = struct {
     }
 
     fn rename(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
+        if (comptime !has("symbolAt")) return s.namesRename(a, d, params);
         const an = s.analysis(d) orelse return .{ .failed = "no analysis yet: save the file" };
         const pos = try s.posOf(a, d, params) orelse return .{ .failed = "no position" };
         const name = str(field(params, &.{"newName"})) orelse return .{ .failed = "no new name" };
@@ -1665,6 +1720,104 @@ const Server = struct {
             try sigs.append(a, .{ .label = sig.label, .documentation = nonEmpty(sig.doc), .parameters = ps.items });
         }
         return json(a, .{ .signatures = sigs.items, .activeSignature = help.active, .activeParameter = help.param });
+    }
+
+    // --- From the grammar's names (`@lsp`) ---------------------------------
+
+    /// The names of `d`'s text now, indexed once per version.
+    fn nameIndex(s: *Server, d: *Doc) error{OutOfMemory}!*const NameIndex {
+        if (comptime !has_names) unreachable;
+        if (d.names) |n| if (n.version == d.version) return &n.index;
+        d.dropNames(s.gpa);
+        const n = try s.gpa.create(Names);
+        n.* = .{ .arena = .init(s.gpa), .version = d.version, .index = undefined };
+        n.index = scopes.index(n.arena.allocator(), d.text) catch |err| {
+            n.arena.deinit();
+            s.gpa.destroy(n);
+            return err;
+        };
+        d.names = n;
+        return &n.index;
+    }
+
+    /// The request's position in `d`'s text now.
+    fn offsetIn(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!?u32 {
+        const lines = try Lines.init(a, d.text, s.encoding);
+        return lines.offset(position(field(params, &.{"position"})) orelse return null);
+    }
+
+    fn namesDefinition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
+        const ix = try s.nameIndex(d);
+        const at = try s.offsetIn(a, d, params) orelse return json(a, null);
+        const def = ix.defs[ix.defAt(at) orelse return json(a, null)];
+        const lines = try Lines.init(a, d.text, s.encoding);
+        return json(a, .{ .uri = d.uri, .range = lines.range(def.start, def.end) });
+    }
+
+    fn namesReferences(s: *Server, a: Allocator, d: *Doc, params: Value, here: bool) error{OutOfMemory}!Result {
+        const ix = try s.nameIndex(d);
+        const at = try s.offsetIn(a, d, params) orelse return json(a, null);
+        const def = ix.defAt(at) orelse return json(a, null);
+        const withDecl = if (field(params, &.{ "context", "includeDeclaration" })) |v| v == .bool and v.bool else here;
+        const lines = try Lines.init(a, d.text, s.encoding);
+        if (here) {
+            const H = struct { range: Range };
+            var out: std.ArrayList(H) = .empty;
+            for (try ix.references(a, def)) |sp| try out.append(a, .{ .range = lines.range(sp[0], sp[1]) });
+            return json(a, out.items);
+        }
+        const L = struct { uri: []const u8, range: Range };
+        var out: std.ArrayList(L) = .empty;
+        for (try ix.references(a, def)) |sp| {
+            if (!withDecl and sp[0] == ix.defs[def].start) continue;
+            try out.append(a, .{ .uri = d.uri, .range = lines.range(sp[0], sp[1]) });
+        }
+        return json(a, out.items);
+    }
+
+    fn namesRename(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
+        const ix = try s.nameIndex(d);
+        const at = try s.offsetIn(a, d, params) orelse return .{ .failed = "no position" };
+        const name = str(field(params, &.{"newName"})) orelse return .{ .failed = "no new name" };
+        const di = ix.defAt(at) orelse return .{ .failed = "nothing to rename here" };
+        const def = ix.defs[di];
+        // The new name must lex as one token of the old name's category.
+        const old = oneToken(d.text[def.start..def.end]) orelse return .{ .failed = "the declaration is not one token" };
+        const new = oneToken(name) orelse return .{ .failed = "the new name is not one token" };
+        if (new != old) return .{ .failed = "the new name is not a name of the same kind" };
+        const spans = switch (try scopes.rename(a, ix, di, name)) {
+            .spans => |got| got,
+            .refused => |why| return .{ .failed = why },
+        };
+        const lines = try Lines.init(a, d.text, s.encoding);
+        const E = struct { range: Range, newText: []const u8 };
+        var edits: std.ArrayList(E) = .empty;
+        for (spans) |sp| try edits.append(a, .{ .range = lines.range(sp[0], sp[1]), .newText = name });
+        var out: std.Io.Writer.Allocating = .init(a);
+        var j: std.json.Stringify = .{ .writer = &out.writer };
+        j.beginObject() catch return error.OutOfMemory;
+        j.objectField("changes") catch return error.OutOfMemory;
+        j.beginObject() catch return error.OutOfMemory;
+        j.objectField(d.uri) catch return error.OutOfMemory;
+        j.write(edits.items) catch return error.OutOfMemory;
+        j.endObject() catch return error.OutOfMemory;
+        j.endObject() catch return error.OutOfMemory;
+        return .{ .json = out.written() };
+    }
+
+    /// Markdown for the name at the position: its detail (else its name)
+    /// as code, its type, and its doc.
+    fn namesHover(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
+        const ix = try s.nameIndex(d);
+        const at = try s.offsetIn(a, d, params) orelse return json(a, null);
+        const di = ix.defAt(at) orelse return json(a, null);
+        const sym = try ix.symbol(a, d.path, di);
+        var md: std.ArrayList(u8) = .empty;
+        try md.print(a, "```{s}\n{s}\n```", .{ language.id, if (sym.detail.len > 0) sym.detail else sym.name });
+        const ty = try ix.typeText(a, di);
+        if (sym.detail.len == 0 and ty.len > 0) try md.print(a, "\n\nType: `{s}`", .{ty});
+        if (sym.doc.len > 0) try md.print(a, "\n\n{s}", .{sym.doc});
+        return json(a, .{ .contents = .{ .kind = "markdown", .value = md.items } });
     }
 
     fn formatting(s: *Server, a: Allocator, d: *Doc) error{OutOfMemory}!Result {

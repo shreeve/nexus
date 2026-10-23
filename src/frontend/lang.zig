@@ -13,11 +13,12 @@
 //!     token; one `newline` always precedes `eof` after content.
 //!   - Comments. Trailing comments are dropped, except in `@conflicts`
 //!     entries (below).
-//!   - `@keywords` groups. Each indented line of the block is split into
-//!     blank-separated words, a quoted part (`"defined?":DEFINED`) within
-//!     a word: the group name first (`ident`, or `token` when capitalized),
-//!     then each option or entry whole (`keyword`). A line indented further
-//!     than the block's first group line continues the group above.
+//!   - `@keywords` groups and `@lsp` lines. Each indented line of the
+//!     block is split into blank-separated words, a quoted part
+//!     (`"defined?":DEFINED`) within a word: the first word (`ident`, or
+//!     `token` when capitalized), then each word after it whole
+//!     (`keyword`). A line indented further than the block's first line
+//!     continues the line above.
 //!   - `@conflicts` entries. Each indented line of the block is split into
 //!     the kind word (`ident`), the rule text verbatim (`rule_text`; any
 //!     symbol syntax, `→`/`->`, `ε`), `over` (`kw_over`) and a second rule
@@ -110,8 +111,9 @@ pub const Lexer = struct {
     /// Why the last `err` token was produced, when the token alone does not
     /// say (see `Problem`).
     problem: ?Problem = null,
-    /// `@keywords`: the current line is a group line, and the indentation
-    /// of the block's first group line (deeper lines continue a group).
+    /// `@keywords` and `@lsp`: the current line is a line of the block,
+    /// and the indentation of its first line (deeper lines continue a
+    /// line).
     keywordLine: bool = false,
     keywordIndent: usize = 0,
     /// `@highlight`: the indentation of the block's first line, and
@@ -128,7 +130,7 @@ pub const Lexer = struct {
     pub const maxTokenLen = std.math.maxInt(@FieldType(Token, "len"));
 
     const Mode = enum { normal, action };
-    const Block = enum { none, as, conflicts, infix, schema, keywords, highlight, messages, other };
+    const Block = enum { none, as, conflicts, infix, schema, keywords, highlight, messages, lsp, other };
     pub const Section = enum { preamble, lexer, parser };
 
     /// A scanning error the parser reports instead of "unexpected err":
@@ -207,7 +209,7 @@ pub const Lexer = struct {
         if (self.block == .conflicts and self.lineStart and !self.afterAt and p < s.len and s[p] != '\n') {
             return self.splitConflict(p);
         }
-        if (self.block == .keywords and self.keywordLine and p < s.len and s[p] != '\n' and s[p] != '#') {
+        if ((self.block == .keywords or self.block == .lsp) and self.keywordLine and p < s.len and s[p] != '\n' and s[p] != '#') {
             return self.keywordWord(p);
         }
         if (self.block == .highlight and p < s.len and s[p] != '\n' and s[p] != '#') {
@@ -334,8 +336,9 @@ pub const Lexer = struct {
         return toks[0];
     }
 
-    /// A word of a `@keywords` group line at `p`, taken whole (quoted
-    /// parts included): the group name (`ident`) first, then `keyword`s.
+    /// A word of a `@keywords` group line or an `@lsp` line at `p`, taken
+    /// whole (quoted parts included): the line's first word (`ident`),
+    /// then `keyword`s.
     fn keywordWord(self: *Lexer, p: usize) Token {
         const s = self.src();
         var end = p;
@@ -465,9 +468,9 @@ pub const Lexer = struct {
                 return self.make(.next_alt, i, 1);
             }
             if (i > lineBegin) {
-                if (self.block == .keywords) {
-                    // A line indented further than the first group line
-                    // continues the group above.
+                if (self.block == .keywords or self.block == .lsp) {
+                    // A line indented further than the block's first
+                    // line continues the line above.
                     if (self.keywordIndent == 0) self.keywordIndent = i - lineBegin;
                     if (i - lineBegin > self.keywordIndent) {
                         self.lineStart = false;
@@ -516,6 +519,7 @@ pub const Lexer = struct {
                     .kw_keywords => .keywords,
                     .kw_highlight => .highlight,
                     .kw_messages => .messages,
+                    .kw_lsp => .lsp,
                     else => .other,
                 };
                 self.keywordLine = false;
@@ -555,6 +559,7 @@ pub const Lexer = struct {
             .{ "repair", .kw_repair },       .{ "wrapper", .kw_wrapper },
             .{ "keywords", .kw_keywords },   .{ "longtokens", .kw_longtokens },
             .{ "highlight", .kw_highlight }, .{ "messages", .kw_messages },
+            .{ "lsp", .kw_lsp },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;

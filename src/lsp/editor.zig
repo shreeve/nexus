@@ -7,8 +7,9 @@
 //!   vim/, highlightjs/       the other editor files of `@highlight`
 //!   server/                  the language server: build.zig, and in src/
 //!                            main.zig, lsp.zig (server_template.zig),
-//!                            parser.zig, language.zig, the lang module and
-//!                            the files it imports, and hooks.zig
+//!                            parser.zig, language.zig, with `@lsp`
+//!                            scopes.zig (scopes_template.zig), the lang
+//!                            module and the files it imports, and hooks.zig
 //!
 //! Every file is written again on every run but `server/src/hooks.zig`,
 //! the language's own functions, and `vscode/identity.json`, the
@@ -24,8 +25,10 @@ const highlight = @import("../highlight/highlight.zig");
 const Highlight = highlight.Highlight;
 const Scope = highlight.Scope;
 const identity = @import("identity.zig");
+const names = @import("names.zig");
 
 pub const server_template = @embedFile("server_template.zig");
+pub const scopes_template = @embedFile("scopes_template.zig");
 
 /// The version of vscode-languageclient the extension depends on, and the
 /// VS Code it needs.
@@ -46,6 +49,8 @@ pub const Input = struct {
     grammarName: []const u8,
     version: []const u8,
     identity: identity.Identity,
+    /// `@lsp`, when the grammar has it.
+    lsp: ?*const names.Lsp = null,
 };
 
 /// The semantic token type of a scope: its name in camel case
@@ -192,7 +197,103 @@ pub fn languageZig(allocator: Allocator, in: Input) Error![]const u8 {
     }
     if (any) try w.writeAll(" => true,\n");
     try w.writeAll("        else => false,\n    };\n}\n");
+    if (in.lsp) |l| try namesTable(w, in, l);
     return out.written();
+}
+
+/// `@lsp` as scopes.zig reads it: `names`, with every slot the parser's
+/// `ir.slot` of its kind and role.
+fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
+    try w.writeAll(
+        \\
+        \\/// `@lsp`: the scopes, definitions and uses scopes.zig indexes each file by.
+        \\pub const scopes = @import("scopes.zig");
+        \\const ir = parser.ir;
+        \\
+        \\pub const names: scopes.Table = .{
+        \\    .scopes = &.{
+    );
+    for (l.scopes) |sc| {
+        try w.print("\n        .{{ .kind = .{f}", .{std.zig.fmtIdPU(sc.kind)});
+        if (sc.unordered) try w.writeAll(", .unordered = true");
+        try w.writeAll(" },");
+    }
+    try w.writeAll(if (l.scopes.len > 0) "\n    },\n" else "},\n");
+    if (fileUnordered(in.g, l)) try w.writeAll("    .file_unordered = true,\n");
+    try w.writeAll("    .defines = &.{");
+    for (l.defines) |d| {
+        const k = d.role.kind;
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, d.role);
+        try w.print(", .symbol = .{f}", .{std.zig.fmtIdPU(d.symbol)});
+        if (d.when) |wh| try w.print(", .when = .{{ .slot = ir.slot(.{f}, .{f}), .text = \"{f}\" }}", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(wh.role), std.zig.fmtString(wh.text) });
+        if (d.outer) try w.writeAll(", .outer = true");
+        if (d.visibility != .both) try w.print(", .visibility = .{s}", .{@tagName(d.visibility)});
+        if (d.value) |r| try w.print(", .value = ir.slot(.{f}, .{f})", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) });
+        if (d.type) |r| try w.print(", .type = ir.slot(.{f}, .{f})", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) });
+        switch (d.doc) {
+            .none => {},
+            .leading => try w.writeAll(", .doc = .leading"),
+            .role => |r| {
+                try w.writeAll(", .doc = .{ .role = ");
+                try slotOf(w, r);
+                try w.writeAll(" }");
+            },
+        }
+        switch (d.@"export") {
+            .none => {},
+            .role => |r| try w.print(", .@\"export\" = .{{ .slot = ir.slot(.{f}, .{f}) }}", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) }),
+            .parent => |p| try w.print(", .@\"export\" = .{{ .parent = .{f} }}", .{std.zig.fmtIdPU(p)}),
+        }
+        switch (d.detail) {
+            .none => {},
+            .whole => try w.writeAll(", .detail = .whole"),
+            .upto => |r| try w.print(", .detail = .{{ .upto = ir.slot(.{f}, .{f}) }}", .{ std.zig.fmtIdPU(k), std.zig.fmtIdPU(r) }),
+        }
+        try w.writeAll(" },");
+    }
+    try w.writeAll("\n    },\n    .skips = &.{");
+    for (l.skips) |sk| {
+        try w.writeAll("\n        ");
+        try slotOf(w, sk);
+        try w.writeAll(",");
+    }
+    try w.writeAll(if (l.skips.len > 0) "\n    },\n" else "},\n");
+    try catList(w, "uses", l.uses);
+    try w.writeAll("    .builtins = &.{");
+    for (l.builtins) |b| try w.print("\n        \"{f}\",", .{std.zig.fmtString(b)});
+    try w.writeAll(if (l.builtins.len > 0) "\n    },\n" else "},\n");
+    try catList(w, "builtin_tokens", l.builtinTokens);
+    if (l.docToken) |t| try w.print("    .doc_token = .{f},\n", .{std.zig.fmtIdPU(t)});
+    if (l.docStrip.len > 0) try w.print("    .doc_strip = \"{f}\",\n", .{std.zig.fmtString(l.docStrip)});
+    if (l.undefined) |sev| try w.print("    .undefined = .{f},\n", .{std.zig.fmtIdPU(@tagName(sev))});
+    try w.writeAll("};\n");
+}
+
+/// `.{ .kind = .k, .slot = ir.slot(.k, .r) }`, or `ir.restSlot` for a
+/// rest role.
+fn slotOf(w: *Writer, r: names.RoleRef) Writer.Error!void {
+    try w.print(".{{ .kind = .{f}, .slot = ir.{s}(.{f}, .{f})", .{ std.zig.fmtIdPU(r.kind), if (r.rest) "restSlot" else "slot", std.zig.fmtIdPU(r.kind), std.zig.fmtIdPU(r.role) });
+    if (r.rest) try w.writeAll(", .rest = true");
+    try w.writeAll(" }");
+}
+
+fn catList(w: *Writer, comptime field: []const u8, cats: []const []const u8) Writer.Error!void {
+    try w.writeAll("    ." ++ field ++ " = &.{");
+    for (cats, 0..) |c, i| try w.print("{s}.{f}", .{ if (i > 0) ", " else "", std.zig.fmtIdPU(c) });
+    try w.writeAll("},\n");
+}
+
+/// Whether the file's own scope is unordered: the kind the first start
+/// symbol's rules build is an unordered scope kind.
+fn fileUnordered(g: *const Grammar, l: *const names.Lsp) bool {
+    const schema = g.schema orelse return false;
+    if (g.startSymbols.items.len == 0) return false;
+    for (g.symbols.items[g.startSymbols.items[0]].rules.items) |r| {
+        const k = g.rules.items[r].kind orelse continue;
+        for (l.scopes) |sc| if (std.mem.eql(u8, sc.kind, schema.kinds[k].tag) and sc.unordered) return true;
+    }
+    return false;
 }
 
 /// An entry the server applies to whole tokens: no pattern, no context,
@@ -693,7 +794,7 @@ pub const Copied = struct { path: []const u8, text: []const u8 };
 
 /// The files of the server's src/ that are its own: no lang file may take
 /// one of their names.
-pub const server_files = [_][]const u8{ "main.zig", "lsp.zig", "parser.zig", "language.zig", "hooks.zig" };
+pub const server_files = [_][]const u8{ "main.zig", "lsp.zig", "parser.zig", "language.zig", "scopes.zig", "hooks.zig" };
 
 /// The lang module at `module` (written `name`.zig in the server, as the
 /// parser imports it) and every file it imports by relative path, each
