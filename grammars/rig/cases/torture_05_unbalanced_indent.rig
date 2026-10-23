@@ -1,0 +1,5 @@
+sub main()
+  if true
+      print("deep")
+    print("less deep")
+  print("baseline")

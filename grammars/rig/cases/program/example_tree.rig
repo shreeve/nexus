@@ -1,0 +1,83 @@
+# A binary search tree that owns its nodes through boxes. `^T` holds
+# one value on the heap: a node holds its children as `^Node[T]?`.
+# `if !slot as n` views the node inside an optional box in place, so
+# insertion walks down with write views and stores a new leaf where
+# the walk ends; the reads walk down with read views. Dropping the
+# tree drops every node.
+
+obj Node[T]
+  key: T
+  count: Int
+  left: ^Node[T]?
+  right: ^Node[T]?
+
+obj Tree[T]
+  root: ^Node[T]?
+  size: Int
+
+  sub add(!@, key: T)
+    if place(!@root, key)
+      @size += 1
+
+  fun has(?@, key: T) -> Bool
+    find(?@root, key) != none
+
+  fun height(?@) -> Int
+    depth(?@root)
+
+# Count `key` in the subtree at `slot`: true when it is new.
+fun place[T](slot: !^Node[T]?, key: T) -> Bool
+  if !slot as n
+    if key == n.key
+      n.count += 1
+      return false
+    if key < n.key
+      return place(!n.left, key)
+    return place(!n.right, key)
+  slot = ^Node(key: key, count: 1, left: none, right: none)
+  true
+
+fun find[T](slot: ?^Node[T]?, key: T) -> Int?
+  if slot as n
+    if key == n.key
+      return n.count
+    if key < n.key
+      return find(?n.left, key)
+    return find(?n.right, key)
+  none
+
+fun depth[T](slot: ?^Node[T]?) -> Int
+  if slot as n
+    l = depth(?n.left)
+    r = depth(?n.right)
+    1 + (l if l > r else r)
+  else
+    0
+
+sub show[T](slot: ?^Node[T]?)
+  if slot as n
+    show(?n.left)
+    print(n.key, n.count)
+    show(?n.right)
+
+sub main()
+  words = Tree[?String](root: none, size: 0)
+  for w in ["the", "quick", "fox", "jumps", "over", "the", "lazy", "fox"]
+    !words.add(w)
+  show(?words.root)
+  print(words.size, words.height(), words.has("fox"), words.has("cat"))
+
+  nums = Tree[Int](root: none, size: 0)
+  for i in 0..1000
+    !nums.add((i * 7919) % 1000)
+  print(nums.size, nums.has(500), nums.height() < 40)
+
+# expect:
+# fox 2
+# jumps 1
+# lazy 1
+# over 1
+# quick 1
+# the 2
+# 6 6 true false
+# 1000 true true

@@ -1,0 +1,50 @@
+# Reading JSON with std.json. `parse` checks the whole document and fills
+# a tape with one entry per value, in document order. Walking the tape
+# with `kind` and `next` reads an object's keys and values, an array's
+# items, and skips what is not wanted. Strings without escapes view
+# the source, so `src` stays lent while `doc` is in use.
+
+use std.json
+
+sub main()
+  src = "{\"name\": \"Ada\", \"born\": 1815, \"langs\": [\"en\", \"fr\"], \"ratio\": 0.5, \"notes\": {\"x\": [1, 2]}}"
+  doc = json.new_doc()
+  if not (!doc).parse(?src)
+    print("error", json.error_name(doc.error), "at byte", doc.error_pos)
+    return
+  print(doc.size(), doc.kind(0))
+
+  i = 1
+  while doc.kind(i) != .object_end
+    key = ?doc.get_str(i)
+    i += 1
+    k = doc.kind(i)
+    if k == .string
+      print(key, "is the text", doc.get_str(i))
+    else if k == .int
+      print(key, "is the integer", doc.get_int(i))
+    else if k == .float
+      print(key, "is the float", doc.get_float(i))
+    else if k == .array
+      print(key, "holds")
+      for j in i + 1..doc.next(i) - 1
+        print("-", doc.get_str(j))
+    else
+      print(key, "is skipped")
+    i = doc.next(i)
+
+  bad = "[1, 2"
+  again = json.new_doc()
+  if not (!again).parse(?bad)
+    print(json.error_name(again.error), "at byte", again.error_pos)
+
+# expect:
+# 21 .object
+# name is the text Ada
+# born is the integer 1815
+# langs holds
+# - en
+# - fr
+# ratio is the float 0.5
+# notes is skipped
+# eof at byte 5

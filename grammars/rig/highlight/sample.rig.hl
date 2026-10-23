@@ -3,9 +3,6 @@
 > # goldens. It is read, not run: the last section holds what Rig rejects.
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
 > 
-> use std.hash
-  ^^^ keyword
-         ^ punctuation
 > use std.text
   ^^^ keyword
          ^ punctuation
@@ -93,37 +90,34 @@
                                ^^^ string
                                   ^ punctuation
 > 
->   fun norm(?self) -> Int
+>   fun norm(?@) -> Int
     ^^^^ keyword
         ^^^^ function
             ^ punctuation
              ^ storage.modifier
-              ^^^^ variable.special
-                  ^ punctuation
-                    ^^ operator
-                       ^^^ type
->     self.x * self.x
-      ^^^^ variable.special
-          ^ punctuation
-             ^ operator
-               ^^^^ variable.special
-                   ^ punctuation
+              ^ variable.special
+               ^ punctuation
+                 ^^ operator
+                    ^^^ type
+>     @x * @x
+      ^ variable.special
+         ^ operator
+           ^ variable.special
 > 
->   sub shift(!self, by: Int)
+>   sub shift(!@, by: Int)
     ^^^^ keyword
         ^^^^^ function
              ^ punctuation
               ^ storage.modifier
-               ^^^^ variable.special
-                   ^ punctuation
-                     ^^ variable.parameter
-                       ^ punctuation
-                         ^^^ type
-                            ^ punctuation
->     self.x += by
-      ^^^^ variable.special
-          ^ punctuation
-             ^^ operator
+               ^ variable.special
+                ^ punctuation
+                  ^^ variable.parameter
+                    ^ punctuation
+                      ^^^ type
+                         ^ punctuation
+>     @x += by
+      ^ variable.special
+         ^^ operator
 > 
 > obj Handle
   ^^^^ keyword
@@ -133,20 +127,19 @@
       ^ punctuation
         ^^^ type
 > 
->   sub drop(!self)
+>   sub drop(!@)
     ^^^^ keyword
         ^^^^ function
             ^ punctuation
              ^ storage.modifier
-              ^^^^ variable.special
-                  ^ punctuation
->     print("closed", self.fd)
+              ^ variable.special
+               ^ punctuation
+>     print("closed", @fd)
            ^ punctuation
             ^^^^^^^^ string
                     ^ punctuation
-                      ^^^^ variable.special
-                          ^ punctuation
-                             ^ punctuation
+                      ^ variable.special
+                         ^ punctuation
 > 
 > obj Pair[T]
   ^^^^ keyword
@@ -163,22 +156,105 @@
          ^ punctuation
            ^ type
 > 
->   fun first(?self) -> ?T from self
+>   fun first(?@) -> ?T from @
     ^^^^ keyword
         ^^^^^ function
              ^ punctuation
               ^ storage.modifier
-               ^^^^ variable.special
-                   ^ punctuation
-                     ^^ operator
-                        ^ storage.modifier
-                         ^ type
-                           ^^^^ keyword
-                                ^^^^ variable.special
->     ?self.left
+               ^ variable.special
+                ^ punctuation
+                  ^^ operator
+                     ^ storage.modifier
+                      ^ type
+                        ^^^^ keyword
+                             ^ variable.special
+>     ?@left
       ^ storage.modifier
-       ^^^^ variable.special
+       ^ variable.special
+> 
+> obj Random unique
+  ^^^^ keyword
+      ^^^^^^ type
+             ^^^^^^ keyword
+>   seed: U64
+    ^^^^ variable.parameter
+        ^ punctuation
+          ^^^ type
+>   name: ?String
+    ^^^^ variable.parameter
+        ^ punctuation
+          ^ storage.modifier
+           ^^^^^^ type
+> 
+>   fun pick(?@, xs: []?String, from: Int) -> ?String from xs
+    ^^^^ keyword
+        ^^^^ function
+            ^ punctuation
+             ^ storage.modifier
+              ^ variable.special
+               ^ punctuation
+                 ^^ variable.parameter
+                   ^ punctuation
+                     ^^ punctuation
+                       ^ storage.modifier
+                        ^^^^^^ type
+                              ^ punctuation
+                                ^^^^ variable.parameter
+                                    ^ punctuation
+                                      ^^^ type
+                                         ^ punctuation
+                                           ^^ operator
+                                              ^ storage.modifier
+                                               ^^^^^^ type
+                                                      ^^^^ keyword
+>     xs[from]
+        ^ punctuation
+             ^ punctuation
+> 
+>   sub watch(!@, s: ?String) keeps s
+    ^^^^ keyword
+        ^^^^^ function
+             ^ punctuation
+              ^ storage.modifier
+               ^ variable.special
+                ^ punctuation
+                  ^ variable.parameter
+                   ^ punctuation
+                     ^ storage.modifier
+                      ^^^^^^ type
+                            ^ punctuation
+                              ^^^^^ keyword
+>     @name = s
+      ^ variable.special
+            ^ operator
+> 
+> fun run(f: once ?fun() -> Int) -> Int
+  ^^^^ keyword
+      ^^^ function
+         ^ punctuation
+          ^ variable.parameter
            ^ punctuation
+             ^^^^ keyword
+                  ^ storage.modifier
+                   ^^^ keyword
+                      ^^ punctuation
+                         ^^ operator
+                            ^^^ type
+                               ^ punctuation
+                                 ^^ operator
+                                    ^^^ type
+>   f()
+     ^^ punctuation
+> 
+> fun table() -> String from static
+  ^^^^ keyword
+      ^^^^^ function
+           ^^ punctuation
+              ^^ operator
+                 ^^^^^^ type
+                        ^^^^^^^^^^^ keyword
+>   "fixed"
+    ^^^^^^^ string
 > 
 > called fun hot(n: Int) -> Int
   ^^^^^^ keyword
@@ -212,16 +288,17 @@
       ^ operator
         ^ constant.numeric
 > 
-> rarely sub report(msg: ?String)
-  ^^^^^^ keyword
-         ^^^^ keyword
-             ^^^^^^ function
-                   ^ punctuation
-                    ^^^ variable.parameter
-                       ^ punctuation
-                         ^ storage.modifier
-                          ^^^^^^ type
-                                ^ punctuation
+> sub report(msg: ?String)
+  ^^^^ keyword
+      ^^^^^^ function
+            ^ punctuation
+             ^^^ variable.parameter
+                ^ punctuation
+                  ^ storage.modifier
+                   ^^^^^^ type
+                         ^ punctuation
+>   rarely
+  ^^^^^^^^ keyword
 >   print("error:", msg)
          ^ punctuation
           ^^^^^^^^ string
@@ -457,28 +534,27 @@
     ^ storage.modifier
 >   n
 > 
-> fun fallible(m: ?hash.Map[String, Int], k: ?String) -> Int!
+> fun fallible(m: ?Map[String, Int], k: ?String) -> Int!
   ^^^^ keyword
       ^^^^^^^^ function
               ^ punctuation
                ^ variable.parameter
                 ^ punctuation
                   ^ storage.modifier
-                       ^ punctuation
-                        ^^^ type
-                           ^ punctuation
-                            ^^^^^^ type
-                                  ^ punctuation
-                                    ^^^ type
-                                       ^^ punctuation
-                                          ^ variable.parameter
-                                           ^ punctuation
-                                             ^ storage.modifier
-                                              ^^^^^^ type
-                                                    ^ punctuation
-                                                      ^^ operator
-                                                         ^^^ type
-                                                            ^ storage.modifier
+                   ^^^ type
+                      ^ punctuation
+                       ^^^^^^ type
+                             ^ punctuation
+                               ^^^ type
+                                  ^^ punctuation
+                                     ^ variable.parameter
+                                      ^ punctuation
+                                        ^ storage.modifier
+                                         ^^^^^^ type
+                                               ^ punctuation
+                                                 ^^ operator
+                                                    ^^^ type
+                                                       ^ storage.modifier
 >   n = m.get(k) ?? 0
       ^ operator
          ^ punctuation
@@ -557,17 +633,17 @@
                         ^ constant.numeric
 >     total += i
             ^^ operator
->   @outer for row in xs
-    ^^^^^^ label
-           ^^^ keyword.control
-                   ^^ keyword.control
+>   $outer: for row in xs
+    ^^^^^^^ label
+            ^^^ keyword.control
+                    ^^ keyword.control
 >     for col in xs
       ^^^ keyword.control
               ^^ keyword.control
 >       if col == row
         ^^ keyword.control
                ^^ operator
->         break @outer
+>         break $outer
           ^^^^^^ keyword.control
                 ^^^^^^ label
 >       total += 1 if col != row
@@ -575,6 +651,17 @@
                  ^ constant.numeric
                    ^^ keyword.control
                           ^^ operator
+>   $done:
+    ^^^^^^ label
+>     break $done if total > 99
+      ^^^^^^ keyword.control
+            ^^^^^ label
+                  ^^ keyword.control
+                           ^ operator
+                             ^^ constant.numeric
+>     total += 1
+            ^^ operator
+               ^ constant.numeric
 >   v = next() ?? continue
       ^ operator
             ^^ punctuation
@@ -621,20 +708,19 @@
                            ^ operator
                                ^ operator
                                   ^ punctuation
->   m = hash.Map[Int, Int].new(capacity: 16)
+>   m = Map[Int, Int].new(capacity: 16)
       ^ operator
-            ^ punctuation
-             ^^^ type
-                ^ punctuation
+        ^^^ type
+           ^ punctuation
+            ^^^ type
+               ^ punctuation
                  ^^^ type
-                    ^ punctuation
-                      ^^^ type
-                         ^^ punctuation
-                              ^ punctuation
-                               ^^^^^^^^ variable.parameter
-                                       ^ punctuation
-                                         ^^ constant.numeric
-                                           ^ punctuation
+                    ^^ punctuation
+                         ^ punctuation
+                          ^^^^^^^^ variable.parameter
+                                  ^ punctuation
+                                    ^^ constant.numeric
+                                      ^ punctuation
 >   grid = [3 of 0]
          ^ operator
            ^ punctuation
@@ -650,7 +736,161 @@
 >   all = xs[..]
         ^ operator
             ^^^^ punctuation
+>   head = xs[..=1]
+         ^ operator
+             ^^^^ punctuation
+                 ^ constant.numeric
+                  ^ punctuation
 >   count
+> 
+> fun holds(u: ?*Point, v: ^?Point, cells: [2]*Point, xs: ![]Int, q: Point) -> Int?!
+  ^^^^ keyword
+      ^^^^^ function
+           ^ punctuation
+            ^ variable.parameter
+             ^ punctuation
+               ^^ storage.modifier
+                 ^^^^^ type
+                      ^ punctuation
+                        ^ variable.parameter
+                         ^ punctuation
+                           ^^ storage.modifier
+                             ^^^^^ type
+                                  ^ punctuation
+                                    ^^^^^ variable.parameter
+                                         ^ punctuation
+                                           ^ punctuation
+                                            ^ constant.numeric
+                                             ^ punctuation
+                                              ^ storage.modifier
+                                               ^^^^^ type
+                                                    ^ punctuation
+                                                      ^^ variable.parameter
+                                                        ^ punctuation
+                                                          ^ storage.modifier
+                                                           ^^ punctuation
+                                                             ^^^ type
+                                                                ^ punctuation
+                                                                  ^ variable.parameter
+                                                                   ^ punctuation
+                                                                     ^^^^^ type
+                                                                          ^ punctuation
+                                                                            ^^ operator
+                                                                               ^^^ type
+                                                                                  ^^ storage.modifier
+>   boxed = ^<q
+          ^ operator
+            ^^ storage.modifier
+>   weak = ~cells[0]
+         ^ operator
+           ^ storage.modifier
+                 ^ punctuation
+                  ^ constant.numeric
+                   ^ punctuation
+>   each(2, *|i| print(i))
+        ^ punctuation
+         ^ constant.numeric
+          ^ punctuation
+            ^ storage.modifier
+             ^ operator
+               ^ operator
+                      ^ punctuation
+                        ^^ punctuation
+>   unique = xs[0]*LIMIT + xs[1]*n
+           ^ operator
+               ^ punctuation
+                ^ constant.numeric
+                 ^ punctuation
+                  ^ operator
+                   ^^^^^ type
+                         ^ operator
+                             ^ punctuation
+                              ^ constant.numeric
+                               ^ punctuation
+                                ^ operator
+>   unique
+> 
+> fun tasks(xs: ?List[Int], ts: !Tasks[Int]) -> Int!
+  ^^^^ keyword
+      ^^^^^ function
+           ^ punctuation
+            ^^ variable.parameter
+              ^ punctuation
+                ^ storage.modifier
+                 ^^^^ type
+                     ^ punctuation
+                      ^^^ type
+                         ^^ punctuation
+                            ^^ variable.parameter
+                              ^ punctuation
+                                ^ storage.modifier
+                                 ^^^^^ type
+                                      ^ punctuation
+                                       ^^^ type
+                                          ^^ punctuation
+                                             ^^ operator
+                                                ^^^ type
+                                                   ^ storage.modifier
+>   t = total(?xs)&
+      ^ operator
+             ^ punctuation
+              ^ storage.modifier
+                 ^ punctuation
+                  ^ storage.modifier
+>   u = half(4)&
+      ^ operator
+            ^ punctuation
+             ^ constant.numeric
+              ^ punctuation
+               ^ storage.modifier
+>   v = find(?xs)&
+      ^ operator
+            ^ punctuation
+             ^ storage.modifier
+                ^ punctuation
+                 ^ storage.modifier
+>   !ts.add(sq(3)&)
+    ^ storage.modifier
+       ^ punctuation
+           ^ punctuation
+              ^ punctuation
+               ^ constant.numeric
+                ^ punctuation
+                 ^ storage.modifier
+                  ^ punctuation
+>   x = >t
+      ^ operator
+        ^ storage.modifier
+>   y = >u!
+      ^ operator
+        ^ storage.modifier
+          ^ storage.modifier
+>   z = >v?
+      ^ operator
+        ^ storage.modifier
+          ^ storage.modifier
+>   all = >ts
+        ^ operator
+          ^ storage.modifier
+>   m = f()&b
+      ^ operator
+         ^^ punctuation
+           ^ operator
+>   x + y + z + all.len + m if x > y and x >= y and x>y else x >> 1
+      ^ operator
+          ^ operator
+              ^ operator
+                   ^ punctuation
+                        ^ operator
+                            ^^ keyword.control
+                                 ^ operator
+                                     ^^^ keyword.operator
+                                           ^^ operator
+                                                ^^^ keyword.operator
+                                                     ^ operator
+                                                        ^^^^ keyword.control
+                                                               ^^ operator
+                                                                  ^ constant.numeric
 > 
 > fun shapes(s: ?Shape) -> Int
   ^^^^ keyword
@@ -729,6 +969,9 @@
         ^^^^^^ type
                ^ operator
                  ^ punctuation
+>   tag = :content-type
+        ^ operator
+          ^^^^^^^^^^^^^ constant.symbol
 >   ok = true and not false or none == none
        ^ operator
          ^^^^ constant
@@ -746,7 +989,7 @@
             ^ operator
                  ^^ operator
                     ^ punctuation
->   print(@size(Point), @align(Point), @name(Point), @variants(Status))
+>   print($size(Point), $align(Point), $name(Point), $variants(Status))
          ^ punctuation
           ^^^^^ function.builtin
                ^ punctuation
@@ -768,12 +1011,15 @@
     ^^^ keyword
 >     pass
       ^^^^ keyword.control
->   print(ok, b, y, z)
+>   print(ok, b, y, z, tag == :if)
          ^ punctuation
             ^ punctuation
                ^ punctuation
                   ^ punctuation
                      ^ punctuation
+                           ^^ operator
+                              ^^^ constant.symbol
+                                 ^ punctuation
 > 
 > test "area"
   ^^^^ keyword

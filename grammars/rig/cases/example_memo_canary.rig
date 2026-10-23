@@ -13,24 +13,24 @@ obj IntSource
   fun new(initial: Int) -> *IntSource
     *IntSource(value: Cell(initial), listeners: Cell(List()))
 
-  fun get(self: ?IntSource) -> Int
-    self.value.get()
+  fun get(?@) -> Int
+    @value.get()
 
-  sub subscribe(self: !IntSource, listener: *sub(Int))
-    !self.listeners.push(<listener)
+  sub subscribe(!@, listener: *sub(Int))
+    !@listeners.push(<listener)
 
   # A Cell lends no view of the List inside it, so the list is swapped
   # out to be walked, and swapped back.
-  sub set(self: !IntSource, v: Int)
-    !self.value.set(v)
-    listeners = (!self.listeners).replace(List())
+  sub set(!@, v: Int)
+    !@value.set(v)
+    listeners = (!@listeners).swap(List())
     for listener in ?listeners
       listener(v)
-    _ = !self.listeners.replace(<listeners)
+    _ = !@listeners.swap(<listeners)
 
-  fun map(self: !IntSource, f: *fun(Int) -> Int) -> *IntSource
-    derived = IntSource.new(f(self.get()))
-    !self.subscribe(*|~derived, +f, v|
+  fun map(!@, f: *fun(Int) -> Int) -> *IntSource
+    derived = IntSource.new(f(@get()))
+    !@subscribe(*|~derived, +f, v|
       if *derived as d
         !d.set(f(v))
     )
@@ -45,7 +45,7 @@ sub main()
 
   !count.set(3)                          # squared 36
   !count.set(5)                          # squared 100
-  print(doubled.get(), squared.get())   # 10 100
+  print(doubled.get(), squared.get())    # 10 100
 
 # expect:
 # 2 4

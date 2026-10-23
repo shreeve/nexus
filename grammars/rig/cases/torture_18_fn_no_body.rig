@@ -1,0 +1,4 @@
+fun half_built(x: Int) -> Int
+
+sub main()
+  print(half_built(2))

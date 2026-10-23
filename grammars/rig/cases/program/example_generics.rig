@@ -1,0 +1,85 @@
+# Generics: square brackets hold what is known at compile time. A generic
+# type, a generic method with a type parameter of its own, and generic
+# functions whose type arguments are inferred. An owning `T` moves and
+# drops like any owning value. A compile-time integer sizes arrays: a
+# ring buffer's capacity is part of its type, and a function's array
+# length is inferred from its argument.
+
+HISTORY = 3
+
+obj Tape
+  label: ?String
+  minutes: Int
+
+  drop(!@)
+    print("eject", @label)
+
+obj Stack[T]
+  items: List[T]
+
+  sub push(!@, x: T)
+    !@items.push(<x)
+
+  fun pop(!@) -> T?
+    (!@items).pop()
+
+  fun map[U](?@, f: fun(?T) -> U) -> Stack[U]
+    out = Stack[U](items: List())
+    for x in ?@items
+      !out.push(f(?x))
+    out
+
+obj Ring[T, n: Int]
+  items: [n]T
+  count: Int = 0
+
+  sub put(!@, x: T)
+    @items[@count % n] = x
+    @count += 1
+
+  fun last(?@) -> T
+    @items[(@count - 1) % n]
+
+fun total[n: Int](xs: [n]Int) -> Int
+  sum = 0
+  for x in xs
+    sum += x
+  sum
+
+fun minutes(t: ?*Tape) -> Int
+  t.minutes
+
+fun max[T](a: T, b: T) -> T
+  a if a > b else b
+
+fun pick[T](a: T, b: T, first: Bool) -> T
+  if first
+    return <a
+  <b
+
+sub main()
+  tapes = Stack[*Tape](items: List())
+  !tapes.push(*Tape(label: "jazz", minutes: 45))
+  !tapes.push(*Tape(label: "rock", minutes: 38))
+  lengths =! tapes.map(minutes)
+  print(lengths.items, max(lengths.items[0], lengths.items[1]))
+  spare =! pick(Tape(label: "demo", minutes: 3), Tape(label: "blank", minutes: 0), false)
+  print("spare", spare.label)
+  if (!tapes).pop() as t
+    print("played", t.label)
+  print("left", tapes.items.len, max[Float](1, 2))
+  recent = Ring[Int, HISTORY](items: [HISTORY of 0])
+  for m in [45, 38, 60, 12]
+    !recent.put(m)
+  print(recent.items, recent.last(), total(recent.items))
+
+# expect:
+# [45, 38] 45
+# eject demo
+# spare blank
+# played rock
+# eject rock
+# left 1 2.0
+# [12, 38, 60] 12 110
+# eject blank
+# eject jazz

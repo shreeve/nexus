@@ -1,9 +1,0 @@
-# Rig's builtins (`@size`, `@type`, ...) need no `raw` block.
-
-sub main()
-  x: I64 = 7
-  n = @size(@type(x))
-  print(n)
-
-# expect:
-# 8

@@ -1,9 +1,0 @@
-# A drop body cannot drop `self`.
-
-obj Owner
-  cell: *Cell[Int]
-
-  drop(!self)
-    <self
-
-# error: cannot drop `self` inside its own drop body

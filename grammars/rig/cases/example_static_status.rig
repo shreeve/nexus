@@ -1,0 +1,46 @@
+# Text that lives for the whole program is a `Static`: a literal, or
+# text derived only from literals. It carries no loan, so it can be kept
+# where loans are not tracked: in a shared `Cell`, in a `Signal` that
+# tells its subscribers, and in an owned closure. A `?String` that may
+# view a `String` cannot go there. A `Static` is read as a `?String` where
+# text is only read, as `show` does.
+
+obj Phase
+  name: Static
+  step: Int
+
+fun show(label: ?String, n: Int) -> Int
+  print(label, n)
+  n + 1
+
+fun announcer(prefix: Static) -> *fun(Phase) -> Int
+  *|+prefix, p: Phase|
+    print(prefix, p.name, show(p.name, p.step))
+    p.step + 1
+
+sub main()
+  status = *Signal("idle")
+  !status.subscribe(*|~status|
+    if *status as s
+      print("status is now", s.get())
+  )
+  !status.set("running")
+  !status.set("done")
+
+  phase: *Cell[Phase] = *Cell(Phase(name: "start", step: 0))
+  say = announcer("phase:")
+  first = say(phase.get())
+  !phase.set(Phase(name: "finish", step: first))
+  say(phase.get())
+
+  title = "report"
+  print(title[..3], title == "report", "final" if first > 0 else "none")
+
+# expect:
+# status is now running
+# status is now done
+# start 0
+# phase: start 1
+# finish 1
+# phase: finish 2
+# rep true final

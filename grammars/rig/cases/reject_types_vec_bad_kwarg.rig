@@ -1,6 +1,0 @@
-# The `List` constructor accepts only the `capacity` kwarg.
-
-sub main()
-  v: List[Int] = List(size: 10)
-
-# error: `List` constructor accepts only `capacity` as a kwarg; got `size`

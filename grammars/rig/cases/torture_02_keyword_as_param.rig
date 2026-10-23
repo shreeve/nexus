@@ -1,0 +1,6 @@
+# Parameter named `sub`.
+fun f(sub: Int) -> Int
+  sub + 1
+
+sub main()
+  print(f(3))

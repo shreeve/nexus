@@ -1,0 +1,24 @@
+# Text has four sizes: a byte is what a String stores, a rune is one
+# Unicode code point, a unit is one UTF-16 code unit, and a char is what a
+# reader sees as one character (a grapheme). Each count names its unit.
+
+use std.text
+use std.utf8
+use std.utf16
+
+sub main()
+  word = "cafe\u{301}-\u{1f44b}\u{1f3fd}"
+  print(word, word.len, utf8.rune_count(word), utf16.unit_count(word), text.char_count(word))
+  for c in text.chars(word)
+    print(c, c.len)
+  print(text.first_chars(word, 4), text.last_chars(word, 1))
+
+# expect:
+# café-👋🏽 15 8 10 6
+# c 1
+# a 1
+# f 1
+# é 3
+# - 1
+# 👋🏽 8
+# café 👋🏽

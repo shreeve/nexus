@@ -1,0 +1,53 @@
+# Sorting with a comparator: a closure passed to a function. The
+# parameter `less: ?fun(?T, ?T) -> Bool` views something to call, so
+# the literal is written bare in the call and nothing is allocated. Its
+# captures say what it views for the call: `|!compares|` counts into a
+# local while `sort` runs. `map` infers `U` from what the literal
+# returns. The standard library has the same in `std.sort`; this one is
+# written out to show how a closure is passed.
+
+obj Player
+  name: ?String
+  score: Int
+
+sub sort[T](xs: ![]T, less: ?fun(?T, ?T) -> Bool)
+  i = 1
+  while i < xs.len : i += 1
+    j = i
+    while j > 0 and less(?xs[j], ?xs[j - 1]) : j -= 1
+      !xs.swap(j, j - 1)
+
+fun map[T, U](xs: []T, f: ?fun(?T) -> U) -> List[U]
+  out: List[U] = List()
+  for x in xs
+    !out.push(f(?x))
+  out
+
+fun by_score(a: ?Player, b: ?Player) -> Bool
+  a.score > b.score
+
+sub main()
+  nums: List[Int] = List()
+  for n in [5, 3, 8, 1]
+    !nums.push(n)
+  compares = 0
+  sort(!nums[..], |!compares, a, b|
+    compares += 1
+    a < b
+  )
+  print(nums, compares)
+
+  words = ["pear", "fig", "apple"]
+  sort(!words[..], |a, b| a < b)
+  lens =! map(?words[..], |w| w.len)
+  print(words, lens)
+
+  team = [Player(name: "ada", score: 7), Player(name: "bob", score: 9)]
+  sort(!team[..], by_score)
+  names =! map(?team[..], |p| p.name)
+  print(names)
+
+# expect:
+# [1, 3, 5, 8] 5
+# ["apple", "fig", "pear"] [5, 3, 4]
+# ["bob", "ada"]

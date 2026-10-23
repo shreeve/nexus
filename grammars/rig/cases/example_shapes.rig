@@ -15,8 +15,8 @@ obj Canvas
   width: Int
   height: Int
 
-  fun fits(?self, s: ?Shape) -> Bool
-    area(s) <= self.width * self.height
+  fun fits(?@, s: ?Shape) -> Bool
+    area(s) <= @width * @height
 
 obj Pair[T]
   left: T

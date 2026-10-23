@@ -11,16 +11,17 @@
         _
         `count`
         (shared (generic_inst `Cell` `Int`)@334..343)@333..343
-        (share (call `Cell` `start`)@347..358)@346..358)@326..358
+        (share (call _ `Cell` `start`)@347..358)@346..358)@326..358
       (share
         (lambda
-          (captures (cap_clone `count`)@363..369)@363..369
+          (captures (cap_clone `count` _)@363..369)@363..369
           (`step`)@362..376
           (block
             (call
+              _
               (member (write `count`)@381..387 `set`)@382..391
-              (+ (call (member `count` `get`)@392..401)@392..403 `step`)@392..410)@382..411
-            (call (member `count` `get`)@416..425)@416..427)@381..429)@362..429)@361..429)@326..429
+              (+ (call _ (member `count` `get`)@392..401)@392..403 `step`)@392..410)@382..411
+            (call _ (member `count` `get`)@416..425)@416..427)@381..429)@362..429)@361..429)@326..429
     _
     _
     _)@275..429
@@ -35,23 +36,24 @@
         _
         `count`
         (shared (generic_inst `Cell` `Int`)@450..459)@449..459
-        (share (call `Cell` `0`)@463..470)@462..470)@442..470
+        (share (call _ `Cell` `0`)@463..470)@462..470)@442..470
       (set
         _
         `bump`
         _
         (lambda
-          (captures (cap_clone `count`)@481..487)@481..487
+          (captures (cap_clone `count` _)@481..487)@481..487
           _
           (block
             (call
+              _
               (member (write `count`)@489..495 `set`)@490..499
-              (+ (call (member `count` `get`)@500..509)@500..511 `1`)@500..515)@490..516)@489..516)@480..516)@473..516
-      (call `bump`)@519..525
-      (call `bump`)@528..534
-      (call `print` (call (member `count` `get`)@543..552)@543..554)@537..555
-      (set fixed `next` _ (call `make_counter` `100`)@567..584)@559..584
-      (call `print` (call `next` `1`)@593..600 (call `next` `10`)@602..610)@587..611)@442..637
+              (+ (call _ (member `count` `get`)@500..509)@500..511 `1`)@500..515)@490..516)@489..516)@480..516)@473..516
+      (call _ `bump`)@519..525
+      (call _ `bump`)@528..534
+      (call _ `print` (call _ (member `count` `get`)@543..552)@543..554)@537..555
+      (set fixed `next` _ (call _ `make_counter` `100`)@567..584)@559..584
+      (call _ `print` (call _ `next` `1`)@593..600 (call _ `next` `10`)@602..610)@587..611)@442..637
     _
     _
     _)@429..637)@275..637

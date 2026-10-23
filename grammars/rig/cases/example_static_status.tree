@@ -1,0 +1,99 @@
+(module
+  (struct `Phase` _ _ (: `name` `Static`)@408..420 (: `step` `Int`)@423..432)@396..434
+  (fun
+    `show`
+    _
+    ((: `label` (read_view `String`)@450..457)@443..457 (: `n` `Int`)@459..465)@442..466
+    `Int`
+    _
+    _
+    (block (call _ `print` `label` `n`)@476..491 (+ `n` `1`)@494..499)@476..501
+    _
+    _
+    _)@434..501
+  (fun
+    `announcer`
+    _
+    ((: `prefix` `Static`)@515..529)@514..530
+    (shared (fun_type (`Phase`)@539..544 `Int` _)@535..552)@534..552
+    _
+    _
+    (block
+      (share
+        (lambda
+          _
+          ((cap_clone _ `prefix`)@557..564 (: `p` `Phase`)@566..574)@556..575
+          (block
+            (call
+              _
+              `print`
+              `prefix`
+              (member `p` `name`)@594..600
+              (call _ `show` (member `p` `name`)@607..613 (member `p` `step`)@615..621)@602..622)@580..623
+            (+ (member `p` `step`)@628..634 `1`)@628..638)@580..640)@556..640)@555..640)@555..640
+    _
+    _
+    _)@501..640
+  (sub
+    `main`
+    _
+    ()@648..650
+    _
+    _
+    (block
+      (set _ `status` _ (share (call _ `Signal` `"idle"`)@663..677)@662..677)@653..677
+      (write
+        (call
+          _
+          (member `status` `subscribe`)@681..697
+          (share
+            (lambda
+              _
+              ((cap_weak _ `status`)@700..707)@699..708
+              (block
+                (if
+                  (as (share `status`)@716..723 `s`)@716..728
+                  (block
+                    (call
+                      _
+                      `print`
+                      `"status is now"`
+                      (call _ (member `s` `get`)@758..763)@758..765)@735..766)@735..769
+                  _)@713..769)@713..769)@699..769)@698..769)@681..770)@680..770
+      (write (call _ (member `status` `set`)@774..784 `"running"`)@774..795)@773..795
+      (write (call _ (member `status` `set`)@799..809 `"done"`)@799..817)@798..817
+      (set
+        _
+        `phase`
+        (shared (generic_inst `Cell` `Phase`)@829..840)@828..840
+        (share
+          (call
+            _
+            `Cell`
+            (call _ `Phase` (kwarg `name` `"start"`)@855..868 (kwarg `step` `0`)@870..877)@849..878)@844..879)@843..879)@821..879
+      (set _ `say` _ (call _ `announcer` `"phase:"`)@888..907)@882..907
+      (set
+        _
+        `first`
+        _
+        (call _ `say` (call _ (member `phase` `get`)@922..931)@922..933)@918..934)@910..934
+      (write
+        (call
+          _
+          (member `phase` `set`)@938..947
+          (call
+            _
+            `Phase`
+            (kwarg `name` `"finish"`)@954..968
+            (kwarg `step` `first`)@970..981)@948..982)@938..983)@937..983
+      (call _ `say` (call _ (member `phase` `get`)@990..999)@990..1001)@986..1002
+      (set _ `title` _ `"report"`)@1006..1022
+      (call
+        _
+        `print`
+        (index `title` (.. _ `3` _)@1037..1040)@1031..1041
+        (== `title` `"report"`)@1043..1060
+        (if (> `first` `0`)@1073..1082 `"final"` `"none"`)@1062..1094)@1025..1095)@653..1225
+    _
+    _
+    _)@640..1225)@396..1225

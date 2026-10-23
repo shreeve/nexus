@@ -16,7 +16,7 @@
 #     blocks as anywhere else and ends with the bracket around it on a
 #     line of its own;
 #   * reads a reserved word (each is a lexer rule) as a name where it
-#     names a member or a builtin: after `.` or `@`, before `:` inside
+#     names a member or a builtin: after `.` or `$`, before `:` inside
 #     ( ), and in a member list before `:` or after `fun` / `sub`;
 #   * joins a line that starts with `.` and a name, indented deeper than a
 #     complete statement that opens no block, to that statement (a method
@@ -24,22 +24,30 @@
 #   * classifies three contextual words: `new` is a keyword only at the
 #     start of a statement before a name, `obj` only at the
 #     start of a declaration (after any `pub`) before a name, `inline`,
-#     `called`, and `rarely` only there before `fun` or `sub`, and `of` only after
+#     and `called` only there before `fun` or `sub`, `rarely` only at the
+#     start of a statement alone on its line, and `of` only after
 #     a value directly inside [ ] (`[n of x]`); each is a name everywhere
 #     else (the other contextual words are the parser's: see @keywords);
 #   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
 #     open range (`xs[a..]`, `xs[..]`);
-#   * marks an `@` as LABEL_AT, a label, when no `(` touches the name
-#     after it and it stands where a statement starts or after `break` or
-#     `continue` (`@outer for`, `break @outer (x)`); `@size(T)`, with the
-#     `(` touching the name, is a builtin call. After a jump, `@name` is
-#     always a label, and a `(` touching it is an error;
+#   * marks a `&` that touches a `)` and has no operand touching it on
+#     the right as TASK_AMP, which makes the call before it a task
+#     (`f(x)&`); any other `&` is bitwise and (`a & b`, `f()&b`);
+#   * marks a `$` as LABEL, a label, where a statement starts, before a
+#     name and the `:` touching it (`$outer: for`, or `$outer:` on a line
+#     of its own over the block it names), the `:` as LABEL_COLON, and
+#     after `break` or `continue` (`break $outer (x)`); a `$` touching a
+#     name that touches a `(` is a builtin call (`$size(T)`), anywhere;
+#   * reads `@`, self, as a name, and an `@` touching a name as
+#     self's member, with a `.` between them (`@hits` is the
+#     member access `@ . hits`);
 #   * classifies the tokens the parser cannot tell apart by its own
 #     state, by position, never by spacing:
 #
 #       |+a, b|  ||  *|a|            closure bar list (vs bitwise `|`)
 #       ?? return                    `??` before a jump (vs the operator)
 #       while c : i += 1             a `while` step (vs a keyword argument's `:`)
+#       x = :width                   a symbol's `:`, where an operand starts
 #       a if c else b                ternary vs postfix guard `stmt if c`
 #       if f() as a, b               the names `as` binds (vs a list's `,`)
 #
@@ -50,7 +58,7 @@
 #     what it follows, and an infix operator has the same spacing on
 #     both sides.
 #
-# The grammar has no LALR conflicts; see docs/INTERNALS.md (Conflicts policy).
+# The grammar has no LALR conflicts; see docs/internals/INTERNALS.md (Conflicts policy).
 # ==============================================================================
 
 @lang = "rig"
@@ -91,10 +99,11 @@ tokens
     new             # a keyword only at statement start (`new x = ...`)
     obj             # a keyword only at the start of a type declaration (`obj Point`)
     inline          # a keyword only before the `fun` or `sub` of a declaration
-    rarely          # a keyword only before the `fun` or `sub` of a declaration
+    rarely          # a keyword only alone on a line: the block it starts rarely runs
     called          # a keyword only before the `fun` or `sub` of a declaration
     not
     or
+    panic
     pass
     pub
     raw
@@ -145,7 +154,8 @@ tokens
     lshift          # <<
     lshift_wrap     # <<%  wrapping left shift
     rshift          # >>
-    at              # @
+    at              # @   self, a name: `@`, and `@name` its member
+    dollar          # $   a builtin call (`$size(T)`)
     assign          # =
     fixed_assign    # =!  a binding that never changes (`x =! e`)
     plus_assign     # +=
@@ -176,6 +186,7 @@ tokens
     fat_arrow       # =>
     dot             # .
     dotdot          # ..
+    dotdot_eq       # ..=
 
     # Layout (produced by the rewriter)
     indent
@@ -191,9 +202,14 @@ tokens
     of              # of  after a value inside [ ]: a fill literal `[n of x]`
     dotdot_open     # ..  directly before `]`: an open range `xs[a..]`, `xs[..]`
     nullish_jump    # ??  directly before `return`, `break`, or `continue`
+    catch_jump      # catch  before a jump, after any `|e|`: `f() catch return -1`
+    catch_block     # catch  before `|e|` and the end of the line: a block handler
+    task_amp        # &   touching a `)`, with no operand touching it: a task, `f(x)&`
     step_colon      # :   the first `:` of a `while` header: its step
+    symbol_colon    # :   where an operand starts, touching a name: a symbol, `:width`
     as_comma        # ,   between the names `as` binds: `if f() as a, b`
-    label_at        # @   before a name no `(` touches: a label, `@outer for`, `break @outer`
+    label           # $   before a name no `(` touches: a label, `$outer:`, `break $outer`
+    label_colon     # :   touching a label's name where it is declared: `$outer:`
 
     # Misc
     comment
@@ -263,6 +279,7 @@ tokens
 "->"                                        → arrow
 "=>"                                        → fat_arrow
 "??"                                        → nullish
+"..="                                       → dotdot_eq
 ".."                                        → dotdot
 "<<%"                                       → lshift_wrap
 "<<"                                        → lshift
@@ -282,6 +299,7 @@ tokens
 '^'                                         → caret
 '~'                                         → tilde
 '@'                                         → at
+'$'                                         → dollar
 '='                                         → assign
 '('                                         → lparen
 ')'                                         → rparen
@@ -316,6 +334,7 @@ tokens
 "match"                                     → match
 "not"                                       → not
 "or"                                        → or
+"panic"                                     → panic
 "pass"                                      → pass
 "pub"                                       → pub
 "raw"                                       → raw
@@ -356,7 +375,7 @@ tokens
 # used) and generates the `Tag` and `Role` enums and the `ir` accessors
 # the compiler reads the tree with. A node always has all of its slots:
 # `_` where an optional role (`?`) is absent. A `...role` takes the
-# remaining children. See docs/INTERNALS.md (The semantic IR).
+# remaining children. See docs/internals/INTERNALS.md (The semantic IR).
 #
 # Role types: `leaf` is a name or literal; `group` an untagged list (a
 # parameter list); `tag(...)` a marker; `a|b` a node of one of those
@@ -366,13 +385,15 @@ tokens
     # Declarations
     module                      ...decls
     use                         name alias:leaf?
-    fun                         name:leaf tparams:group? params:group? returns? origins:group? keeps:group? body:block? owner? owner_params:group? mark:inline|called|rarely?
-    sub                         name:leaf tparams:group? params:group? fails:tag(fails)? keeps:group? body:block? owner? owner_params:group? mark:inline|called|rarely?
+    fun                         name:leaf tparams:group? params:group? returns? origins:group? keeps:group? body:block? owner? owner_params:group? mark:inline|called?
+    sub                         name:leaf tparams:group? params:group? fails? keeps:group? body:block? owner? owner_params:group? mark:inline|called?
     lambda                      captures:captures? params:group? body:block
-    struct                      name:leaf unique:tag(unique)? ...members
-    enum, errors                name:leaf ...members
-    generic_struct              name:leaf tparams:group unique:tag(unique)? ...members
-    generic_enum                name:leaf tparams:group ...members
+    struct                      name:leaf unique:tag(unique)? apis:group? ...members
+    enum                        name:leaf apis:group? ...members
+    errors                      name:leaf ...members
+    error_join                  name:leaf parts:group ...members
+    generic_struct              name:leaf tparams:group unique:tag(unique)? apis:group? ...members
+    generic_enum                name:leaf tparams:group apis:group? ...members
     type                        name:leaf type
     test                        name:leaf body:block
     pub                         decl
@@ -382,13 +403,17 @@ tokens
     zig_extern                  file:leaf ...decls
     zig_const                   name:leaf type
     drop_decl                   params:group body:block
-    inline, called, rarely                          # a function's marker
+    inline, called                                  # a function's marker
+    rarely                                          # a block's first line: the block rarely runs
     labeled                     label:leaf stmt
 
     # Parameters, fields, and enum members
     ":"                         name:leaf type
+    bound                       name:leaf apis:group   # `[K: Hash + Print]`, two or more APIs; one is a `:`
+    once                        name:leaf type   # `f: once ?fun() -> T`; the Parser wrapper makes it a `:`
     default                     name:leaf type value
     valued                      name:leaf value
+    none_value                  marker:leaf field:leaf value    # `none id == 0`; the checker requires `none`
     variant                     name:leaf params:group
 
     # Bindings: `op` is the binding kind (see BindingKind in src/rig.zig)
@@ -406,17 +431,22 @@ tokens
     if                          cond then else?
     as                          value name:leaf
     as_results                  value names:group  # `if f() as a, b`
+    as_pattern                  value pattern      # `if s as .circle(r)`, as parsed
+    as_match                    @wrapper           # the one-arm `match` it is (`Parser.asMatch`)
     while                       cond step? body:block else:block?
     for                         mode:tag(iter|read|write|move) var:leaf? index:leaf? source body:block else:block?
     match                       subject ...arms:arm
     arm                         pattern guard? body
     alt_pattern                 ...alts
-    range_pattern               lo hi
-    variant_pattern             name:leaf ...bindings
+    range_pattern               lo hi inclusive:tag(inclusive)?
+    set_pattern                 name:leaf set
+    variant_pattern             name ...bindings   # `.name(...)`, or `E.name(...)`: a member
     enum_lit                    name:leaf
+    symbol                      name:leaf
     return                      value?
     break                       value? label:leaf?
     continue                    label:leaf?
+    panic                       ...args          # `panic(a, b)`: ends the program
     defer, errdefer             body
     raw_block                   body:block
     propagate, propagate_none   value
@@ -424,16 +454,20 @@ tokens
     block                       ...stmts
 
     # Closures: the Parser wrapper splits a bar list into captures and
-    # parameters
+    # parameters. A capture of a field path keeps the lend it makes,
+    # `(read (member p a))` for `|?p.a|`, as its value, and a name that
+    # spans the path from its sigil (`rig.isPathCapture`).
     captures                    ...caps:cap_clone|cap_move|cap_weak|cap_read|cap_write @wrapper
-    cap_clone, cap_move, cap_weak, cap_read, cap_write  name:leaf
+    cap_clone, cap_move, cap_weak, cap_read, cap_write  name:leaf? value?
 
     # Calls and access
-    call                        callee ...args
+    call                        task:tag(task)? callee ...args
     builtin                     name:leaf ...args
     member                      object name:leaf
+    wait                        operand          # `>t`: rewritten by the Parser wrapper to `<t.wait()`'s tree; no pass sees it
     index                       object index
     inst                        object ...args
+    ct_call                     callee ...args @wrapper  # `cap[8]`: a call of a compile-time function, made by sema of the `index`, `inst`, or `generic_inst` that names one (`cteval.markCalls`)
     array                       ...elems
     array_fill                  size value
     tuple                       ...elems         # `(a, b)`: parsed only to be rejected
@@ -446,7 +480,8 @@ tokens
     "==", "!=", "<", ">", "<=", ">="  left right
     "&", "|", "^", "<<", "<<%", ">>"   left right
     "??", and, or               left right
-    ".."                        left? right?
+    ".."                        left? right? inclusive:tag(inclusive)?
+    "..="                       left right       # `a..=b`: rewritten by the Parser wrapper to `(.. a b inclusive)`; no pass sees it
     neg, not                    operand
 
     # Ownership sigils (`~T`, `?T`, `!T`, `*T`, `^T` in type position are
@@ -454,10 +489,11 @@ tokens
     move, read, write, clone, share, weak, box  operand
 
     # Types
-    optional, error_union, read_view, write_view, shared, boxed, slice  type
+    optional, read_view, write_view, shared, boxed, slice  type
+    error_union                 type set?
     generic_inst                name ...args
     array_type                  size type
-    fun_type                    params:group? returns? fails:tag(fails)?
+    fun_type                    params:group? returns? fails?
     results_type                ...types         # `-> (Int, Int)`: a function's results
 
 @display
@@ -469,12 +505,12 @@ tokens
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument"
-    OF: "`of`", OBJ: "`obj`", INLINE: "`inline`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`", KEEPS: "`keeps`"
-    DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`", AS_COMMA: "`,`", LABEL_AT: "`@`"
-    TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
+    OF: "`of`", OBJ: "`obj`", INLINE: "`inline`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`", KEEPS: "`keeps`", ONCE: "`once`"
+    DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", TASK_AMP: "`&`", STEP_COLON: "`:`", SYMBOL_COLON: "`:`", AS_COMMA: "`,`", LABEL: "`$`", LABEL_COLON: "`:`"
+    TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`", CATCH_JUMP: "`catch`", CATCH_BLOCK: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
     ERROR: "`error`", EXTERN: "`extern`", FOR: "`for`", FUN: "`fun`", IF: "`if`", IN: "`in`"
-    MATCH: "`match`", NEW: "`new`", NOT: "`not`", OR: "`or`", PASS: "`pass`", PUB: "`pub`"
+    MATCH: "`match`", NEW: "`new`", NOT: "`not`", OR: "`or`", PANIC: "`panic`", PASS: "`pass`", PUB: "`pub`"
     RAW: "`raw`", RETURN: "`return`", SUB: "`sub`", TEST: "`test`", TRY: "`try`"
     TYPE: "`type`", USE: "`use`", WHILE: "`while`", ZIG: "`zig`"
     ASYNC: "`async`", AWAIT: "`await`", CONST: "`const`", IMPL: "`impl`"
@@ -484,11 +520,15 @@ tokens
     "+%=": "`+%=`", "-%=": "`-%=`", "*%=": "`*%=`", "+%": "`+%`", "-%": "`-%`", "*%": "`*%`"
     "+|=": "`+|=`", "-|=": "`-|=`", "+|": "`+|`", "-|": "`-|`"
     ":": "`:`", "->": "`->`", "(": "`(`", ")": "`)`", "[": "`[`"
-    "]": "`]`", ",": "`,`", ".": "`.`", "..": "`..`", "=>": "`=>`", "~": "`~`"
-    "@": "`@`", "==": "`==`", "!=": "`!=`", "<": "`<`", ">": "`>`", "<=": "`<=`"
+    "]": "`]`", ",": "`,`", ".": "`.`", "..": "`..`", "..=": "`..=`", "=>": "`=>`", "~": "`~`"
+    "$": "`$`", "==": "`==`", "!=": "`!=`", "<": "`<`", ">": "`>`", "<=": "`<=`"
     ">=": "`>=`", "??": "`??`", "|": "`|`", "^": "`^`", "&": "`&`", "<<": "`<<`", "<<%": "`<<%`"
     ">>": "`>>`", "+": "`+`", "-": "`-`", "*": "`*`", "/": "`/`", "%": "`%`"
     "!": "`!`", "?": "`?`"
+
+# `sub f()!`'s marker in its `fails` role, which holds the declared set
+# instead when there is one (`sub f()!E`).
+@tags fails
 
 @errors
     stmt: "a statement", block: "an indented block", type: "a type"
@@ -516,31 +556,41 @@ tokens
     scope-name          source.rig
     extensions          rig
     line-comment        "#"
-    indent              line-start [ \t]* ("pub" [ \t]+)? ("called" | "rarely" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)? line-end
+    indent              line-start [ \t]* ('$' [A-Za-z_] [A-Za-z0-9_]* ':' ([ \t]+ ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?)? | ("pub" [ \t]+)? ("called" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)?) [ \t]* line-end
     dedent              line-start [ \t]* "else"
 
     keyword             ("fun" | "sub") [ \t]+ function:([A-Za-z_] [A-Za-z0-9_]*)
     keyword             ("obj" | "enum" | "type") [ \t]+ type:([A-Za-z_] [A-Za-z0-9_]*)
-    keyword             ("called" | "rarely" | "inline") after [ \t]+ ("fun" | "sub")
+    keyword             ("called" | "inline") after [ \t]+ ("fun" | "sub")
+    keyword             line-start [ \t]* "rarely" not after [ \t]* [^ \t#]
     keyword             line-start [ \t]* "new" after [ \t]+ [A-Za-z_]
     keyword             "of" before ' ' after ' '
-    keyword.control     ("break" | "continue") [ \t]+ label:('@' [A-Za-z_] [A-Za-z0-9_]*)
-    label               '@' [A-Za-z_] [A-Za-z0-9_]* after [ \t]+ ("for" | "while" | "match" | "raw")
-    function.builtin    '@' [a-z_]+ after '('
-    storage.modifier    [*] not before [A-Za-z0-9_)\]] after '<' [A-Za-z_(\[]
-    storage.modifier    [<?!+^*~] not before [A-Za-z0-9_)\]] after [A-Za-z_(\[]
-    storage.modifier    [!?] before [A-Za-z0-9_)\]] not after [A-Za-z0-9_(\[=?]
+    keyword             "from" [ \t]+ "static" not after [A-Za-z0-9_]
+    keyword             ("from" | "keeps") before ' ' after ' ' [A-Za-z_@]
+    keyword             "once" before ': ' after ' ' [?*A-Za-z_(]
+    keyword             "unique" before [A-Za-z0-9_\]] ' ' not after [ \t]* [^ \t#]
+    keyword.control     ("break" | "continue") [ \t]+ label:('$' [A-Za-z_] [A-Za-z0-9_]*)
+    label               '$' [A-Za-z_] [A-Za-z0-9_]* ':'
+    function.builtin    '$' [A-Za-z_]+ after '('
+    storage.modifier    [<?!+^*~] not before [A-Za-z0-9_)\]@] after [<?!^*~]* [A-Za-z_(\[@]
+    storage.modifier    '*' not before [A-Za-z0-9_)\]@] after '|'
+    storage.modifier    [?!~] before ']' after [?!^*~]* [A-Za-z_]
+    storage.modifier    [*^] before ']' after [?!^*~]* ([A-Z] [a-z0-9] | ("fun" | "sub") '(')
+    storage.modifier    '>' not before [A-Za-z0-9_)\]@=>\-] after [A-Za-z_]
+    storage.modifier    '&' before ')' not after [^ \t,)\]#]
+    storage.modifier    [!?] before [A-Za-z0-9_)\]@] not after [A-Za-z0-9_(\[=?@]
+    storage.modifier    '!' before '?' not after [A-Za-z0-9_(\[=?@]
     variable.parameter  [A-Za-z_] [A-Za-z0-9_]* after ':' not before [A-Za-z0-9_.]
     type                [A-Z] [A-Za-z0-9_]* not before [A-Za-z0-9_]
+    constant.symbol     ':' [A-Za-z_] [A-Za-z0-9_]* (('-' | '.') [A-Za-z0-9_]+)* not before [A-Za-z0-9_)\]]
 
     keyword.control     "if" "else" "while" "for" "in" "match" "return" "break" "continue"
-                        "pass" "defer" "errdefer" "catch" "try" "await" "yield"
+                        "pass" "panic" "defer" "errdefer" "catch" "try" "await" "yield"
     keyword             "fun" "sub" "enum" "type" "use" "pub" "const" "extern" "zig" "test"
                         "raw" "drop" "error" "as" "async" "impl" "trait" "when" "where"
-    keyword             ctx
     keyword.operator    "and" "or" "not"
     constant            "true" "false" "none"
-    variable.special    "self"
+    variable.special    '@'
     constant.numeric    INTEGER REAL
     string              STRING_DQ STRING_SQ
     string.escape       '\\' [^\x00-\x1f\x7f] within STRING_DQ
@@ -551,16 +601,17 @@ tokens
     operator            "+" "-" "*" "/" "%" "+%" "-%" "*%" "+|" "-|" "==" "!=" "<" ">" "<=" ">="
                         "!" "?" "??" "|" "&" "^" "~" "<<" "<<%" ">>" "=" "=!" "+=" "-=" "*=" "/=" "%="
                         "&=" "|=" "^=" "<<=" "<<%=" ">>=" "+%=" "-%=" "*%=" "+|=" "-|=" "->" "=>"
-    punctuation         "(" ")" "[" "]" "," ":" "." ".." "@"
+    punctuation         "(" ")" "[" "]" "," ":" "." ".." "..="
 
 # `unique`, `from`, `static` and `keeps` lex as names, and the parser
 # reads one as a keyword where its state takes the keyword: `unique` after
 # an obj header's name or type parameters (`obj Random unique`), `from`
 # after a function's result type (`-> ?Item from a`), `static` right after
 # that `from`, and `keeps` at the end of a function's header (`sub
-# watch(!self, s: ?String) keeps s`). Everywhere else each is a name.
+# watch(!@, s: ?String) keeps s`), and `once` before a parameter's type
+# (`f: once ?fun() -> Int`). Everywhere else each is a name.
 @keywords
-    ctx  unique from static keeps
+    ctx  unique from static keeps once
 
 @as IDENT = [ctx!]
 
@@ -584,7 +635,8 @@ stmt     = use
          | ext_fun
          | ext_sub
          | zig_ext
-         | LABEL_AT label:name stmt:stmt            → (labeled)
+         | LABEL label:name LABEL_COLON stmt:stmt   → (labeled)
+         | LABEL label:name LABEL_COLON stmt:block  → (labeled)
          | simple
          | simple POST_IF cond:value                → (if then:(block 1))
 
@@ -602,6 +654,7 @@ simple   = tail
          | NEW target:name "=!" value:tail          → (set op:shadow_fixed)
          | NEW target:name ":" type:type "=!" value:tail → (set op:shadow_fixed)
          | PASS                                     → (pass)
+         | RARELY                                   → (rarely)  # a block's first line (the Parser wrapper)
          | RETURN [value:tail]                      → (return)
          | RETURN rvals                             → (return value:(results ...2))
          | targets:dtargets "=" value:tail          → (destructure)
@@ -609,8 +662,8 @@ simple   = tail
          | NEW targets:dtargets "=" value:tail      → (destructure op:shadow)
          | targets:dtargets "=!" value:tail         → (destructure op:fixed)
          | NEW targets:dtargets "=!" value:tail     → (destructure op:shadow_fixed)
-         | BREAK [LABEL_AT label:name] [value:tail] → (break)
-         | CONTINUE [LABEL_AT label:name]           → (continue)
+         | BREAK [LABEL label:name] [value:tail] → (break)
+         | CONTINUE [LABEL label:name]           → (continue)
          | DEFER body:(block | simple)              → (defer)
          | ERRDEFER body:(block | simple)           → (errdefer)
          | RAW body:block                           → (raw_block)
@@ -661,19 +714,18 @@ mpath    = name
 # Parser wrapper can reject it with the header to write.
 #
 # A marker before `fun` or `sub` asks for a speed, never a meaning:
-# `inline` inlines the function at every call, `called` keeps every call
-# a call, and `rarely` says it is rarely called, so it stays out of the
-# code that calls it.
+# `inline` inlines the function at every call, and `called` keeps every
+# call a call. How often code runs is a block's first line, `rarely`.
 mark     = INLINE                                   → (inline)
          | CALLED                                   → (called)
-         | RARELY                                   → (rarely)
 
 fun      = [mark:mark] FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] [keeps:keeps] body:block → (fun)
 sub      = [mark:mark] SUB name:name [tparams:tparams] [params:params] [keeps:keeps] body:block → (sub)
          | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" [keeps:keeps] body:block → (sub fails:fails)  # `sub save(p: Page)!`
+         | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" fails:tname [keeps:keeps] body:block → (sub)  # `sub save(p: Page)!IoError`
 
 # A method declared outside its type's body, in the type's module:
-# `fun Point.norm(?self) -> Float`, `fun Wrap[T].map[U](...)`, with the
+# `fun Point.norm(?@) -> Float`, `fun Wrap[T].map[U](...)`, with the
 # type's parameters named as its declaration names them. The Parser
 # wrapper moves it into the body (`attachMethods`). A qualified owner,
 # `fun geo.Point.m()`, parses only to be rejected.
@@ -681,15 +733,17 @@ method   = [mark:mark] FUN owner:name [owner_params:tparams] "." name:name [tpar
          | [mark:mark] FUN owner:qowner "." name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] [keeps:keeps] body:block → (fun)
          | [mark:mark] SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] [keeps:keeps] body:block → (sub)
          | [mark:mark] SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] "!" [keeps:keeps] body:block → (sub fails:fails)
+         | [mark:mark] SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] "!" fails:tname [keeps:keeps] body:block → (sub)
          | [mark:mark] SUB owner:qowner "." name:name [tparams:tparams] [params:params] [keeps:keeps] body:block → (sub)
          | [mark:mark] SUB owner:qowner "." name:name [tparams:tparams] [params:params] "!" [keeps:keeps] body:block → (sub fails:fails)
+         | [mark:mark] SUB owner:qowner "." name:name [tparams:tparams] [params:params] "!" fails:tname [keeps:keeps] body:block → (sub)
 
 qowner   = object:name "." name:name                → (member)
 
 returns  = "->" type                                → 2
 
 # What a function's result views, after its type: some of its
-# parameters (`-> ?Item from a, b`, `-> String from self`), or only what
+# parameters (`-> ?Item from a, b`, `-> String from @`), or only what
 # lives for the whole program (`-> String from static`).
 origins  = FROM onames                              → (...2)
          | FROM STATIC                              → ()
@@ -699,8 +753,8 @@ onames   = name                                     → (1)
 
 # The lent parameters a function may keep, at the end of its header: it
 # may store what each views in what its write receiver and write
-# parameters lead to (`sub watch(!self, s: ?String) keeps s`; `keeps
-# self` names the receiver).
+# parameters lead to (`sub watch(!@, s: ?String) keeps s`; `keeps
+# @` names the receiver).
 keeps    = KEEPS onames                             → 2
 
 params   = "(" fields ![","] ")"                     → (...2)
@@ -715,6 +769,15 @@ tfields  = tfield                                   → (1)
 
 tfield   = name
          | name:name ":" type:type                  → (:)
+         | name:name ":" apis:apis2                 → (bound)     # `[K: Hash + Print]`
+
+# The built-in APIs a bound or a type's header names, joined with `+`:
+# `Eq + Hash`.
+apis     = tname                                    → (1)
+         | apis2
+
+apis2    = tname "+" tname                          → (1 3)
+         | apis2 "+" tname                          → (...1 3)
 
 # Written out rather than `L(field)`, which conflicts with a trailing
 # comma.
@@ -724,24 +787,41 @@ fields   = field                                    → (1)
 # Parameters, struct fields, and enum variants share one shape.
 field    = fname
          | name:fname ":" type:type                 → (:)
+         | name:fname ":" ONCE type:type            → (once)       # a parameter called at most once
          | name:fname ":" type:type "=" value:expr  → (default)
-         | "?" operand:fname                        → (read)       # `?self`
-         | "!" operand:fname                        → (write)      # `!self`
-         | "<" operand:fname                        → (move)       # `<self`
+         | "?" operand:fname                        → (read)       # `?@`
+         | "!" operand:fname                        → (write)      # `!@`
+         | "<" operand:fname                        → (move)       # `<@`
 
 # Inside ( ) the rewriter turns a name followed by `:` into KWARG_NAME.
 fname    = name | KWARG_NAME
 
 enum     = ENUM name:name INDENT members:members OUTDENT     → (enum)
+         | ENUM name:name ":" apis:apis INDENT members:members OUTDENT     → (enum)
          | ENUM name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_enum)
+         | ENUM name:name tparams:tparams ":" apis:apis INDENT members:members OUTDENT
+                                                    → (generic_enum)
 errors   = ERROR name:name INDENT members:members OUTDENT    → (errors)
+         | ERROR name:name "=" parts:eparts         → (error_join)   # `error L = A | B`
+         | ERROR name:name "=" parts:eparts INDENT members:members OUTDENT → (error_join)   # rejected: a union lists no members
+
+# The sets a union of error sets joins: `A | B | m.C`.
+eparts   = tname                                    → (1)
+         | eparts "|" tname                         → (...1 3)
 struct   = OBJ name:name INDENT members:members OUTDENT   → (struct)
+         | OBJ name:name ":" apis:apis INDENT members:members OUTDENT   → (struct)
          | OBJ name:name UNIQUE INDENT members:members OUTDENT
+                                                    → (struct unique:unique)
+         | OBJ name:name UNIQUE ":" apis:apis INDENT members:members OUTDENT
                                                     → (struct unique:unique)
          | OBJ name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_struct)
+         | OBJ name:name tparams:tparams ":" apis:apis INDENT members:members OUTDENT
+                                                    → (generic_struct)
          | OBJ name:name tparams:tparams UNIQUE INDENT members:members OUTDENT
+                                                    → (generic_struct unique:unique)
+         | OBJ name:name tparams:tparams UNIQUE ":" apis:apis INDENT members:members OUTDENT
                                                     → (generic_struct unique:unique)
 
 typedef  = TYPE name:name "=" type:type             → (type)
@@ -752,10 +832,11 @@ members  = member                                   → (1)
 
 member   = field
          | name:name "=" value:expr                 → (valued)     # `ok = 200`
+         | marker:name field:name "==" value:expr   → (none_value) # `none id == 0`: the value a field never holds
          | name:name params:params                  → (variant)    # `circle(r: Int)`
          | fun
          | sub
-         | DROP params:params body:block            → (drop_decl)  # `drop(!self)`
+         | DROP params:params body:block            → (drop_decl)  # `drop(!@)`
          | PUB decl:member                          → (pub)        # `pub len: Int`
          | "?" fname ":" type                       → (read operand:(: name:2 type:4))  # `pub ?len: Int`
          | "?" fname ":" type "=" expr              → (read operand:(default name:2 type:4 value:6))
@@ -788,6 +869,7 @@ zconst   = name:name ":" type:type                  → (zig_const)
 zfun     = [mark:mark] FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] [keeps:keeps] → (fun)
          | [mark:mark] SUB name:name [tparams:tparams] [params:params] [keeps:keeps] → (sub)
          | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" [keeps:keeps] → (sub fails:fails)
+         | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" fails:tname [keeps:keeps] → (sub)
 
 # ==============================================================================
 # TYPES
@@ -813,6 +895,7 @@ ptype    = "[" "]" type:type                        → (slice)
          | FUN "(" [params:L(type)] ")" "->" returns:type → (fun_type)  # `fun(Int) -> Int`
          | SUB "(" [params:L(type)] ")"             → (fun_type)   # `sub(Int)`
          | SUB "(" [params:L(type)] ")" "!"         → (fun_type fails:fails)  # `sub(Int)!`
+         | SUB "(" [params:L(type)] ")" "!" fails:tname → (fun_type)  # `sub(Int)!E`
          | "*" type:ptype                           → (shared)     # `*fun(Int) -> Int`
          | "~" operand:ptype                        → (weak)
          | "^" type:ptype                           → (boxed)      # `^[4]Int`
@@ -820,6 +903,7 @@ ptype    = "[" "]" type:type                        → (slice)
 
 tsuffix  = type:tsuffix "?"                         → (optional)
          | type:tsuffix "!"                         → (error_union)
+         | type:tsuffix "!" set:tname               → (error_union)   # `T!E`: fails only with `E`
          | thandle
 
 thandle  = "*" type:thandle                         → (shared)
@@ -829,7 +913,7 @@ thandle  = "*" type:thandle                         → (shared)
 
 tatom    = tname
          | ERROR                                    # `error`: an error of any set
-         | name:tname "[" args:types ![","] "]"      → (generic_inst)
+         | ccall
          | "(" type ")"                             → 2
          | "(" type "," rtypes ![","] ")"           → (results_type 2 ...4)
          | "(" rnamed ![","] ")"                    → (results_type ...2)
@@ -858,14 +942,15 @@ types    = targ                                     → (1)
 # A bare name is read as a type; the checker reads it as a value where
 # the parameter is one. An integer or arithmetic is always a value.
 targ     = type
+         | name:name ":" value:targ                 → (kwarg)   # `List[T, inline: 8]`
          | INTEGER
          | "-" operand:INTEGER                      → (neg)
          | "(" INTEGER ")"                          → 2
          | cexp
 
 # An array size: an integer, a name (a constant or a compile-time
-# parameter), a module's constant, or arithmetic on them, any of them
-# in parentheses. A negative integer parses, to be reported as out of
+# parameter), a module's constant, a compile-time function's value
+# (`cap[4]`), or arithmetic on them, any of them in parentheses. A negative integer parses, to be reported as out of
 # range.
 dim      = INTEGER
          | "-" operand:INTEGER                      → (neg)
@@ -873,11 +958,19 @@ dim      = INTEGER
          | name
          | "(" name ")"                             → 2
          | object:name "." name:name                → (member)
+         | ccall
+         | "(" ccall ")"                            → 2
          | cexp
+
+# A generic type's instance, or a call of a compile-time function in a
+# type: `Wrap[Int]`, `lib.Wrap[Int]`, `[cap[4]]T`, `[cap[4] * 2]T`.
+ccall    = name:name "[" args:types ![","] "]"       → (generic_inst)
+         | name "." name "[" types ![","] "]"       → (generic_inst (member 1 3) ...5)
 
 # Arithmetic on compile-time integers, with at least one operator, so
 # that a bare name stays a type. Operands are integers, names, module
-# constants, and parenthesized arithmetic.
+# constants, compile-time functions' values, and parenthesized
+# arithmetic.
 cexp     = cmulop
          | caddop
          | "(" cexp ")"                             → 2
@@ -893,6 +986,7 @@ cmul     = cmulop
 cunit    = INTEGER
          | name
          | object:name "." name:name                → (member)
+         | ccall
          | "(" cexp ")"                             → 2
 
 # ==============================================================================
@@ -914,33 +1008,62 @@ expr     = value
          | while
          | for
          | match
-         | value:logic CATCH BAR_CAPTURE name:name BAR_CAPTURE handler:block → (catch)
+         | value:logic CATCH_BLOCK BAR_CAPTURE name:name BAR_CAPTURE handler:block → (catch)
          | closure
 
+# `catch` with a jump or a block for its handler takes the whole
+# expression before it, as `??` before a jump does; the rewriter marks
+# each (CATCH_JUMP, CATCH_BLOCK, NULLISH_JUMP). Any other `catch` is an
+# operator on `??`'s level (`fall`).
 value    = then:logic TERNARY_IF cond:logic ELSE else:value → (if)
-         | value:logic CATCH [BAR_CAPTURE name:name BAR_CAPTURE] handler:value → (catch)
-         | value:logic CATCH [BAR_CAPTURE name:name BAR_CAPTURE] handler:jump → (catch)
+         | value:logic CATCH_JUMP [BAR_CAPTURE name:name BAR_CAPTURE] handler:jump → (catch)
          | left:logic NULLISH_JUMP right:jump        → (??)
          | logic
 
 # A jump as the fallback of `??` or a `catch` handler: `get(k) ?? return
-# none`, `parse(s) catch break @outer`. It takes the rest of the
+# none`, `parse(s) catch break $outer`. It takes the rest of the
 # expression, so its left side is a whole `logic`, as `catch`'s is; the
 # rewriter marks a `??` before a jump as NULLISH_JUMP. In a `while`
 # header, the rewriter marks the `:` that starts the step as STEP_COLON,
-# and a jump there may name a label (`while a ?? break @outer : i += 1`).
+# and a jump there may name a label (`while a ?? break $outer : i += 1`).
 jump     = RETURN [value:value]                     → (return)
-         | BREAK [LABEL_AT label:name] [value:value] → (break)
-         | CONTINUE [LABEL_AT label:name]           → (continue)
+         | BREAK [LABEL label:name] [value:value] → (break)
+         | CONTINUE [LABEL label:name]           → (continue)
 
 logic    = left:logic OR right:conj                 → (or)
          | conj
 conj     = left:conj AND right:neg                  → (and)
          | neg
 neg      = NOT operand:neg                          → (not)
-         | value:@infix AS name:name                → (as)
-         | value:@infix AS names:anames             → (as_results)
+         | value:cmp AS name:name                   → (as)
+         | value:cmp AS names:anames                → (as_results)
+         | value:cmp AS pattern:aspat               → (as_pattern)
+         | cmp
+
+# Comparisons, which do not chain, over the fallbacks.
+cmp      = left:fall "==" right:fall                → (==)
+         | left:fall "!=" right:fall                → (!=)
+         | left:fall "<" right:fall                 → (<)
+         | left:fall ">" right:fall                 → (>)
+         | left:fall "<=" right:fall                → (<=)
+         | left:fall ">=" right:fall                → (>=)
+         | fall
+
+# `??` and `catch` share a level, read left to right, as Zig's `orelse`
+# and `catch` do: `f() catch none ?? 0` is `(f() catch none) ?? 0`. A
+# handler is an operand of the operators above (`catch -1`,
+# `catch |e| e.code()`); one that compares, joins with `and` or `or`, or
+# chooses with `if` is parenthesized. The Parser wrapper nests a chain of
+# `??` to the right, `a ?? (b ?? c)`, which gives the same value.
+fall     = left:fall "??" right:@infix              → (??)
+         | value:fall CATCH [BAR_CAPTURE name:name BAR_CAPTURE] handler:@infix → (catch)
          | @infix
+
+# A pattern after `as` starts with a dot: a variant, alone or with the
+# fields it binds, as a `match` arm writes it (`if s as .circle(r)`).
+aspat    = "." name:name                            → (enum_lit)
+         | "." name:name "(" ")"                    → (variant_pattern)
+         | "." name:name "(" bindings:pbinds ![","] ")" → (variant_pattern)
 
 # The names `as` binds from a call that gives several results; the
 # rewriter marks a `,` after `as name` outside brackets as AS_COMMA.
@@ -1006,8 +1129,13 @@ pats     = pattern
 palts    = pattern "," pattern                      → (1 3)
          | palts "," pattern                        → (...1 3)
 
+# A string matches text with the same bytes, and against a `U8` is that
+# byte, which may bound a range. `lo..hi` excludes its end, `lo..=hi`
+# includes it.
 pattern  = patatom
          | lo:patatom ".." hi:patatom               → (range_pattern)
+         | lo:patatom "..=" hi:patatom              → (range_pattern inclusive:inclusive)
+         | name:name ":" set:tname                  → (set_pattern)   # `g: E =>`: an error of set `E`, as `g`
 
 # A member of an error set is named with its set, `E.name`, or through
 # its module, `m.E.name`. The module's set is its own rule rather than
@@ -1015,11 +1143,18 @@ pattern  = patatom
 patatom  = name
          | object:name "." name:name                → (member)
          | object:pqual "." name:name               → (member)
+         | name "." name "(" ")"                    → (variant_pattern (member 1 3))
+         | name "." name "(" pbinds ![","] ")"      → (variant_pattern (member 1 3) ...5)
+         | pqual "." name "(" ")"                   → (variant_pattern (member 1 3))
+         | pqual "." name "(" pbinds ![","] ")"     → (variant_pattern (member 1 3) ...5)
          | INTEGER
          | "-" operand:INTEGER                      → (neg)
+         | STRING_DQ
+         | STRING_SQ
          | TRUE
          | FALSE
          | "." name:name                            → (enum_lit)
+         | SYMBOL_COLON name:name                   → (symbol)
          | "." name:name "(" ")"                    → (variant_pattern)
          | "." name:name "(" bindings:pbinds ![","] ")" → (variant_pattern)
 
@@ -1041,6 +1176,7 @@ pbind    = name
 # a bare name is a parameter, optionally typed:
 #   |+x| clone (a copy, for a Copy value)   |<x| move   |~x| weak
 #   |?x| lend to read   |!x| lend to write
+#   |?@template| a sigil before a field path captures that field alone
 #   |a, b| a + b      |+v, a: Int| v.set(a)      || print("tick")
 # `*` before the bars makes an owned closure: `*|+v, a| v.set(a)`. The
 # grammar puts every entry in `params`; the Parser wrapper moves the
@@ -1064,13 +1200,16 @@ bars     = BAR_CAPTURE barents ![","] BAR_CAPTURE    → (...2)
 barents  = barent                                   → (1)
          | barents "," barent                       → (...1 3)
 
+# A capture's sigil takes a place: a name, or a field path from one
+# (`|?@template|`, `|!p.a|`). The grammar takes any postfix there; the
+# Parser wrapper keeps a name or a path and rejects the rest.
 barent   = fname
          | name:fname ":" type:type                 → (:)
-         | "+" name:name                            → (cap_clone)
-         | "<" name:name                            → (cap_move)
-         | "~" name:name                            → (cap_weak)
-         | "?" name:name                            → (cap_read)
-         | "!" name:name                            → (cap_write)
+         | "+" value:postfix                        → (cap_clone)
+         | "<" value:postfix                        → (cap_move)
+         | "~" value:postfix                        → (cap_weak)
+         | "?" value:postfix                        → (cap_read)
+         | "!" value:postfix                        → (cap_write)
 
 
 # ==============================================================================
@@ -1091,17 +1230,20 @@ postfix  = object:postfix "." name:name             → (member)
          | object:postfix "[" index:expr "]"        → (index)
          | object:postfix "[" index:open "]"        → (index)
          | object:postfix "[" args:targs "]"        → (inst)
+         | object:postfix "[" index:fallarg "]"     → (index)
          | callee:postfix "(" args:args ")"         → (call)
+         | callee:postfix "(" args:args ")" TASK_AMP → (call task:task)
          | value:postfix "!"                        → (propagate)
          | value:postfix "?"                        → (propagate_none)
          | atom
 
-# A slice's open range: `xs[a..]`, `xs[..b]`, `xs[..]`. The rewriter
-# marks a `..` whose next token is `]` as DOTDOT_OPEN, so `xs[a == b..]`
-# ends the expression before it; a `..` that starts an operand needs no
-# mark, since no expression starts with one.
+# A slice's open range: `xs[a..]`, `xs[..b]`, `xs[..=b]`, `xs[..]`. The
+# rewriter marks a `..` whose next token is `]` as DOTDOT_OPEN, so
+# `xs[a == b..]` ends the expression before it; a `..` that starts an
+# operand needs no mark, since no expression starts with one.
 open     = left:expr DOTDOT_OPEN                    → (..)
          | ".." right:expr                          → (..)
+         | "..=" right:expr                         → (.. inclusive:inclusive)
          | DOTDOT_OPEN                              → (..)
 
 args     = callargs                                 → 1
@@ -1113,9 +1255,22 @@ args     = callargs                                 → 1
 # Two or more compile-time arguments (`Pair[Int, String]`); sema reads
 # one (`Vec[Int]`, an `index`) as compile-time arguments or an index by
 # what the object names.
-targs    = expr ","                                 → (1)
-         | expr "," expr                            → (1 3)
-         | expr "," targs                           → (1 ...3)
+targs    = targ1 ","                                → (1)
+         | targ1 "," targ1                          → (1 3)
+         | targ1 "," targs                          → (1 ...3)
+         | targ1 "," tkwarg                         → (1 3)
+
+targ1    = expr
+         | fallarg
+
+# A fallible type argument with its set, `Task[Int!E]` or
+# `Tasks[Int!m.E]`, which no expression spells: inside brackets only,
+# where `]` or `,` follows it.
+fallarg  = type:postfix "!" set:name                → (error_union)
+         | type:postfix "!" set:pqual               → (error_union)
+
+# `inline: n` in `List[T, inline: n]()`.
+tkwarg   = name:name ":" value:expr                 → (kwarg)
 
 callargs = callarg                                  → (1)
          | callargs "," callarg                     → (...1 3)
@@ -1124,6 +1279,7 @@ callarg  = name:KWARG_NAME ":" value:expr           → (kwarg)
          | expr
 
 atom     = name
+         | ">" operand:name                         → (wait)  # `>t`, which waits for the task `t` (SPEC §18)
          | ERROR                                    # the type `error`, as a type argument: `List[error]()`
          | INTEGER
          | REAL
@@ -1132,7 +1288,9 @@ atom     = name
          | TRUE
          | FALSE
          | "." name:name                            → (enum_lit)
-         | "@" name:name "(" args:args ")"          → (builtin)
+         | SYMBOL_COLON name:name                   → (symbol)
+         | "$" name:name "(" args:args ")"          → (builtin)
+         | PANIC "(" args:args ")"                  → (panic)  # a statement or a branch's value (typecheck)
          | "[" [elems:exprs] "]"                    → (array)
          | "[" elems:exprs "," "]"                  → (array)
          | "[" size:expr OF value:expr "]"          → (array_fill)  # `[n of 0]`
@@ -1145,9 +1303,7 @@ atom     = name
 # ==============================================================================
 
 @infix unary
-    "==" none, "!=" none, "<" none, ">" none, "<=" none, ">=" none
-    "??" right
-    ".." none
+    ".." none, "..=" none
     "|"  left
     "^"  left
     "&"  left
