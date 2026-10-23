@@ -11,8 +11,9 @@ const parser = @import("parser.zig");
 
 // --- The parse: these replace what lsp.zig derives from the grammar ------
 
-/// The errors of one file as it parses, in place of the strict parse's
-/// one error (a tolerant parse can give every one).
+/// The errors of one file as it parses, in place of the grammar's: every
+/// error the tolerant parse repairs past with `@repair`, else the strict
+/// parse's one error.
 /// pub fn parseDiagnostics(arena: std.mem.Allocator, path: []const u8, text: []const u8) ![]const lsp.Diagnostic
 pub const parseDiagnostics = lsp.todo;
 

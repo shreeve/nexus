@@ -184,8 +184,10 @@ cannot change:
   grammar has no way to attach a message to a mistake. The strict parser
   also stops at the first error, where Ast.parse can recover and go on;
   the grammar's `@repair` section gives Nexus's tolerant parser
-  (`parseTolerant`) a different recovery, for editors, that the
-  `tolerant_*` cases show.
+  (`parseTolerant`) a different recovery, for editors, that reports
+  every error it repairs past, as the `tolerant_*` cases show
+  (`tolerant_errors`: three separate mistakes, three errors, though
+  `g(a b c d)` deletes three tokens).
 
 ## Speed
 

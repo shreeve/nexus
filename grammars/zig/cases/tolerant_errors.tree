@@ -1,0 +1,24 @@
+(root
+  _
+  (var_decl _ _ _ _ _ _ `const` `a` _ _ _ _ `1`)@0..11
+  (var_decl _ _ _ _ _ _ `const` `b` _ _ _ _ `2`)@12..23
+  (fn_decl
+    (fn_proto _ _ _ _ `f` ()@29..31 _ _ _ _ _ `void`)@25..36
+    (block
+      _
+      (assign
+        `=`
+        `x`
+        (switch _ `y` (switch_case _ ((enum_literal `a`)@60..62)@60..62 _ _ `1`)@60..67)@47..72)@43..72
+      (call `g` `a`)@78..88)@37..91)@25..91
+  (var_decl _ _ _ _ _ _ `const` `c` _ _ _ _ `3`)@92..103)@0..104
+!tolerant 5 repairs (1 inserted, 4 deleted, 0 dropped)
+!first 1:12: expected ';' after an expression, got 'const'
+const b = 2;
+^~~~~
+!next 4:30: expected ',' or '}' after a switch prong, got a number literal
+    x = switch (y) { .a => 1 2, };
+                             ^
+!next 5:9: expected ',' or ')' after an expression, got an identifier
+    g(a b c d);
+        ^

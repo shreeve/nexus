@@ -1,0 +1,13 @@
+# With @repair, every error the tolerant parse repairs past is a
+# diagnostic: separate mistakes give one each, and the errors one mistake
+# sets off (`f(a b c d)`, three deletions in a row) give one.
+initialize
+open errors.tally
+| let a = 1 +
+| let b = 2
+| let c = ) 3
+| let d = 4
+| f(a b c d)
+change errors.tally
+| let a = 1 +
+| let b = 2
