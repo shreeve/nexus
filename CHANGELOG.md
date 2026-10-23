@@ -89,7 +89,8 @@
   definition's, without `declaration` and `definition`; the legend has
   LSP's token modifiers. Jot (`test/jot`) is the language of the
   sessions of `bind`, `color` and `words`, with a lang Lexer that reads
-  `loop` as a keyword where it starts a line; Tally colours its
+  `loop` as a keyword where it starts a line and `local` before a name;
+  Tally colours its
   functions and parameters, and the Zig grammar its functions,
   parameters, constants (`readonly`), the types it defines (`const S =
   struct {...}`, by `when init:container_decl`), enum fields, error

@@ -2384,14 +2384,12 @@ error -32803 'by' is in sight on line 2, where the assignment would assign it, n
 
 A use takes its definition's colour without `declaration` and
 `definition`, which mark the definition's own leaf; a member, a name of
-another file, takes its definition's too. A leaf's own `color` line
-comes before its definition's, and of a node's first or last token and a
-leaf there, the leaf's. A token no `color` line colours keeps its
-`@highlight` scope. A `words` word is offered where the parser takes it
-as other than what a name that is no word would be: the lexer reads the
-word from where the text before it leaves off, followed by the text after
-the cursor, or by a name, since a lang Lexer may make a keyword of a
-word only before a name.
+another file, takes its definition's too. A token no `color` line
+colours keeps its `@highlight` scope. A `words` word is offered where
+the parser takes it as other than what a name that is no word would be:
+the lexer reads the word from where the text before it leaves off,
+followed by the text after the cursor, or by a name, since a lang Lexer
+may make a keyword of a word only before a name.
 
 ### Checks
 

@@ -43,6 +43,7 @@ const exact = std.StaticStringMap(lsp.Scope).initComptime(.{
 /// that is a word, and those of `@lsp words`.
 pub const words: []const []const u8 = &.{
     "def",
+    "local",
     "loop",
     "return",
 };
@@ -68,6 +69,7 @@ pub const names: scopes.Table = .{
     .defines = &.{
         .{ .at = .{ .kind = .def, .slot = ir.slot(.def, .name) }, .symbol = .function, .outer = true },
         .{ .at = .{ .kind = .params, .slot = ir.restSlot(.params, .names), .rest = true }, .symbol = .variable },
+        .{ .at = .{ .kind = .local, .slot = ir.slot(.local, .name) }, .symbol = .variable },
         .{ .at = .{ .kind = .assign, .slot = ir.slot(.assign, .target) }, .symbol = .variable, .bind = true },
     },
     .skips = &.{},
@@ -86,6 +88,7 @@ pub const names: scopes.Table = .{
         .{ .at = .{ .kind = .def, .slot = ir.slot(.def, .name) }, .scope = .function, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .params, .slot = ir.restSlot(.params, .names), .rest = true }, .scope = .variable_parameter, .modifiers = .{ .declaration = true } },
         .{ .at = .{ .kind = .loop, .slot = 0 }, .edge = .start, .scope = .keyword },
+        .{ .at = .{ .kind = .local, .slot = 0 }, .edge = .start, .scope = .keyword },
         .{ .at = .{ .kind = .force, .slot = 0 }, .edge = .end, .scope = .storage_modifier },
     },
     .extensions = &.{"jot"},

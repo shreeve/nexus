@@ -1,7 +1,7 @@
 (grammar
   (lang `"jot"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `number` `comment` `newline` `kw_def` `kw_return` `kw_loop` `assign` `plus` `bang` `lparen` `rparen` `lbrace` `rbrace` `comma` `eof` `err`)
+  (tokens `tokens` `ident` `number` `comment` `newline` `kw_def` `kw_return` `kw_loop` `kw_local` `assign` `plus` `bang` `lparen` `rparen` `lbrace` `rbrace` `comma` `eof` `err`)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `'\\n'` _ `newline`)
   (lex_rule `"def"` _ `kw_def`)
@@ -73,6 +73,17 @@
       _
       _)
     (kind_decl
+      (kinds `local`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role _ `value` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `loop`)
       (roles
         (role
@@ -133,6 +144,7 @@
     (lsp_line `scope` `def` `block`)
     (lsp_line `define` `def.name` `function` `outer`)
     (lsp_line `define` `params.names` `variable`)
+    (lsp_line `define` `local.name` `variable`)
     (lsp_line `bind` `assign.target` `variable`)
     (lsp_line `use` `IDENT`)
     (lsp_line `builtin` `"print"`)
@@ -140,8 +152,9 @@
     (lsp_line `color` `def.name` `function` `declaration`)
     (lsp_line `color` `params.names` `variable.parameter` `declaration`)
     (lsp_line `color` `loop` `start` `keyword`)
+    (lsp_line `color` `local` `start` `keyword`)
     (lsp_line `color` `force` `end` `storage.modifier`)
-    (lsp_line `words` `"loop"`))
+    (lsp_line `words` `"loop"` `"local"`))
   (trivia `COMMENT`)
   (repair
     (repair_line `holes` `IDENT`)
@@ -230,6 +243,17 @@
         `assign`
         (pos `1`)
         (pos `3`))
+      _)
+    (alt
+      _
+      ((tok `KW_LOCAL`)
+        (tok `IDENT`)
+        (lit `"="`)
+        (ref `expr`))
+      (node
+        `local`
+        (pos `2`)
+        (pos `4`))
       _)
     (alt
       _

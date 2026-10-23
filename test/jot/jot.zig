@@ -1,5 +1,6 @@
 //! @lang module for jot.grammar: its Lexer reads `loop` as the keyword
-//! where it starts a line, and as a name everywhere else.
+//! where it starts a line, and `local` where a name follows it; each is a
+//! name everywhere else.
 const std = @import("std");
 const parser = @import("parser.zig");
 
@@ -14,7 +15,15 @@ pub const Lexer = struct {
 
     pub fn next(self: *Lexer) parser.Token {
         var tok = self.base.next();
-        if (tok.cat == .ident and self.line_start and std.mem.eql(u8, self.base.text(tok), "loop")) tok.cat = .kw_loop;
+        if (tok.cat == .ident) {
+            const text = self.base.text(tok);
+            if (self.line_start and std.mem.eql(u8, text, "loop")) tok.cat = .kw_loop;
+            if (std.mem.eql(u8, text, "local")) {
+                // What follows, read by a copy of the lexer.
+                var probe = self.base;
+                if (probe.next().cat == .ident) tok.cat = .kw_local;
+            }
+        }
         if (tok.cat != .comment) self.line_start = tok.cat == .newline;
         return tok;
     }

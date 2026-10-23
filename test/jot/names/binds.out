@@ -9,6 +9,7 @@ diagnostics main.jot
   {"kind":13,"name":"early","range":"4:1-4:10","selectionRange":"4:1-4:6"}
   {"children":[{"kind":13,"name":"n","range":"5:9-5:10","selectionRange":"5:9-5:10"}],"kind":12,"name":"add","range":"5:1-10:2","selectionRange":"5:5-5:8"}
   {"kind":13,"name":"count","range":"11:1-11:15","selectionRange":"11:1-11:6"}
+  {"children":[{"kind":13,"name":"m","range":"17:11-17:12","selectionRange":"17:11-17:12"}],"kind":12,"name":"twice","range":"17:1-20:2","selectionRange":"17:5-17:10"}
 > definition main.jot 6:5
 main.jot 3:1-3:6
 > definition main.jot 6:13
@@ -45,6 +46,11 @@ null
   {"range":"13:13-13:18"}
   {"range":"14:12-14:17"}
   {"range":"16:9-16:14"}
+> definition main.jot 19:12
+main.jot 18:11-18:16
+> references main.jot 18:11
+  main.jot 18:11-18:16
+  main.jot 19:12-19:17
 > completion main.jot 2:7
 []
 > completion main.jot 9:5
@@ -54,6 +60,7 @@ null
   {"kind":6,"label":"early"}
   {"kind":6,"label":"total"}
   {"kind":14,"label":"def"}
+  {"kind":14,"label":"local"}
   {"kind":14,"label":"loop"}
   {"kind":14,"label":"return"}
 > completion main.jot 16:9
@@ -67,6 +74,17 @@ null
   {"kind":6,"label":"early"}
   {"kind":6,"label":"total"}
   {"kind":14,"label":"def"}
+  {"kind":14,"label":"local"}
+  {"kind":14,"label":"loop"}
+  {"kind":14,"label":"return"}
+> completion main.jot 21:1
+  {"kind":3,"label":"twice"}
+  {"kind":6,"label":"count"}
+  {"kind":3,"label":"add"}
+  {"kind":6,"label":"early"}
+  {"kind":6,"label":"total"}
+  {"kind":14,"label":"def"}
+  {"kind":14,"label":"local"}
   {"kind":14,"label":"loop"}
   {"kind":14,"label":"return"}
 > rename main.jot 6:13 sum

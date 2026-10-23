@@ -14,3 +14,7 @@ loop {
     last = count + loop
 }
 total = count + step
+def twice(m) {
+    local total = m + m
+    return total
+}
