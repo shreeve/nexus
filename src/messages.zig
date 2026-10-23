@@ -23,10 +23,9 @@
 //! sorted table in the generated module (codegen), which `writeFailure`
 //! reads.
 //!
-//! `nexus check --messages` prints the coverage: per place an `after`
-//! entry can key on (an anchor of some state's shortest stack), whether
-//! one does, the shortest example that reaches it and its automatic
-//! message.
+//! `nexus check --messages` prints the coverage (`writeCoverage`): each
+//! place an `after` entry can key on that has none, with the shortest
+//! example that reaches it and its automatic message.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -89,8 +88,8 @@ pub const Input = struct {
     path: []const u8,
 };
 
-/// Every entry of `messages` run through the table and keyed, sorted;
-/// every mistake is reported, and the first stops generation.
+/// Every entry of `messages` run through the table and keyed, sorted. The
+/// first mistake is reported and stops generation.
 pub fn compute(a: Allocator, in: Input, messages: []const Message) Error![]const Entry {
     const v = try View.init(a, in.g, in.tbl);
     var entries: std.ArrayList(Entry) = .empty;
@@ -111,7 +110,7 @@ pub fn compute(a: Allocator, in: Input, messages: []const Message) Error![]const
             const sym = try resolve(a, in, last.name);
             if (last.guard) |text| try checkGuard(a, in, last, text);
             var s = try stack.clone(a);
-            const failure = try v.failOn(a, &s, sym) orelse
+            const failure = v.failOn(&s, sym) orelse
                 return fail(in, last.name.line, last.name.col, "this example is not a syntax error: the parser takes its last token", .{});
             const state = switch (m.kind) {
                 .at => failure,
@@ -285,7 +284,7 @@ const View = struct {
 
     /// Make the reductions on token `sym`: the state that rejects it, or
     /// null when the parser shifts it or accepts on it.
-    fn failOn(v: *const View, _: Allocator, stack: *std.ArrayList(u16), sym: u16) Allocator.Error!?u16 {
+    fn failOn(v: *const View, stack: *std.ArrayList(u16), sym: u16) ?u16 {
         for (0..maxSteps) |_| {
             const top = stack.last().?;
             const action = v.plain(top, sym);

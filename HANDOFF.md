@@ -18,7 +18,10 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   `nexus --highlight <target|all>`), `nexus --describe` (the grammar as
   JSON), clause rules, and `nexus --editor` (a VS Code extension and a
   language server whose features a language turns on in `hooks.zig`,
-  [docs/LSP.md](docs/LSP.md)); CHANGELOG.md, "Unreleased".
+  [docs/LSP.md](docs/LSP.md)), and `@messages` (syntax-error messages
+  given by example, keyed on parser states, with `nexus check
+  --messages` for coverage; the Zig grammar has 31); CHANGELOG.md,
+  "Unreleased".
 - **The suite is green on macOS (arm64):** `./test/run` → 957 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
@@ -75,10 +78,16 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      hooks in TypeScript or JavaScript over JSON lines; `rig lsp` onto
      the generated server, then servers for em and nexis; a formatter
      from the grammar.
-5. **Untested messages:** `test/lib/messages.allow` lists the generator
+5. **`@messages`, deferred by the owner:** a `then` guard that looks one
+   token past the error (Rig's `;` before another statement, Zig's `&&`
+   against an `&` with whitespace on one side only, which are one token
+   to the parser). An `after` example keys on the state its rule names
+   reach; a construct parsed in several states (a first statement and a
+   later one) needs one example for each, as the coverage report lists.
+6. **Untested messages:** `test/lib/messages.allow` lists the generator
    messages no test prints, each with its reason; an adverse test that
    prints one deletes its line.
-6. **Smaller items:**
+7. **Smaller items:**
    - `./test/run --update` does not write `.tree` files for
      `test/regress` suites; write them with the suite's built driver.
    - A lang `Parser` wrapper that returns `error.ParseError` on its own
