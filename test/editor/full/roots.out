@@ -1,0 +1,16 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open app.tally
+diagnostics lib.tally
+  {"message":"undefined name missing","range":"1:12-1:19","severity":1,"source":"tally"}
+> open util.tally
+> hover app.tally 2:5
+{"contents":{"kind":"markdown","value":"```tally\nlet n\n```"}}
+> hover util.tally 2:4
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> references util.tally 2:4
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15
+> open lib.tally
+> hover lib.tally 1:5
+{"contents":{"kind":"markdown","value":"```tally\nlet size\n```"}}

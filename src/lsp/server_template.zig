@@ -446,14 +446,14 @@ pub fn run(io: std.Io) u8 {
     return status;
 }
 
-/// An open document. `analyzed`: the last analysis read this text;
-/// `failed`: the error of the failed analysis its opening or saving ran,
-/// until an analysis succeeds.
+/// An open document. `version` is a tick of the server's clock, new with
+/// each text; `failed`: the error of the failed analysis its opening or
+/// saving ran, until an analysis succeeds.
 const Doc = struct {
     uri: []u8,
     path: []u8,
     text: []u8,
-    analyzed: bool = false,
+    version: u64,
     failed: ?[]const u8 = null,
 
     fn deinit(d: *Doc, gpa: Allocator) void {
@@ -463,12 +463,38 @@ const Doc = struct {
     }
 };
 
-/// The analysis the language's functions read, in an arena of its own.
+/// The most analyses the server holds; making one more drops the one used
+/// least recently.
+const max_analyses = 8;
+
+/// An analysis of one program, in an arena of its own: its root, what
+/// `analyze` returned, the version of each open document it read, and the
+/// ticks it was made and last used at.
 const Held = struct {
     arena: std.heap.ArenaAllocator,
+    root: []const u8,
     value: *Analysis,
     diagnostics: []const Diagnostic,
     files: []const []const u8,
+    read: []const Read,
+    made: u64,
+    used: u64,
+
+    const Read = struct { path: []const u8, version: u64 };
+
+    /// Whether the analysis is of `path`'s program: its root, a file it
+    /// read, or a file its diagnostics name.
+    fn covers(h: *const Held, path: []const u8) bool {
+        if (std.mem.eql(u8, h.root, path) or containsPath(h.files, path)) return true;
+        for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) return true;
+        return false;
+    }
+
+    /// The version of the open document `path` the analysis read.
+    fn versionOf(h: *const Held, path: []const u8) ?u64 {
+        for (h.read) |r| if (std.mem.eql(u8, r.path, path)) return r.version;
+        return null;
+    }
 };
 
 const Server = struct {
@@ -479,19 +505,30 @@ const Server = struct {
     initialized: bool = false,
     shut_down: bool = false,
     docs: std.ArrayList(Doc) = .empty,
-    /// The program root (`initializationOptions.root`), else the file.
+    /// The program root (`initializationOptions.root`); without it, each
+    /// file's program is that of the newest analysis that covers it, else
+    /// the file's own.
     root: ?[]u8 = null,
-    held: ?Held = null,
-    /// Files the held analysis published diagnostics to that are not open.
-    published: std.ArrayList([]u8) = .empty,
+    analyses: std.ArrayList(Held) = .empty,
+    /// Counts up: document versions and analysis ticks.
+    clock: u64 = 0,
+    /// The hash of the diagnostics last sent to each URI, for the URIs
+    /// whose last diagnostics were not empty.
+    sent: std.array_hash_map.String(u64) = .empty,
 
     fn deinit(s: *Server) void {
         for (s.docs.items) |*d| d.deinit(s.gpa);
         s.docs.deinit(s.gpa);
         if (s.root) |r| s.gpa.free(r);
-        if (s.held) |*h| h.arena.deinit();
-        for (s.published.items) |p| s.gpa.free(p);
-        s.published.deinit(s.gpa);
+        for (s.analyses.items) |*h| h.arena.deinit();
+        s.analyses.deinit(s.gpa);
+        for (s.sent.keys()) |k| s.gpa.free(k);
+        s.sent.deinit(s.gpa);
+    }
+
+    fn tick(s: *Server) u64 {
+        s.clock += 1;
+        return s.clock;
     }
 
     fn serve(s: *Server, in: *std.Io.Reader) u8 {
@@ -660,12 +697,14 @@ const Server = struct {
         if (s.docOf(params)) |d| {
             s.gpa.free(d.text);
             d.text = try s.gpa.dupe(u8, text);
+            d.version = s.tick();
         } else {
             const path = try uriToPath(a, uri);
             try s.docs.append(s.gpa, .{
                 .uri = try s.gpa.dupe(u8, uri),
                 .path = try s.gpa.dupe(u8, path orelse ""),
                 .text = try s.gpa.dupe(u8, text),
+                .version = s.tick(),
             });
         }
         try s.analyzeAndPublish(a, s.docOf(params).?);
@@ -678,7 +717,7 @@ const Server = struct {
         const text = str(field(changes.array.items[changes.array.items.len - 1], &.{"text"})) orelse return;
         s.gpa.free(d.text);
         d.text = try s.gpa.dupe(u8, text);
-        d.analyzed = false;
+        d.version = s.tick();
         try s.publish(a, d);
     }
 
@@ -695,18 +734,50 @@ const Server = struct {
         _ = s.docs.orderedRemove(i);
     }
 
+    // --- Analyses ------------------------------------------------------------
+
+    /// The analysis of `path`'s program: the root's, when the client names
+    /// one; else the newest that covers `path`.
+    fn ownerOf(s: *Server, path: []const u8) ?*Held {
+        var best: ?*Held = null;
+        for (s.analyses.items) |*h| {
+            if (s.root) |r| {
+                if (std.mem.eql(u8, h.root, r)) return h;
+                continue;
+            }
+            if (!h.covers(path)) continue;
+            if (best == null or h.made > best.?.made) best = h;
+        }
+        return best;
+    }
+
+    /// The analysis a request on `d` reads, marked as used.
+    fn analysisFor(s: *Server, d: *Doc) ?*Held {
+        const h = s.ownerOf(d.path) orelse return null;
+        h.used = s.tick();
+        return h;
+    }
+
+    /// The root of `d`'s program.
+    fn rootOf(s: *Server, d: *Doc) []const u8 {
+        if (s.root) |r| return r;
+        if (s.ownerOf(d.path)) |h| return h.root;
+        return d.path;
+    }
+
     // --- Diagnostics ------------------------------------------------------------
 
     /// Run `analyze` (when written) on the program of `d`, then publish
-    /// every file's diagnostics.
+    /// every file's diagnostics that changed.
     fn analyzeAndPublish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
         if (comptime has("analyze")) if (d.path.len > 0) try s.analyzeProgram(a, d);
-        for (s.docs.items) |*o| try s.publish(a, o);
+        try s.publishAll(a);
     }
 
-    /// Hold what `analyze` makes of the program of `d`. An analysis that
-    /// fails keeps the last one, and says so: in the log, and in a
-    /// diagnostic on `d` until an analysis succeeds.
+    /// Hold what `analyze` makes of the program of `d`, in place of the
+    /// last analysis of the same root. An analysis that fails keeps the
+    /// last one, and says so: in the log, and in a diagnostic on `d` until
+    /// an analysis succeeds.
     fn analyzeProgram(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
         var paths: std.ArrayList([]const u8) = .empty;
         var texts: std.ArrayList([]const u8) = .empty;
@@ -714,43 +785,51 @@ const Server = struct {
             try paths.append(a, o.path);
             try texts.append(a, o.text);
         };
-        var held: Held = .{ .arena = .init(s.gpa), .value = undefined, .diagnostics = &.{}, .files = &.{} };
-        const ha = held.arena.allocator();
-        const got = hooks.analyze(ha, s.root orelse d.path, .{ .io = s.io, .paths = paths.items, .texts = texts.items }) catch |err| {
-            held.arena.deinit();
+        // Everything the analysis keeps is in its arena: the analysis may
+        // keep the root it is given, and the last analysis of this root,
+        // which may hold the root now, is dropped below.
+        var arena: std.heap.ArenaAllocator = .init(s.gpa);
+        const ha = arena.allocator();
+        const root = try ha.dupe(u8, s.rootOf(d));
+        const got = hooks.analyze(ha, root, .{ .io = s.io, .paths = paths.items, .texts = texts.items }) catch |err| {
+            const message = try std.fmt.allocPrint(a, "the analysis of {s} failed: {s}", .{ root, @errorName(err) });
+            arena.deinit();
             d.failed = @errorName(err);
-            const message = try std.fmt.allocPrint(a, "the analysis of {s} failed: {s}", .{ s.root orelse d.path, @errorName(err) });
             try s.notify(a, "window/logMessage", .{ .type = 1, .message = message });
             return;
         };
-        held.value = try ha.create(Analysis);
-        held.value.* = got.analysis;
-        held.diagnostics = got.diagnostics;
-        held.files = got.files;
-        if (s.held) |*old| old.arena.deinit();
-        s.held = held;
-        for (s.docs.items) |*o| {
-            o.analyzed = true;
+        var read: std.ArrayList(Held.Read) = .empty;
+        for (s.docs.items) |o| if (o.path.len > 0) try read.append(ha, .{ .path = try ha.dupe(u8, o.path), .version = o.version });
+        const value = try ha.create(Analysis);
+        value.* = got.analysis;
+        const now = s.tick();
+        const held: Held = .{
+            .arena = arena,
+            .root = root,
+            .value = value,
+            .diagnostics = got.diagnostics,
+            .files = got.files,
+            .read = read.items,
+            .made = now,
+            .used = now,
+        };
+        const slot = for (s.analyses.items) |*h| {
+            if (std.mem.eql(u8, h.root, root)) {
+                h.arena.deinit();
+                break h;
+            }
+        } else if (s.analyses.items.len < max_analyses) try s.analyses.addOne(s.gpa) else lru: {
+            var oldest = &s.analyses.items[0];
+            for (s.analyses.items[1..]) |*h| if (h.used < oldest.used) {
+                oldest = h;
+            };
+            oldest.arena.deinit();
+            break :lru oldest;
+        };
+        slot.* = held;
+        for (s.docs.items) |*o| if (o == d or slot.covers(o.path)) {
             o.failed = null;
-        }
-        // Clear what the last analysis published to files this one does not name.
-        for (s.published.items) |p| {
-            if (s.mentions(p)) continue;
-            try s.sendDiagnostics(a, try pathToUri(a, p), "[]");
-        }
-        for (s.published.items) |p| s.gpa.free(p);
-        s.published.clearRetainingCapacity();
-        for (held.diagnostics) |diag| {
-            if (s.isOpen(diag.span.path) or containsPath(s.published.items, diag.span.path)) continue;
-            try s.published.append(s.gpa, try s.gpa.dupe(u8, diag.span.path));
-        }
-        for (s.published.items) |p| try s.sendFileDiagnostics(a, p, null);
-    }
-
-    fn mentions(s: *Server, path: []const u8) bool {
-        const h = s.held orelse return false;
-        for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) return true;
-        return false;
+        };
     }
 
     fn isOpen(s: *Server, path: []const u8) bool {
@@ -758,14 +837,47 @@ const Server = struct {
         return false;
     }
 
-    /// Publish an open document's diagnostics: its parse errors, then the
-    /// analysis's while it read this text.
-    fn publish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
-        const parsed = try parseDiagnostics(a, d.path, d.text);
-        try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .analyzed = d.analyzed, .failed = d.failed, .uri = d.uri });
+    /// Publish what changed of every file's diagnostics: each open
+    /// document's, each file's an analysis names, and an empty list for a
+    /// file that had some and no longer has.
+    fn publishAll(s: *Server, a: Allocator) error{ OutOfMemory, WriteFailed }!void {
+        for (s.docs.items) |*d| try s.publish(a, d);
+        var named: std.ArrayList([]const u8) = .empty;
+        for (s.analyses.items) |h| for (h.diagnostics) |diag| {
+            if (s.isOpen(diag.span.path) or containsPath(named.items, diag.span.path)) continue;
+            try named.append(a, diag.span.path);
+        };
+        std.mem.sort([]const u8, named.items, {}, struct {
+            fn lt(_: void, x: []const u8, y: []const u8) bool {
+                return std.mem.order(u8, x, y) == .lt;
+            }
+        }.lt);
+        var uris: std.ArrayList([]const u8) = .empty;
+        for (named.items) |p| {
+            const uri = try pathToUri(a, p);
+            try uris.append(a, uri);
+            try s.sendFileDiagnostics(a, p, null);
+        }
+        // What was sent to a file neither open nor named: clear it.
+        var stale: std.ArrayList([]const u8) = .empty;
+        for (s.sent.keys()) |uri| {
+            if (containsPath(uris.items, uri)) continue;
+            const open = for (s.docs.items) |d| {
+                if (std.mem.eql(u8, d.uri, uri)) break true;
+            } else false;
+            if (!open) try stale.append(a, try a.dupe(u8, uri));
+        }
+        for (stale.items) |uri| try s.sendDiagnostics(a, uri, "[]");
     }
 
-    const Open = struct { text: []const u8, parsed: []const Diagnostic, analyzed: bool, failed: ?[]const u8, uri: []const u8 };
+    /// Publish an open document's diagnostics: its parse errors, then its
+    /// program's analysis's while it read this text.
+    fn publish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
+        const parsed = try parseDiagnostics(a, d.path, d.text);
+        try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .version = d.version, .failed = d.failed, .uri = d.uri });
+    }
+
+    const Open = struct { text: []const u8, parsed: []const Diagnostic, version: u64, failed: ?[]const u8, uri: []const u8 };
 
     fn sendFileDiagnostics(s: *Server, a: Allocator, path: []const u8, open: ?Open) error{ OutOfMemory, WriteFailed }!void {
         var list: std.ArrayList(Diagnostic) = .empty;
@@ -774,7 +886,7 @@ const Server = struct {
             .span = .{ .path = path, .start = 0, .end = 0 },
             .message = try std.fmt.allocPrint(a, "the analysis failed: {s}", .{err}),
         });
-        if (s.held) |h| if (open == null or open.?.analyzed) {
+        if (s.ownerOf(path)) |h| if (open == null or h.versionOf(path) == open.?.version) {
             for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) try list.append(a, d);
         };
         const text = if (open) |o| o.text else try s.fileText(a, path);
@@ -819,7 +931,21 @@ const Server = struct {
         try writeMessage(s.out, body);
     }
 
+    /// Send a file's diagnostics, unless they are the ones last sent to it
+    /// (no diagnostics, when none were sent).
     fn sendDiagnostics(s: *Server, a: Allocator, uri: []const u8, diagnostics: []const u8) error{ OutOfMemory, WriteFailed }!void {
+        const hash = std.hash.Wyhash.hash(0, diagnostics);
+        const empty = std.mem.eql(u8, diagnostics, "[]");
+        if (s.sent.getIndex(uri)) |i| {
+            if (empty) {
+                const key = s.sent.keys()[i];
+                s.sent.swapRemoveAt(i);
+                s.gpa.free(key);
+            } else if (s.sent.values()[i] == hash) return else s.sent.values()[i] = hash;
+        } else {
+            if (empty) return;
+            try s.sent.put(s.gpa, try s.gpa.dupe(u8, uri), hash);
+        }
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
         j.write(.{ .jsonrpc = "2.0", .method = "textDocument/publishDiagnostics" }) catch return error.OutOfMemory;
@@ -957,6 +1083,7 @@ const Server = struct {
     fn selectionRanges(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
         const lines = try Lines.init(a, d.text, s.encoding);
         const tree = try parseTree(a, d.text);
+        const solid = try Solid.init(a, d.text);
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
         const positions = field(params, &.{"positions"}) orelse return .{ .failed = "no positions" };
@@ -964,9 +1091,22 @@ const Server = struct {
         j.beginArray() catch return error.OutOfMemory;
         for (positions.array.items) |pv| {
             const at = lines.offset(position(pv) orelse continue);
-            // The spans around `at`, outermost first.
+            // The spans around `at`, outermost first, each from its first
+            // solid token to its last and inside the one before it, then
+            // the token at `at`: the one it is in, else the one it ends.
+            var found: std.ArrayList(parser.Span) = .empty;
+            if (tree) |t| for (t.roots) |root| try spansAround(a, t.base, root, at, &found);
+            for (solid.tokensAt(at)) |tok| if (tok) |t| try found.append(a, .{ .start = t.pos, .end = t.pos + t.len });
             var chain: std.ArrayList(parser.Span) = .empty;
-            if (tree) |t| for (t.roots) |root| try spansAround(a, t.base, root, at, &chain);
+            for (found.items) |span| {
+                const trimmed = solid.trim(span);
+                if (at < trimmed.start or at > trimmed.end) continue;
+                if (chain.items.len > 0) {
+                    const outer = chain.getLast();
+                    if (std.meta.eql(outer, trimmed) or trimmed.start < outer.start or trimmed.end > outer.end) continue;
+                }
+                try chain.append(a, trimmed);
+            }
             var depth: usize = 0;
             var i = chain.items.len;
             if (i == 0) {
@@ -992,19 +1132,19 @@ const Server = struct {
         const Item = struct { label: []const u8, kind: u8, detail: ?[]const u8 = null, documentation: ?struct { kind: []const u8 = "markdown", value: []const u8 } = null };
         var items: std.ArrayList(Item) = .empty;
         const pos: Pos = .{ .path = d.path, .offset = at };
-        if (comptime has("members")) if (s.analysis()) |an| {
+        if (comptime has("members")) if (s.analysis(d)) |an| {
             if (hooks.members(an, a, pos) catch null) |members| {
                 for (members) |m| try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(m.detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
                 return json(a, .{ .isIncomplete = false, .items = items.items });
             }
         };
-        if (comptime has("modules")) if (s.analysis()) |an| {
+        if (comptime has("modules")) if (s.analysis(d)) |an| {
             if (hooks.modules(an, a, pos) catch null) |names| {
                 for (names) |n| try items.append(a, .{ .label = n, .kind = 9 });
                 return json(a, .{ .isIncomplete = false, .items = items.items });
             }
         };
-        if (comptime has("visible")) if (s.analysis()) |an| {
+        if (comptime has("visible")) if (s.analysis(d)) |an| {
             const symbols = hooks.visible(an, a, pos) catch &.{};
             for (symbols) |m| try items.append(a, .{ .label = m.name, .kind = completionKind(m.kind), .detail = nonEmpty(m.detail), .documentation = if (m.doc.len > 0) .{ .value = m.doc } else null });
         };
@@ -1019,8 +1159,9 @@ const Server = struct {
 
     // --- From the language's functions ------------------------------------------------------------
 
-    fn analysis(s: *Server) ?*Analysis {
-        const h = s.held orelse return null;
+    /// The analysis of `d`'s program.
+    fn analysis(s: *Server, d: *Doc) ?*Analysis {
+        const h = s.analysisFor(d) orelse return null;
         return h.value;
     }
 
@@ -1036,7 +1177,7 @@ const Server = struct {
     }
 
     fn hover(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        const an = s.analysis() orelse return json(a, null);
+        const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         var desc: ?Description = null;
         if (comptime has("symbolAt") and has("describe")) {
@@ -1051,7 +1192,7 @@ const Server = struct {
 
     fn definition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
         if (comptime !has("symbolAt")) unreachable;
-        const an = s.analysis() orelse return json(a, null);
+        const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
         return json(a, try s.location(a, sym.decl));
@@ -1059,7 +1200,7 @@ const Server = struct {
 
     fn typeDefinition(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
         if (comptime !(has("typeAt") and has("describe"))) unreachable;
-        const an = s.analysis() orelse return json(a, null);
+        const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const t = (hooks.typeAt(an, a, pos) catch null) orelse return json(a, null);
         const desc = (hooks.describe(an, a, .{ .type = t }) catch null) orelse return json(a, null);
@@ -1068,14 +1209,16 @@ const Server = struct {
     }
 
     /// Every span that uses `sym`: the language's `references`, else every
-    /// token of every file the analysis read whose `symbolAt` is `sym`.
-    fn uses(s: *Server, a: Allocator, an: *Analysis, sym: Symbol) error{OutOfMemory}![]const Span {
+    /// token whose `symbolAt` is `sym` of every file the analysis of `d`'s
+    /// program read and every open document of that program.
+    fn uses(s: *Server, a: Allocator, d: *Doc, an: *Analysis, sym: Symbol) error{OutOfMemory}![]const Span {
         if (comptime has("references")) return hooks.references(an, a, sym) catch &.{};
         if (comptime !has("symbolAt")) unreachable;
         var out: std.ArrayList(Span) = .empty;
         var files: std.ArrayList([]const u8) = .empty;
-        if (s.held) |h| try files.appendSlice(a, h.files);
-        for (s.docs.items) |d| if (d.path.len > 0 and !containsPath(files.items, d.path)) try files.append(a, d.path);
+        const owner = s.ownerOf(d.path);
+        if (owner) |h| try files.appendSlice(a, h.files);
+        for (s.docs.items) |o| if (o.path.len > 0 and s.ownerOf(o.path) == owner and !containsPath(files.items, o.path)) try files.append(a, o.path);
         for (files.items) |path| {
             const text = try s.fileText(a, path);
             var lexer = parser.Lexer.init(text);
@@ -1090,10 +1233,10 @@ const Server = struct {
     }
 
     fn references(s: *Server, a: Allocator, d: *Doc, params: Value, here: bool) error{OutOfMemory}!Result {
-        const an = s.analysis() orelse return json(a, null);
+        const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return json(a, null);
-        const spans = try s.uses(a, an, sym);
+        const spans = try s.uses(a, d, an, sym);
         const withDecl = if (field(params, &.{ "context", "includeDeclaration" })) |v| v == .bool and v.bool else here;
         if (here) {
             const lines = try Lines.init(a, d.text, s.encoding);
@@ -1114,7 +1257,7 @@ const Server = struct {
     }
 
     fn rename(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
-        const an = s.analysis() orelse return .{ .failed = "no analysis yet: save the file" };
+        const an = s.analysis(d) orelse return .{ .failed = "no analysis yet: save the file" };
         const pos = try s.posOf(a, d, params) orelse return .{ .failed = "no position" };
         const name = str(field(params, &.{"newName"})) orelse return .{ .failed = "no new name" };
         const sym = (hooks.symbolAt(an, a, pos) catch null) orelse return .{ .failed = "nothing to rename here" };
@@ -1126,7 +1269,7 @@ const Server = struct {
         if (new != old) return .{ .failed = "the new name is not a name of the same kind" };
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
-        const spans = try s.uses(a, an, sym);
+        const spans = try s.uses(a, d, an, sym);
         var files: std.ArrayList([]const u8) = .empty;
         for (spans) |sp| if (!containsPath(files.items, sp.path)) try files.append(a, sp.path);
         if (!containsSpan(spans, sym.decl)) if (!containsPath(files.items, sym.decl.path)) try files.append(a, sym.decl.path);
@@ -1151,7 +1294,7 @@ const Server = struct {
 
     fn signatureHelp(s: *Server, a: Allocator, d: *Doc, params: Value) error{OutOfMemory}!Result {
         if (comptime !has("signatures")) unreachable;
-        const an = s.analysis() orelse return json(a, null);
+        const an = s.analysis(d) orelse return json(a, null);
         const pos = try s.posOf(a, d, params) orelse return json(a, null);
         const help = (hooks.signatures(an, a, pos) catch null) orelse return json(a, null);
         const P = struct { label: []const u8, documentation: ?[]const u8 = null };
@@ -1235,6 +1378,69 @@ fn spansAround(a: Allocator, p: *BaseParser, s: parser.Sexp, at: u32, out: *std.
     for (s.items()) |child| try spansAround(a, p, child, at, out);
 }
 
+/// The solid tokens of a text: each token with text other than blanks and
+/// line ends that is not a comment. A node's span runs on to the next
+/// token, so it takes in the blank lines, comments and zero-width layout
+/// tokens after it; its folds and selection ranges end at its last solid
+/// token.
+const Solid = struct {
+    toks: []const parser.Token,
+
+    fn init(a: Allocator, text: []const u8) error{OutOfMemory}!Solid {
+        var out: std.ArrayList(parser.Token) = .empty;
+        var lexer = parser.Lexer.init(text);
+        while (true) {
+            const t = lexer.next();
+            if (t.cat == .eof) break;
+            if (t.len == 0 or language.tokenScope(t.cat) == .comment) continue;
+            if (std.mem.trim(u8, text[t.pos..][0..t.len], " \t\r\n").len == 0) continue;
+            try out.append(a, t);
+        }
+        return .{ .toks = out.items };
+    }
+
+    /// `span` from its first solid token to its last; unchanged without one.
+    fn trim(self: Solid, span: parser.Span) parser.Span {
+        const toks = self.toks;
+        // The first token at or after the start.
+        var lo: usize = 0;
+        var hi: usize = toks.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            if (toks[mid].pos < span.start) lo = mid + 1 else hi = mid;
+        }
+        const first = lo;
+        // The first token from there that ends past the end.
+        hi = toks.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            if (toks[mid].pos + toks[mid].len <= span.end) lo = mid + 1 else hi = mid;
+        }
+        if (lo == first) return span;
+        return .{ .start = toks[first].pos, .end = toks[lo - 1].pos + toks[lo - 1].len };
+    }
+
+    /// The solid token `at` is in and the one that ends at `at`, either
+    /// null when there is none.
+    fn tokensAt(self: Solid, at: u32) [2]?parser.Token {
+        const toks = self.toks;
+        // The first token that starts after `at`.
+        var lo: usize = 0;
+        var hi: usize = toks.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            if (toks[mid].pos <= at) lo = mid + 1 else hi = mid;
+        }
+        var out: [2]?parser.Token = .{ null, null };
+        if (lo > 0 and at < toks[lo - 1].pos + toks[lo - 1].len) out[0] = toks[lo - 1];
+        // The token before: it ends at `at` when `at` starts the token
+        // after it, or follows it.
+        const before = if (out[0] != null) lo -| 2 else lo -| 1;
+        if (lo > 0 and before < toks.len and toks[before].pos + toks[before].len == at and toks[before].pos < at) out[1] = toks[before];
+        return out;
+    }
+};
+
 /// The semantic tokens the grammar gives: each token's `@highlight` scope.
 fn grammarTokens(a: Allocator, text: []const u8) error{OutOfMemory}![]const Token {
     var out: std.ArrayList(Token) = .empty;
@@ -1248,15 +1454,16 @@ fn grammarTokens(a: Allocator, text: []const u8) error{OutOfMemory}![]const Toke
     return out.items;
 }
 
-/// The folds the grammar gives: every node over several lines, and every
-/// run of comment lines.
+/// The folds the grammar gives: every node whose solid tokens span several
+/// lines, and every run of comment lines.
 fn grammarFolds(a: Allocator, text: []const u8) error{OutOfMemory}![]const Fold {
     var out: std.ArrayList(Fold) = .empty;
     if (parser.nodeStore) if (try parseTree(a, text)) |t| {
         // The nodes under a whole tree's root, which is all of the text;
         // the pieces of an incomplete one.
+        const solid = try Solid.init(a, text);
         const nodes = if (t.whole) t.roots[0].items() else t.roots;
-        for (nodes) |node| try nodeFolds(a, t.base, node, &out);
+        for (nodes) |node| try nodeFolds(a, t.base, solid, node, &out);
     };
     // Runs of comment tokens on consecutive lines.
     var lexer = parser.Lexer.init(text);
@@ -1283,11 +1490,11 @@ fn grammarFolds(a: Allocator, text: []const u8) error{OutOfMemory}![]const Fold 
     return out.items;
 }
 
-fn nodeFolds(a: Allocator, p: *BaseParser, s: parser.Sexp, out: *std.ArrayList(Fold)) error{OutOfMemory}!void {
+fn nodeFolds(a: Allocator, p: *BaseParser, solid: Solid, s: parser.Sexp, out: *std.ArrayList(Fold)) error{OutOfMemory}!void {
     if (s != .list) return;
-    const span = p.span(s);
+    const span = solid.trim(p.span(s));
     if (std.mem.findScalar(u8, p.source[span.start..span.end], '\n') != null) try out.append(a, .{ .start = span.start, .end = span.end });
-    for (s.items()) |child| try nodeFolds(a, p, child, out);
+    for (s.items()) |child| try nodeFolds(a, p, solid, child, out);
 }
 
 /// The words of `language.words` the grammar takes at `at`, in place of the

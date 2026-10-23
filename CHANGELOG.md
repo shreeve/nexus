@@ -35,7 +35,12 @@
   `renamable`), diagnostics across files, hover, definition, type
   definition, references, highlights, rename, member, module and scope
   completion, and signature help. A function left as written
-  (`lsp.todo`) is not advertised. The suite builds every grammar's server and drives two
+  (`lsp.todo`) is not advertised. The server holds one analysis per
+  program root, up to eight, so separate programs keep theirs side by
+  side; folds and selection ranges end at a node's last solid token, not
+  the blank lines and comments after it; the innermost selection range is
+  the token at the cursor; and a file's diagnostics are sent only when
+  they change. The suite builds every grammar's server and drives two
   through sessions (`test/lib/lsp`, `test/editor/`).
 
 - `@highlight` (preamble or @parser section): how editors colour the

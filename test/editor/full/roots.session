@@ -1,0 +1,13 @@
+# Without a root setting, a file's program is that of the newest analysis
+# that covers it, else the file's own. Separate programs keep their
+# analyses side by side: opening util.tally leaves app.tally's analysis,
+# and the diagnostics it gave lib.tally, in place. Opening lib.tally
+# analyzes app.tally again, the program that reads it.
+initialize
+open app.tally
+open util.tally
+hover app.tally 2:5
+hover util.tally 2:4
+references util.tally 2:4
+open lib.tally
+hover lib.tally 1:5

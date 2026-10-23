@@ -21,8 +21,6 @@ error -32803 no analysis yet: save the file
 > completion untitled:Untitled-1 2:9
 []
 > open main.tally
-diagnostics untitled:Untitled-1
-  {"message":"expected an expression, got end of line","range":"1:12-2:1","severity":1,"source":"tally"}
 diagnostics main.tally
   {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
   {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}

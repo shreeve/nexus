@@ -1,0 +1,19 @@
+# Folds and selection ranges end at a node's last solid token, not at the
+# blank lines and comments after it, and the innermost selection range is
+# the token at the position. A position past a node's last solid token is
+# not in it.
+initialize
+open spans.tally
+| fn f(a) {
+|     return a
+|     # after the return
+| }
+|
+| let b = f(1)
+|
+| # The end.
+folds spans.tally
+selection spans.tally 2:12
+selection spans.tally 6:9
+selection spans.tally 6:12
+selection spans.tally 7:1

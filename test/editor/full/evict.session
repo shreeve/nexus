@@ -1,0 +1,25 @@
+# At most eight analyses are held: a ninth drops the one used least
+# recently, and the diagnostics it gave. A request uses an analysis, so
+# p1.tally keeps its own and p2.tally loses its; saving p2.tally makes it
+# again, and drops the next least recently used, p3.tally's.
+initialize
+open p1.tally
+| nothing + 1
+open p2.tally
+| nothing + 1
+open p3.tally
+| nothing + 1
+open p4.tally
+| nothing + 1
+open p5.tally
+| nothing + 1
+open p6.tally
+| nothing + 1
+open p7.tally
+| nothing + 1
+open p8.tally
+| nothing + 1
+hover p1.tally 1:1
+open p9.tally
+| nothing + 1
+save p2.tally
