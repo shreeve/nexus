@@ -41,7 +41,7 @@
         "nexus-tally.server.root": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: the file opened or saved."
+          "markdownDescription": "The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program."
         }
       }
     },

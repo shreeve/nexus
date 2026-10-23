@@ -38,7 +38,7 @@ function serverRoot() {
   const folders = vscode.workspace.workspaceFolders;
   if (folders && folders.length > 0) return path.join(folders[0].uri.fsPath, root);
   vscode.window.showWarningMessage(
-    `${name}: ${prefix}.server.root is relative and no folder is open; the server analyzes the file opened or saved.`,
+    `${name}: ${prefix}.server.root is relative and no folder is open; the server analyzes each file's own program.`,
   );
   return "";
 }

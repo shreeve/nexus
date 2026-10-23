@@ -23,7 +23,7 @@ client 3: start
 client 3: running
 workspace setting nexus-tally.server.root = "main.tally"
 client 3: stop
-warning: Tally (Nexus): nexus-tally.server.root is relative and no folder is open; the server analyzes the file opened or saved.
+warning: Tally (Nexus): nexus-tally.server.root is relative and no folder is open; the server analyzes each file's own program.
 client 4: new nexus-tally Tally (Nexus)
   server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
   options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":""},"outputChannel":"<channel Tally (Nexus)>"}
