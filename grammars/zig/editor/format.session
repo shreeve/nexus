@@ -1,0 +1,52 @@
+# Format Document as `zig fmt` formats, by Ast.render in process
+# (hooks.zig, format). A file that parses is formatted; formatted, it has
+# nothing to change (null). Unquoting a name and dropping the blanks at
+# the end of a doc comment leave the program as it was. A file with a
+# syntax error is refused, as `zig fmt` refuses it.
+#
+# The guard: a file that parses, but that `zig fmt` would change into
+# another program, is refused too, since the grammar's parser builds
+# another tree from what Ast.render writes. Each is one of the four
+# std.zig.Ast helper bugs of grammars/zig/README.md: `zig fmt` writes
+# `[.x.x: {}]u8` for `[.x: {}]u8` (T5), drops the `};` after an empty
+# enum's doc comment (T7), writes `x: x: while` for a field `x: while`
+# (T8), and `{ inline for` for a switch prong `inline for` (T9). AstGen
+# too takes the `x:` of T5 and of T8 for a label, and reports it unused.
+initialize quiet
+open format.zig
+format format.zig
+change format.zig
+| //! Format Document, and its guard (editor/format.session).
+| const Point = struct { x: i32, y: i32 };
+|
+| pub fn sum(p: Point) i32 {
+|     return p.x + p.y;
+| }
+format format.zig
+change format.zig
+| const @"limit" = 10;
+| /// The limit, twice.
+| const twice = @"limit" * 2;
+format format.zig
+change format.zig
+| const Point = struct { x: i32 y: i32 };
+format format.zig
+change format.zig
+| const A = [.x: {}]u8;
+format format.zig
+change format.zig
+| const E = enum(u8) {
+|     //! An enum with no fields.
+| };
+format format.zig
+change format.zig
+| const S = struct { x: while (true) u8 };
+format format.zig
+change format.zig
+| fn f(x: u8) void {
+|     switch (x) {
+|         inline for (.{}) |_| 0 => {},
+|         else => {},
+|     }
+| }
+format format.zig

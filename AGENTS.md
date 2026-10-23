@@ -69,7 +69,7 @@ zig build unit                              # the generator's unit tests alone
 ./bin/nexus --highlight all some.grammar editors   # its editor files, from @highlight
 ./bin/nexus nexus.grammar src/frontend/parser.zig   # regenerate the frontend
 test/bench/run                              # generation time and parse throughput
-zig fmt --check build.zig src/*.zig src/{codegen,highlight,lexgen,lr,lsp} src/frontend/{lang,lower,frontend}.zig test/lib test/editor
+zig fmt --check build.zig src/*.zig src/{codegen,highlight,lexgen,lr,lsp} src/frontend/{lang,lower,frontend}.zig test/lib test/editor grammars/zig/editor
 ```
 
 - Fixing a bug starts with a failing test that reproduces it (`test/known/`).

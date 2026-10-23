@@ -564,6 +564,12 @@ the names its `@lsp` resolves against the compiler's, and
 `grammars/zig/compare-members` its members and imports against a
 resolution of its own over `std.zig.Ast`
 ([grammars/zig/README.md](../grammars/zig/README.md#names-and-scopes)).
+The Zig server of `grammars/zig/editor/` writes `parseDiagnostics`,
+`format` and `resolveImport` with std.zig itself (Zig's own errors as
+you type, `zig fmt` refused where it would change the program, and
+`std` as `zig env` names it), and its sessions replay them
+([grammars/zig/README.md, "The language
+server"](../grammars/zig/README.md#the-language-server)).
 
 The suite checks the extension under Node, without VS Code
 (`test/lib/vscode`). For every grammar, `package.json`'s semantic token

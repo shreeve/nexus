@@ -30,7 +30,7 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   every name of the corpus, and with a resolution over std.zig.Ast on
   every member and import); keyword completion tests each word against
   one parse to the cursor; CHANGELOG.md, "Unreleased".
-- **The suite is green on macOS (arm64):** `./test/run` → 1106 passed, 0
+- **The suite is green on macOS (arm64):** `./test/run` → 1110 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
@@ -110,6 +110,16 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `skip` on untyped roles, and bare `detail`: Zig needs each to agree
      with AstGen (enum fields kept in Ast's type slot, function types'
      and extern functions' parameters, `_`).
+   - The Zig server of `grammars/zig/editor/` (a demonstration, not
+     published) runs std.zig in `hooks.zig`: Zig's own errors as you
+     type, `zig fmt` with a guard against changing the program, `std`
+     from `zig env`. `hooks.zig` takes no `Io` or client settings: it
+     builds an `Io` of its own from the environment start-up gives
+     std's debug `Io`, and type errors on save (`zig build --listen=-`)
+     would need a setting and a build server that reconfigures
+     ([grammars/zig/README.md, "Type errors on save: not
+     here"](grammars/zig/README.md#type-errors-on-save-not-here)). A
+     refused format answers "format failed" without the reason.
    - The server indexes the open file again on every change (63 ms for
      Sema.zig's 1.5 MB in safe mode, 510 ms in debug); a request after
      that takes about 1 ms (safe), cross-file ones included. Workspace

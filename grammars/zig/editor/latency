@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Time the Zig language server's requests on one large file
+(README.md, "The language server", "Latency").
+
+Usage:
+  grammars/zig/editor/latency SERVER FOLDER FILE [ROUNDS]
+
+SERVER is the server built with editor/hooks.zig; FOLDER the workspace
+folder; FILE a file in it, by its path from FOLDER, which declares
+`fn analyzeBodyInner(`, `const Value = ` and a local `const src = `
+and uses `Value.fromInterned`, as Zig 0.17.0's src/Sema.zig does. Each
+request is timed ROUNDS times (5 by default), and the best is printed
+with the size of its answer. Positions count bytes (the client offers
+`utf-8`).
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+
+def main():
+    if len(sys.argv) not in (4, 5):
+        sys.exit(__doc__)
+    server, folder, rel = sys.argv[1:4]
+    rounds = int(sys.argv[4]) if len(sys.argv) == 5 else 5
+    folder = os.path.abspath(folder)
+    path = os.path.join(folder, rel)
+    text = open(path, encoding="utf-8").read()
+    s = Server(server, "file://" + path, text, rounds)
+    s.request("initialize", {"capabilities": {"general": {"positionEncodings": ["utf-8"]}},
+                             "initializationOptions": {},
+                             "workspaceFolders": [{"uri": "file://" + folder, "name": "folder"}]})
+    s.notify("initialized", {})
+    print("%s: %d bytes, %d lines" % (rel, len(text.encode()), len(s.lines)))
+    t = time.perf_counter()
+    s.notify("textDocument/didOpen", {"textDocument": {"uri": s.uri, "languageId": "zig", "version": 1, "text": text}})
+    s.request("nexus/idle", {})
+    print("%-36s %8.1f ms" % ("open, to diagnostics published", (time.perf_counter() - t) * 1000))
+    s.timed("an edit, to diagnostics published", s.edit)
+    fn = s.at(r"^fn (analyzeBodyInner)\(", 3)
+    decl = s.at(r"^const (Value) = ", 6)
+    use = s.at(r"Value\.fromInterned", 0)
+    local = s.at(r"^\s+const (src) = ", 0)
+    local["character"] = s.lines[local["line"]].index("src")
+    member = {"line": use["line"], "character": use["character"] + 6}
+    doc = {"textDocument": {"uri": s.uri}}
+    s.timed("hover (a function)", lambda: s.request("textDocument/hover", s.pos(fn)))
+    s.timed("definition (a constant)", lambda: s.request("textDocument/definition", s.pos(use)))
+    s.timed("definition (Value.fromInterned)", lambda: s.request("textDocument/definition", s.pos(member)))
+    s.timed("document highlight (a local)", lambda: s.request("textDocument/documentHighlight", s.pos(local)))
+    s.timed("completion (names in scope)", lambda: s.request("textDocument/completion", s.pos({"line": local["line"] + 1, "character": 0})))
+    s.timed("outline", lambda: s.request("textDocument/documentSymbol", doc))
+    s.timed("folding ranges", lambda: s.request("textDocument/foldingRange", doc))
+    s.timed("semantic tokens", lambda: s.request("textDocument/semanticTokens/full", doc))
+    s.timed("Format Document (a blank removed)", lambda: s.request("textDocument/formatting", dict(doc, options={"tabSize": 4, "insertSpaces": True})))
+    s.timed("references of Value (workspace)", lambda: s.request("textDocument/references", dict(s.pos(decl), context={"includeDeclaration": True})))
+    s.request("shutdown", None)
+    s.notify("exit", None)
+    s.proc.wait()
+
+
+class Server:
+    def __init__(self, server, uri, text, rounds):
+        self.proc = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.uri = uri
+        self.lines = text.split("\n")
+        self.rounds = rounds
+        self.next_id = 0
+        self.version = 1
+
+    def send(self, msg):
+        body = json.dumps(msg).encode()
+        self.proc.stdin.write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
+        self.proc.stdin.flush()
+
+    def receive(self):
+        length = None
+        while True:
+            header = self.proc.stdout.readline().decode().strip()
+            if not header:
+                break
+            name, _, value = header.partition(":")
+            if name.lower() == "content-length":
+                length = int(value)
+        return json.loads(self.proc.stdout.read(length))
+
+    def request(self, method, params):
+        self.next_id += 1
+        self.send({"jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params})
+        while True:
+            msg = self.receive()
+            if msg.get("id") == self.next_id and "method" not in msg:
+                return msg
+
+    def notify(self, method, params):
+        self.send({"jsonrpc": "2.0", "method": method, "params": params})
+
+    def at(self, pattern, offset):
+        for n, line in enumerate(self.lines):
+            m = re.search(pattern, line)
+            if m:
+                return {"line": n, "character": m.start() + offset}
+        sys.exit("no line matches " + pattern)
+
+    def pos(self, position):
+        return {"textDocument": {"uri": self.uri}, "position": position}
+
+    def edit(self):
+        """A blank put at the end of the first line, or taken away."""
+        self.version += 1
+        n = len(self.lines[0])
+        add = self.version % 2 == 0
+        change = {"range": {"start": {"line": 0, "character": n}, "end": {"line": 0, "character": n if add else n + 1}},
+                  "text": " " if add else ""}
+        self.notify("textDocument/didChange", {"textDocument": {"uri": self.uri, "version": self.version}, "contentChanges": [change]})
+        return self.request("nexus/idle", {})
+
+    def timed(self, label, fn):
+        best = None
+        for _ in range(self.rounds):
+            t = time.perf_counter()
+            msg = fn()
+            ms = (time.perf_counter() - t) * 1000
+            best = ms if best is None or ms < best else best
+        result = msg.get("result")
+        size = ""
+        if isinstance(result, list):
+            size = len(result)
+        elif isinstance(result, dict) and "data" in result:
+            size = len(result["data"]) // 5
+        elif isinstance(result, dict) and "items" in result:
+            size = len(result["items"])
+        error = " error: " + msg["error"]["message"] if "error" in msg else ""
+        print("%-36s %8.1f ms  %s%s" % (label, best, size, error))
+
+
+if __name__ == "__main__":
+    main()

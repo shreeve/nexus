@@ -109,6 +109,24 @@
   through semantic tokens. VS Code knows each, so `package.json`
   declares none and gives none a TextMate scope. The Zig grammar colours
   a struct's fields `property` and its `var`s `variable`.
+- The Zig language server, a demonstration (`grammars/zig/editor/`;
+  [grammars/zig/README.md, "The language
+  server"](grammars/zig/README.md#the-language-server)): the server
+  `nexus --editor` writes from the Zig grammar, with a `hooks.zig` that
+  runs std.zig in process. `parseDiagnostics` gives every error
+  `Ast.parse` reports, and in a file that parses AstGen's (unused and
+  shadowing names, a `var` never mutated, an undeclared name), in Zig's
+  words and at Zig's positions; `format` is `zig fmt` (`Ast.render`),
+  refused for a file with syntax errors and for an edit after which the
+  grammar's parser builds another tree, which catches the four
+  std.zig.Ast helper bugs T5, T7, T8 and T9; `resolveImport` makes
+  `@import("std")` the std.zig `zig env` names. Its sessions replay
+  each, and completion after `list.` on an `std.ArrayList(u8)` answers
+  nothing. On src/Sema.zig (safe mode) `parseDiagnostics` takes 41 ms
+  and `format` 17 ms. Type errors on save through `zig build
+  --listen=-` are left out: Zig 0.17.0's build server does not see a
+  changed `build.zig` without watching, panics on a second request
+  while watching, and exits when `build.zig` does not compile.
 - Keyword completion parses once to the cursor, then tests each word
   against a copy of the parse stack: the generated server's `parser.zig`
   is the module `--spans` generates followed by the runtime's `complete`
