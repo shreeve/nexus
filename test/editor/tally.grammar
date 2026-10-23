@@ -54,7 +54,8 @@ tokens
 
 # A file's names: its functions, `let`s and `use`s, in any order; a
 # function's parameters, then a block's `let`s, each from its definition
-# on. A name after `.` is a member, which @lsp does not resolve.
+# on. `use lib` imports lib.tally, beside the file; a name after `.` is a
+# member of what is before it: a `use`'s file, or what a `let`'s value is.
 @lsp
     scope       module unordered
     scope       fn block
@@ -63,7 +64,8 @@ tokens
     define      let.name        variable  value:value  doc:leading
     define      use.name        module
     use         IDENT
-    skip        member.name
+    import      use.name        file "{}.tally"
+    member      member.name     of:object
     builtin     "print"
     doc         COMMENT strip "#"
     undefined   warning

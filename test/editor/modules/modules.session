@@ -1,0 +1,22 @@
+# The file an import names: the client's `modules` setting's, else the
+# language's `resolveImport` (this server's hooks.zig: `std_NAME` is
+# NAME.tally beside the importing file), else the name taken as a path
+# beside the importing file (`file "{}.tally"`).
+initialize module core=util.tally module std_lib=app.tally quiet
+open main.tally
+| use core
+| use std_util
+| use std_lib
+| use util
+| use std_none
+| let a = core.add
+| let b = std_util.double
+| let c = std_lib.n
+| let d = util.greeting
+| let e = std_none.x
+definition main.tally 6:14
+definition main.tally 7:18
+definition main.tally 8:17
+definition main.tally 9:14
+definition main.tally 10:18
+completion main.tally 8:17

@@ -1,0 +1,67 @@
+# Names across files: `use util` imports util.tally, beside the file, and
+# `util.add` is the `add` of that file (`import`, `member`). The workspace
+# is project/ (`folder`), whose files references and rename search, open
+# or not.
+initialize folder quiet
+open main.tally
+# A member: its definition, hover and references, in another file; the
+# import's name is the module's definition.
+definition main.tally 4:19
+definition main.tally 9:17
+hover main.tally 4:19
+definition main.tally 1:6
+references main.tally 4:19
+# Completion after `.`: the members of the file, without keywords.
+completion main.tally 5:17
+# `util.missing`: no such member, nothing.
+definition main.tally 14:7
+# From the file that defines it: the uses in a file not open.
+open util.tally
+references util.tally 2:5
+highlight util.tally 2:5
+references util.tally 11:6
+# Rename across files: the definition, the uses in its file and the
+# members in others.
+rename util.tally 2:5 plus
+rename util.tally 7:5 twice
+# Refused: `greeting` -> `add` would make `util.greeting` name `add`, and
+# `double` -> `missing` would give `util.missing` a definition.
+rename util.tally 11:6 add
+rename util.tally 7:5 missing
+# lib.tally, not open, defines what app.tally's `lib.size` names.
+open app.tally
+definition app.tally 2:14
+completion app.tally 2:13
+rename app.tally 2:14 count
+# An open file's text, saved or not, is the one other files see.
+change util.tally
+| fn sum(a, b) {
+|     return a + b
+| }
+definition main.tally 4:19
+completion main.tally 4:18
+# A `let` whose value is an import's module: its members are the file's.
+change main.tally
+| use util
+| let u = util
+| let s = u.sum(1, 2)
+| let v = u
+| let w = v.sum
+definition main.tally 3:11
+definition main.tally 5:11
+# A file that does not exist, a name of nothing, and aliases in a cycle
+# answer nothing.
+change main.tally
+| use nowhere
+| let a = nowhere.x
+| let b = c
+| let c = b
+| let d = b.x
+definition main.tally 2:17
+completion main.tally 2:17
+definition main.tally 5:11
+# A document without a path imports nothing by a relative name.
+open untitled:Scratch-1
+| use util
+| let x = util.add
+definition untitled:Scratch-1 2:15

@@ -29,7 +29,9 @@ diagnostics main.tally
   {"message":"expected a name, got end of line","range":"2:18-3:1","severity":1,"source":"tally"}
   {"message":"expected an expression, got end of line","range":"4:16-5:1","severity":1,"source":"tally"}
 > completion main.tally 2:18
-[]
+  {"detail":"fn add(a, b)","documentation":{"kind":"markdown","value":"Adds two numbers."},"kind":3,"label":"add"}
+  {"detail":"fn double(n)","documentation":{"kind":"markdown","value":"Twice a number."},"kind":3,"label":"double"}
+  {"kind":6,"label":"greeting"}
 > completion main.tally 3:1
   {"detail":"fn f(a)","kind":3,"label":"f"}
   {"kind":6,"label":"total"}

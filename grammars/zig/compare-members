@@ -1,0 +1,66 @@
+#!/bin/bash
+# Compares the members and imports zig.grammar's @lsp resolves (the
+# Resolver of scopes.zig, which the language server `nexus --editor`
+# writes uses) with a resolution of its own over std.zig.Ast, file by
+# file: for every name after `.`, the declaration each names, and for
+# every `@import`, the file. `std` is the standard library of the Zig that
+# runs this script (`zig env`), as the client's `modules` setting gives it
+# to the server.
+#
+# Usage:
+#   grammars/zig/compare-members [options] (DIR|FILE|--list LIST)...
+#
+#   DIR             every *.zig file under DIR
+#   --list LIST     the paths in LIST, one per line
+#   --module N=P    the file of module N (as many as needed; std is given)
+#   --show          name each input on which the two agree, and each
+#                   member the engine misses
+#   -O MODE         optimize mode of the tool (default safe)
+#
+# The tool is built in .zig-cache/nexus-grammars/zig-members/ beside the
+# server this checkout's bin/nexus writes (run `zig build` first). Inputs
+# Ast.parse rejects are not compared. It prints one line per wrong answer
+# and a summary of the counts; it exits 1 when there is any.
+
+set -uo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
+OUT="$ROOT/.zig-cache/nexus-grammars/zig-members"
+MODE=safe TOOL_ARGS=()
+LIST="$OUT/list.txt"
+STD=$(zig env | sed -n 's/.*\.std_dir = "\(.*\)".*/\1/p')
+[[ -n $STD ]] || { echo "zig env names no std_dir" >&2; exit 2; }
+TOOL_ARGS+=(--module "std=$STD/std.zig")
+mkdir -p "$OUT"
+: >"$LIST.new"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --list) cat "$2" >>"$LIST.new"; shift ;;
+        --module) TOOL_ARGS+=(--module "$2"); shift ;;
+        --show) TOOL_ARGS+=(--show) ;;
+        -O) MODE=$2; shift ;;
+        -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+        -*) echo "unknown option $1" >&2; exit 2 ;;
+        *)
+            if [[ -d $1 ]]; then
+                find "$(cd "$1" && pwd)" -name '*.zig' -type f | LC_ALL=C sort >>"$LIST.new"
+            elif [[ -f $1 ]]; then
+                echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" >>"$LIST.new"
+            else
+                echo "no such file or directory: $1" >&2; exit 2
+            fi ;;
+    esac
+    shift
+done
+mv "$LIST.new" "$LIST"
+[[ -s $LIST ]] || { echo "no input files" >&2; exit 2; }
+
+# Build: write the server's files, compile the tool beside them.
+NEXUS="$ROOT/bin/nexus"
+[[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
+(cd "$HERE" && "$NEXUS" --editor --lang zig.zig zig.grammar "$OUT") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
+cp "$HERE/tools/compare_members.zig" "$OUT/server/src/"
+(cd "$OUT/server/src" && zig build-exe -O "$MODE" compare_members.zig -femit-bin=../compare_members --cache-dir "$ROOT/.zig-cache/nexus-grammars/zig") \
+    >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
+
+exec "$OUT/server/compare_members" "${TOOL_ARGS[@]}" --list "$LIST"

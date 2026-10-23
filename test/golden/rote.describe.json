@@ -1,0 +1,91 @@
+{
+  "format": 1,
+  "nexus": "2.3.0",
+  "grammar": "rote.grammar",
+  "lang": null,
+  "tokens": [
+    {"name": "ident", "terminal": 10, "display": "ident"},
+    {"name": "global", "terminal": 18, "display": "global"},
+    {"name": "number", "terminal": 17, "display": "number"},
+    {"name": "comment", "terminal": null, "display": null},
+    {"name": "newline", "terminal": 9, "display": "newline"},
+    {"name": "kw_do", "terminal": 12, "display": "kw_do"},
+    {"name": "kw_set", "terminal": 14, "display": "kw_set"},
+    {"name": "caret", "terminal": 13, "display": "\"^\""},
+    {"name": "colon", "terminal": 11, "display": "\":\""},
+    {"name": "eq", "terminal": 15, "display": "\"=\""},
+    {"name": "plus", "terminal": 16, "display": "\"+\""},
+    {"name": "eof", "terminal": 1, "display": "end of input"},
+    {"name": "err", "terminal": null, "display": null}
+  ],
+  "rules": [
+    {"line": 16, "token": "comment", "pattern": "';' [^\\n]*", "regex": ";[^\\x0a]*", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 17, "token": "newline", "pattern": "'\\n'", "regex": "\\x0a", "literal": "\n", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 18, "token": "kw_do", "pattern": "\"do\"", "regex": "do", "literal": "do", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 19, "token": "kw_set", "pattern": "\"set\"", "regex": "set", "literal": "set", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 20, "token": "caret", "pattern": "'^'", "regex": "\\^", "literal": "^", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 21, "token": "colon", "pattern": "':'", "regex": ":", "literal": ":", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 22, "token": "eq", "pattern": "'='", "regex": "=", "literal": "=", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 23, "token": "plus", "pattern": "'+'", "regex": "\\+", "literal": "+", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 24, "token": "global", "pattern": "'$' [a-z]+", "regex": "\\$[a-z]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 25, "token": "number", "pattern": "[0-9]+", "regex": "[0-9]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 26, "token": "ident", "pattern": "[a-z]+", "regex": "[a-z]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 27, "token": "err", "pattern": ".", "regex": "[\\x00-\\xff]", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []}
+  ],
+  "states": [],
+  "after": [],
+  "keywords": {},
+  "trivia": ["COMMENT"],
+  "highlight": {
+    "language": "Rote",
+    "scope_name": "source.rote",
+    "extensions": ["rote"],
+    "line_comment": ";",
+    "block_comment": null,
+    "indent": null,
+    "dedent": null,
+    "word_chars": "[0-9A-Z_a-z]",
+    "entries": [
+      {"line": 56, "scope": "keyword", "literals": ["do", "set"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 57, "scope": "operator", "literals": ["=", "+", "^"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 58, "scope": "punctuation", "literals": [":"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 59, "scope": "variable.special", "literals": [], "tokens": ["GLOBAL"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 60, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 61, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 62, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+    ]
+  },
+  "schema": {"kinds": [
+    {"name": "routine", "roles": [{"name": "lines", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false},
+    {"name": "label", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "do", "roles": [{"name": "label", "type": "leaf", "optional": true, "rest": false}, {"name": "routine", "type": "leaf", "optional": true, "rest": false}], "side": [], "wrapper": false},
+    {"name": "set", "roles": [{"name": "target", "type": "global", "optional": false, "rest": false}, {"name": "value", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "global", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "num", "roles": [{"name": "value", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
+    {"name": "add", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false}
+  ]},
+  "lsp": {
+    "scopes": [
+      {"kind": "routine", "unordered": true}
+    ],
+    "defines": [
+      {"kind": "label", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null}
+    ],
+    "uses": ["ident"],
+    "skips": [],
+    "builtins": [],
+    "builtin_tokens": [],
+    "doc": null,
+    "undefined": null,
+    "imports": [
+      {"kind": "do", "role": "routine", "rest": false, "when": [], "file": "{}.rote"}
+    ],
+    "members": [],
+    "qualifies": [
+      {"kind": "do", "role": "label", "rest": false, "in": "routine"}
+    ],
+    "nominals": [
+      {"token": "global", "ns": "globals"}
+    ]
+  }
+}

@@ -262,6 +262,7 @@ pub fn main(init: std.process.Init) !void {
                 .spec = &built.spec,
                 .g = if (built.g) |*g| g else null,
                 .highlight = if (built.highlight) |*h| h else null,
+                .lsp = if (built.lsp) |*l| l else null,
             });
             try writeOutput(io, opts.outputFile, bytes);
             if (!eql(opts.outputFile, "-")) diag.info("Wrote the description to {s} ({d} bytes)", .{ opts.outputFile, bytes.len });

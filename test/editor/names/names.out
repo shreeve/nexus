@@ -19,7 +19,7 @@ main.tally 8:9-8:10
 > definition main.tally 7:4
 main.tally 7:4-7:9
 > definition main.tally 4:18
-null
+util.tally 2:4-2:7
 > definition main.tally 7:1
 null
 > definition main.tally 15:1
@@ -55,7 +55,7 @@ null
 > hover main.tally 8:17
 {"contents":{"kind":"markdown","value":"```tally\nfactor\n```"}}
 > hover main.tally 4:18
-null
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
 > completion main.tally 8:13
   {"kind":6,"label":"factor"}
   {"kind":6,"label":"x"}
@@ -73,7 +73,9 @@ null
   {"kind":14,"label":"return"}
   {"kind":14,"label":"use"}
 > completion main.tally 4:18
-[]
+  {"detail":"fn add(a, b)","documentation":{"kind":"markdown","value":"Adds two numbers."},"kind":3,"label":"add"}
+  {"detail":"fn double(n)","documentation":{"kind":"markdown","value":"Twice a number."},"kind":3,"label":"double"}
+  {"kind":6,"label":"greeting"}
 > completion main.tally 4:6
 []
 > open util.tally

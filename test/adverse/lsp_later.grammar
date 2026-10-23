@@ -1,6 +1,6 @@
 # A line of a later step of @lsp is an error that says so.
 # error: lsp_later.grammar:47:5:
-# error: `import` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc and undefined
+# error: `bind` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    import   let.name
+    bind     let.name variable
 
 prog!  = body                               → (prog ...1)
 

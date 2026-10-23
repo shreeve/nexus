@@ -62,15 +62,15 @@
     "dedent": "^[\\x09 ]*\\}",
     "word_chars": "[0-9A-Z_a-z]",
     "entries": [
-      {"line": 94, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "\"fn\" [ \\t]+ function:([a-z_] [a-z_0-9]*)", "regex": "(fn[\\x09 ]+)([_a-z][0-9_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "fn[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[_a-z][0-9_a-z]*"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 95, "scope": "keyword", "literals": ["fn", "let", "use"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 96, "scope": "keyword.control", "literals": ["return"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 97, "scope": "operator", "literals": ["=", "+", "-", "*"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 98, "scope": "punctuation", "literals": ["(", ")", "{", "}", ",", "."], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 99, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 100, "scope": "string", "literals": [], "tokens": ["STRING"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 101, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
-      {"line": 102, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+      {"line": 96, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "\"fn\" [ \\t]+ function:([a-z_] [a-z_0-9]*)", "regex": "(fn[\\x09 ]+)([_a-z][0-9_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "fn[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[_a-z][0-9_a-z]*"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 97, "scope": "keyword", "literals": ["fn", "let", "use"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 98, "scope": "keyword.control", "literals": ["return"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 99, "scope": "operator", "literals": ["=", "+", "-", "*"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 100, "scope": "punctuation", "literals": ["(", ")", "{", "}", ",", "."], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 101, "scope": "constant.numeric", "literals": [], "tokens": ["NUMBER"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 102, "scope": "string", "literals": [], "tokens": ["STRING"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 103, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 104, "scope": "invalid", "literals": [], "tokens": ["ERR"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
     ]
   },
   "schema": {"kinds": [
@@ -89,5 +89,32 @@
     {"name": "+", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "-", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "*", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": {
+    "scopes": [
+      {"kind": "module", "unordered": true},
+      {"kind": "fn", "unordered": false},
+      {"kind": "block", "unordered": false}
+    ],
+    "defines": [
+      {"kind": "fn", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": true, "visibility": "both", "value": null, "type": null, "doc": "leading", "export": null, "detail": {"upto": "body"}},
+      {"kind": "params", "role": "names", "rest": true, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
+      {"kind": "let", "role": "name", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": "value", "type": null, "doc": "leading", "export": null, "detail": null},
+      {"kind": "use", "role": "name", "rest": false, "symbol": "module", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null}
+    ],
+    "uses": ["ident"],
+    "skips": [],
+    "builtins": ["print"],
+    "builtin_tokens": [],
+    "doc": {"token": "comment", "strip": "#"},
+    "undefined": "warning",
+    "imports": [
+      {"kind": "use", "role": "name", "rest": false, "when": [], "file": "{}.tally"}
+    ],
+    "members": [
+      {"kind": "member", "role": "name", "rest": false, "of": "object"}
+    ],
+    "qualifies": [],
+    "nominals": []
+  }
 }

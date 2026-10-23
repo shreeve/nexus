@@ -296,5 +296,6 @@
     {"name": "text", "roles": [{"name": "label", "type": "any", "optional": true, "rest": false}, {"name": "offset", "type": "any", "optional": true, "rest": false}, {"name": "routine", "type": "any", "optional": true, "rest": false}], "side": [], "wrapper": false},
     {"name": "pat", "roles": [{"name": "count", "type": "count", "optional": true, "rest": false}, {"name": "codes", "type": "group", "optional": true, "rest": false}, {"name": "text", "type": "group", "optional": true, "rest": false}, {"name": "capture", "type": "any", "optional": true, "rest": false}, {"name": "alts", "type": "group", "optional": false, "rest": true}], "side": [], "wrapper": false},
     {"name": "count", "roles": [{"name": "min", "type": "leaf", "optional": true, "rest": false}, {"name": "max", "type": "leaf", "optional": true, "rest": false}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": null
 }

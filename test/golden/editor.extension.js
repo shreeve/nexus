@@ -43,6 +43,20 @@ function serverRoot() {
   return "";
 }
 
+/** The files of module names, each absolute: a relative one is
+ * relative to the first workspace folder. */
+function serverModules() {
+  const set = vscode.workspace.getConfiguration(prefix).get("server.modules") || {};
+  const folders = vscode.workspace.workspaceFolders;
+  const modules = {};
+  for (const [module, file] of Object.entries(set)) {
+    if (typeof file !== "string" || !file) continue;
+    const relative = !path.isAbsolute(file) && folders && folders.length > 0;
+    modules[module] = relative ? path.join(folders[0].uri.fsPath, file) : file;
+  }
+  return modules;
+}
+
 /** @param {vscode.ExtensionContext} context */
 async function start(context) {
   const command = serverCommand(context);
@@ -52,7 +66,7 @@ async function start(context) {
       { scheme: "file", language: id },
       { scheme: "untitled", language: id },
     ],
-    initializationOptions: { root: serverRoot() },
+    initializationOptions: { root: serverRoot(), modules: serverModules() },
     outputChannel: output,
   });
   try {

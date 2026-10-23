@@ -78,9 +78,7 @@ pub const names: scopes.Table = .{
         .{ .at = .{ .kind = .let, .slot = ir.slot(.let, .name) }, .symbol = .variable, .value = ir.slot(.let, .value), .doc = .leading },
         .{ .at = .{ .kind = .use, .slot = ir.slot(.use, .name) }, .symbol = .module },
     },
-    .skips = &.{
-        .{ .at = .{ .kind = .member, .slot = ir.slot(.member, .name) } },
-    },
+    .skips = &.{},
     .uses = &.{.ident},
     .builtins = &.{
         "print",
@@ -89,4 +87,14 @@ pub const names: scopes.Table = .{
     .doc_token = .comment,
     .doc_strip = "#",
     .undefined = .warning,
+    .imports = &.{
+        .{ .at = .{ .kind = .use, .slot = ir.slot(.use, .name) }, .file = "{}.tally" },
+    },
+    .members = &.{
+        .{ .at = .{ .kind = .member, .slot = ir.slot(.member, .name) }, .of = ir.slot(.member, .object) },
+    },
+    .qualifies = &.{},
+    .nominals = &.{},
+    .namespaces = &.{},
+    .extensions = &.{"tally"},
 };

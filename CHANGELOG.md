@@ -19,23 +19,63 @@
   token uses; `skip KIND.ROLE ... [when ...]`, `builtin "name" ... |
   TOKEN`, `doc TOKEN [strip "text"]`, and `undefined error|warning`,
   diagnostics at the names nothing defines. Every mistake is a located
-  error; the lines of later steps (`import`, `member`, `qualify`,
-  `nominal`, `bind`, `color`, `words`) are an error that says so. With
+  error; the lines of a later step (`bind`, `color`, `words`) are an
+  error that says so. With
   `@lsp`, `--editor` writes `server/src/scopes.zig`, the names engine,
   and the tables in `language.zig`; the server indexes each open file's
-  current text, after every change, and answers within the file.
-  A rename is checked: refused for a name other files can see, and
-  unless the renamed text, indexed again, resolves every use as before.
+  current text, after every change.
+  A rename is checked: refused unless the renamed texts, indexed again,
+  resolve every name as before.
   A function `hooks.zig` writes (`symbols`, `symbolAt`, `describe`,
-  `visible`) replaces the grammar's names for its features. The
+  `visible`, `members`) replaces the grammar's names for its features. The
   generated parser is the same with or without `@lsp`. The Zig grammar
   declares Zig's names, and `grammars/zig/compare-scopes` checks them
-  against the compiler's (std.zig.AstGen): over the 2,400 corpus files
-  AstGen accepts, 938,569 resolved uses and no disagreement
+  against the compiler's (std.zig.AstGen): over the 2,713 files of Zig
+  0.17.0's source AstGen accepts, 951,390 resolved uses and no
+  disagreement
   ([grammars/zig/README.md](grammars/zig/README.md#names-and-scopes)).
   Tally, the editor suite's language, has `@schema` and `@lsp`; its
   `names/` server answers from `@lsp` alone, `stub/` is built without
   it.
+- `@lsp`'s lines of files and members
+  ([GRAMMAR.md, "Names and scopes"](docs/GRAMMAR.md#names-and-scopes)):
+  `import KIND.ROLE [when ...] [file "{}.ext"]` (a node imports the file
+  its leaf names, a string's contents or a name: a module's file, else
+  that path relative to the importing file), `member KIND.ROLE of:ROLE`
+  (`a.b`: `b` among the members of what `a` denotes), `qualify
+  KIND.ROLE in:ROLE` (`LABEL^ROUTINE`: a name of the file an import
+  names) and `nominal TOKEN [ns:NAME]` (names of a namespace, one per
+  text across the workspace, with no declaration). What a definition's
+  `value:` denotes (an import, a container, an alias), else its `type:`,
+  gives its members; an ordered scope (a block's) has none; a value
+  whose type needs inference answers nothing. Every mistake is a located
+  error, each with an adverse test. The server resolves across files:
+  definition, hover and completion of members (`std.mem.eql`), of
+  qualified names and of imports; references and rename across the
+  workspace (the open documents and the files of the language's
+  extensions under the workspace folders), a rename checked over every
+  file that holds either name; files not open read from disk and their
+  indexes kept while their text is the one read. A module's name
+  (`@import("std")`) finds its file through the client's `modules`
+  option (`PREFIX.server.modules` in the extension, written for a
+  grammar with `import` lines), else the language's `resolveImport`
+  (a new function of `hooks.zig`). A builtin's name may be a `member`
+  definition (an enum's field `true`). Without `export:`, other files
+  see every name they reach. The Zig grammar's `member field_access.name
+  of:operand` and `import builtin_call.args when name "@import"` resolve
+  `std.mem.eql`, and `grammars/zig/compare-members` checks every member
+  and import against a resolution of its own over std.zig.Ast: over the
+  2,898 files of Zig 0.17.0's source, 143,947 members resolved (126,481
+  through imports), 47,834 more each a declaration of its name, 325,845
+  unresolved by design, none missed, none wrong; 4,809 imports
+  resolved, none wrong. A definition on a 1.5 MB file (Sema.zig) that
+  leads into std, and completion after `std.mem.`, take about 1 ms once
+  the files are indexed (safe mode); the first that reads std.zig and
+  mem.zig, 7 ms. Rote (`test/rote`) is the language of the sessions of
+  `qualify` and `nominal`.
+- `nexus --describe` writes `@lsp` as read (`lsp`, null without it;
+  [GRAMMAR.md, "Describing a grammar"](docs/GRAMMAR.md#describing-a-grammar)).
+  `format` stays 1: a key is added.
 - Doc tests: a ` ```session ` block, then an ` ```out ` block, is a
   session the last grammar's language server must answer as shown;
   `test/lib/lsp` takes `initialize quiet`, which prints nothing of the
@@ -236,11 +276,32 @@ Additive: no migration required. Downstream:
   `scope` for the kinds of functions and blocks, `define fun.name
   function outer detail:..body` for a function's name, `define
   label.name function doc:leading` for an M label, `use IDENT`, and
-  `skip` for the leaf after a member operator. What the lexical lines
-  cannot say waits for the later steps: Rig's binding by assignment
-  (`bind`), members, imports and `LABEL^ROUTINE` (`member`, `import`,
-  `qualify`), and M's locals and globals (`nominal`). No lang module
-  of theirs is named `scopes.zig`.
+  `member` for the leaf after a member operator. No lang module of
+  theirs is named `scopes.zig`.
+- Rig, em, nexis: the lines of files and members are new syntax (each
+  was an error), so no grammar changes meaning and generated parsers are
+  byte for byte the same. Optional, each in its own repository:
+  - Rig: `member member.name of:object` for `a.b`, `import use.name`
+    (with `file "{}.rig"`) for `use`, and `type:` on the definitions
+    whose declared type gives their members; methods resolve through a
+    receiver's declared type, not its inferred one. Binding by
+    assignment waits for `bind`.
+  - em (MUMPS): `scope routine unordered`, `define label.name function
+    doc:leading`, `import ref.routine file "{}.m"` and `qualify
+    ref.label in:routine` for `DO LABEL^ROUTINE` (a `ref` without a
+    routine stays a label of its own routine), `nominal GVAR
+    ns:globals` for globals (one name across the workspace, renamed
+    everywhere at once), and a `resolveImport` in `hooks.zig` for
+    VistA's file names (`%` to `_`) and search path, or the client's
+    `modules` setting for a fixed map. Locals, scoped by `NEW`, stay
+    unnamed or `nominal LVAR ns:locals`.
+  - nexis: with a `@schema`, the same lines as Rig's for its imports
+    and members.
+  - All: a `hooks.zig` written by an earlier `--editor` lacks
+    `resolveImport`, which is then not written (no change needed); add
+    `pub const resolveImport = lsp.todo;` to keep the stub's list whole.
+    A `PREFIX.server.modules` setting appears in `package.json` once
+    the grammar has an `import` line.
 - Rig, em, nexis: `@messages` is new syntax (`@messages` was an error),
   so no grammar changes meaning, and a grammar without it generates the
   same parser. Optional: write the messages a language words by hand in

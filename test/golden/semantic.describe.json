@@ -86,5 +86,6 @@
     {"name": "*", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "/", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "note", "roles": [{"name": "text", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": true}
-  ]}
+  ]},
+  "lsp": null
 }

@@ -1,0 +1,71 @@
+> initialize folder quiet
+> open main.tally
+diagnostics main.tally
+  {"message":"'nothing' is not defined","range":"15:1-15:8","severity":2,"source":"tally"}
+> definition main.tally 4:19
+util.tally 2:4-2:7
+> definition main.tally 9:17
+util.tally 7:4-7:10
+> hover main.tally 4:19
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> definition main.tally 1:6
+main.tally 1:5-1:9
+> references main.tally 4:19
+  main.tally 4:18-4:21
+  main.tally 13:6-13:9
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15
+> completion main.tally 5:17
+  {"detail":"fn add(a, b)","documentation":{"kind":"markdown","value":"Adds two numbers."},"kind":3,"label":"add"}
+  {"detail":"fn double(n)","documentation":{"kind":"markdown","value":"Twice a number."},"kind":3,"label":"double"}
+  {"kind":6,"label":"greeting"}
+> definition main.tally 14:7
+null
+> open util.tally
+> references util.tally 2:5
+  main.tally 4:18-4:21
+  main.tally 13:6-13:9
+  util.tally 2:4-2:7
+  util.tally 8:12-8:15
+> highlight util.tally 2:5
+  {"range":"2:4-2:7"}
+  {"range":"8:12-8:15"}
+> references util.tally 11:6
+  main.tally 5:17-5:25
+  util.tally 11:5-11:13
+> rename util.tally 2:5 plus
+{"changes":{"main.tally":[{"newText":"plus","range":"4:18-4:21"},{"newText":"plus","range":"13:6-13:9"}],"util.tally":[{"newText":"plus","range":"2:4-2:7"},{"newText":"plus","range":"8:12-8:15"}]}}
+> rename util.tally 7:5 twice
+{"changes":{"main.tally":[{"newText":"twice","range":"9:17-9:23"}],"util.tally":[{"newText":"twice","range":"7:4-7:10"}]}}
+> rename util.tally 11:6 add
+error -32803 the use of 'greeting' on line 5 of main.tally would name another 'add'
+> rename util.tally 7:5 missing
+error -32803 'missing' would capture the use of 'missing' on line 14 of main.tally
+> open app.tally
+> definition app.tally 2:14
+lib.tally 1:5-1:9
+> completion app.tally 2:13
+  {"kind":6,"label":"size"}
+> rename app.tally 2:14 count
+{"changes":{"app.tally":[{"newText":"count","range":"2:13-2:17"}],"lib.tally":[{"newText":"count","range":"1:5-1:9"}]}}
+> change util.tally
+> definition main.tally 4:19
+null
+> completion main.tally 4:18
+  {"detail":"fn sum(a, b)","kind":3,"label":"sum"}
+> change main.tally
+diagnostics main.tally none
+> definition main.tally 3:11
+util.tally 1:4-1:7
+> definition main.tally 5:11
+util.tally 1:4-1:7
+> change main.tally
+> definition main.tally 2:17
+null
+> completion main.tally 2:17
+[]
+> definition main.tally 5:11
+null
+> open untitled:Scratch-1
+> definition untitled:Scratch-1 2:15
+null

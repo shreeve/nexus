@@ -1,6 +1,6 @@
-# member lines (members, a later step) are an error that says so.
-# error: lsp_later_member.grammar:47:5:
-# error: `member` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc and undefined
+# A nominal line takes `ns:` alone.
+# error: lsp_nominal_bad_option.grammar:47:22:
+# error: unknown option 'in:numbers' of nominal (ns:NAME)
 @lexer
 
 tokens
@@ -44,7 +44,7 @@ tokens
     define   let.name variable  value:value
     use      IDENT
     doc      COMMENT strip "#"
-    member   call.name of:args
+    nominal  NUMBER  in:numbers
 
 prog!  = body                               → (prog ...1)
 

@@ -1,0 +1,3 @@
+go:
+do add^math
+set $count = 1

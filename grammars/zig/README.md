@@ -27,9 +27,12 @@ use to Zig.
 | `trees.zig` | the canonical form both trees are printed in, and the rules that map one onto the other |
 | `compare-tokens`, `compare-accept`, `compare-trees` | the three comparisons, over any set of files (`tools/`) |
 | `compare-scopes` | the names `@lsp` resolves against AstGen's resolution ([Names and scopes](#names-and-scopes)) |
+| `compare-members` | the members and imports `@lsp` resolves against a resolution over std.zig.Ast ([Names and scopes](#names-and-scopes)) |
+| `members/` | files that import each other and std, for `compare-members` |
 
-`./test/run zig` runs the cases, the three `_test.zig` files and
-`compare-scopes` on the cases; the `compare-*` scripts run the same
+`./test/run zig` runs the cases, the three `_test.zig` files,
+`compare-scopes` on the cases and `compare-members` on the cases and
+`members/`; the `compare-*` scripts run the same
 comparisons over a corpus. Each script documents its options (`-h`).
 
 ## How the grammar is written
@@ -208,13 +211,20 @@ lexical names: a file and a container are unordered scopes, a function,
 a test, a block and the nodes that hold captures are ordered ones; a
 function's name belongs to the scope around it, its parameters to the
 function; fields, enum and error names are members, never names in
-scope; a name after `.`, a builtin's name, an enum literal, a field
-initializer's name, an asm operand's name and a label after
-`break`/`continue` are not looked up. The language server `nexus
---editor` writes gives the outline, definition, references, highlights,
-rename, the names in scope and hover from it, with no code of its own.
-A member (`std.mem`, `self.x`) is a later step of `@lsp` and answers
-nothing yet.
+scope; a builtin's name, an enum literal, a field initializer's name, an
+asm operand's name and a label after `break`/`continue` are not looked
+up. `@import("x.zig")` imports the file beside the importing one, and
+`@import("std")` the file of a module, which the client's `modules`
+setting names (`{"std": "/path/to/lib/std/std.zig"}`). A name after `.`
+is a member of what is before it: a file, a container, or what a
+constant's value or a name's declared type denotes, so `std.mem.eql`
+resolves in three steps, through std.zig and mem.zig, and `p.x` with
+`p: Point` through `Point`. A value whose type needs inference (a call's
+result, a generic like `std.ArrayList(u8)`, a pointer, `@This()`)
+answers nothing. The language server `nexus --editor` writes gives the
+outline, definition, references, highlights, rename, the names in scope
+and after `.`, and hover from it, across files, with no code of its
+own.
 
 `compare-scopes` checks every name the index resolves against the
 compiler's own resolution, `std.zig.AstGen` (the Zig that runs it, which
@@ -224,20 +234,47 @@ resolves to it, to a name of its own (`_cs7`), and runs AstGen on the
 renamed file: a use the index resolves elsewhere than the compiler does
 makes AstGen report an undeclared or unused name there. A use the index
 leaves unresolved must be a primitive (`std.zig.primitives`) or `_`.
-Over the corpus (2,400 files AstGen accepts; the other 220 are
-compile-error tests):
+Over the `.zig` files of Zig's source at tag 0.17.0 (2,713 files AstGen
+accepts; the other 227 are compile-error tests):
 
 | | count |
 |---|---:|
-| definitions in scope chains | 281,456 |
-| member definitions (fields, enum and error names) | 106,441 |
-| uses resolved, each to the definition AstGen resolves it to | 938,569 |
-| uses that are builtins (the `builtin` names, `_`) | 449,241 |
-| other primitives (`u7`, `i33`, ...), unresolved by design | 19,846 |
-| names not looked up (members, labels, enum literals, field names) | 1,612,961 |
+| definitions in scope chains | 286,137 |
+| member definitions (fields, enum and error names) | 108,466 |
+| uses resolved, each to the definition AstGen resolves it to | 951,390 |
+| uses that are builtins (the `builtin` names, `_`) | 452,582 |
+| other primitives (`u7`, `i33`, ...), unresolved by design | 19,914 |
+| names not looked up here (members, labels, enum literals, field names) | 1,623,669 |
 | disagreements | 0 |
 
-The index of all 71.4 MB took 1.2 s in safe mode, single thread.
+The index of all 72.1 MB took 1.3 s in safe mode, single thread.
+
+`compare-members` checks every member and import the server resolves
+across files, against a resolution of its own over `std.zig.Ast` that
+never asks the engine: the declarations of each container, an
+identifier as the nearest enclosing container's declaration of its
+name, `@import` as a file (`std` the standard library of the Zig that
+runs it, another name a path beside the importing file), and a
+declaration's value, else its type, as what it denotes. A member the
+engine resolves and the reference cannot reach (its chain starts at a
+local or a parameter) must be a declaration of that name in the file it
+names. Over the same 2,898 files Ast.parse accepts:
+
+| | count |
+|---|---:|
+| members (names after `.`) | 517,626 |
+| resolved in their own file, as the reference resolves them | 17,466 |
+| resolved through imports into other files, as the reference resolves them | 126,481 |
+| resolved where the reference cannot reach, each a declaration of its name | 47,834 |
+| unresolved by design (a call's result, a generic, a pointer, `@This()`, a local's inferred type) | 325,845 |
+| missed (the reference resolves them, the engine does not) | 0 |
+| wrong | 0 |
+| imports resolved, each to the reference's file | 4,809 |
+| imports unresolved (`builtin`, `root`, `build_options` and other modules not given) | 688 |
+| imports wrong | 0 |
+
+Over std alone (563 files) 57,564 members resolve, 48,271 of them
+through imports, and none is missed or wrong.
 
 ## Speed
 
@@ -293,6 +330,7 @@ grammars/zig/compare-trees --fuzz 70000 --seed 32 $S
 grammars/zig/compare-trees --fuzz 70000 --seed 33 $Z/lib/std/zig $Z/src/Sema.zig $Z/lib/std/mem.zig
 
 grammars/zig/compare-scopes $Z                        # names: every use @lsp resolves, against AstGen
+grammars/zig/compare-members $Z                       # members and imports, against std.zig.Ast
 grammars/zig/compare-accept --messages $Z $P          # both syntax errors of every input both reject
 grammars/zig/compare-tokens --bench 5 $Z              # lexer speed
 grammars/zig/compare-accept --bench 5 $Z              # parse speed

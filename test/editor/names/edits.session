@@ -14,7 +14,7 @@ highlight main.tally 9:18
 edit main.tally 16:1-16:8 "print"
 definition main.tally 16:1
 hover main.tally 16:1
-# Typing: after `util.` no names (a member); at a statement's start and
+# Typing: after `util.` the members of util.tally; at a statement's start and
 # inside an unfinished expression the names in scope (the keywords only
 # where the text before them parses).
 change main.tally

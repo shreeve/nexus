@@ -63,5 +63,6 @@
       {"line": 90, "scope": "punctuation", "literals": [], "tokens": [], "groups": [], "pattern": "\"#{\" | \"#(\" | \"(\" | \")\" | \"[\" | \"]\" | \"{\" | \"}\"", "regex": "#\\{|#\\(|\\(|\\)|\\[|\\]|\\{|\\}", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
     ]
   },
-  "schema": null
+  "schema": null,
+  "lsp": null
 }

@@ -197,13 +197,13 @@ pub fn languageZig(allocator: Allocator, in: Input) Error![]const u8 {
     }
     if (any) try w.writeAll(" => true,\n");
     try w.writeAll("        else => false,\n    };\n}\n");
-    if (in.lsp) |l| try namesTable(w, in, l);
+    if (in.lsp) |l| try namesTable(allocator, w, in, l);
     return out.written();
 }
 
 /// `@lsp` as scopes.zig reads it: `names`, with every slot the parser's
 /// `ir.slot` of its kind and role.
-fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
+fn namesTable(allocator: Allocator, w: *Writer, in: Input, l: *const names.Lsp) Error!void {
     try w.writeAll(
         \\
         \\/// `@lsp`: the scopes, definitions and uses scopes.zig indexes each file by.
@@ -268,7 +268,48 @@ fn namesTable(w: *Writer, in: Input, l: *const names.Lsp) Error!void {
     if (l.docToken) |t| try w.print("    .doc_token = .{f},\n", .{std.zig.fmtIdPU(t)});
     if (l.docStrip.len > 0) try w.print("    .doc_strip = \"{f}\",\n", .{std.zig.fmtString(l.docStrip)});
     if (l.undefined) |sev| try w.print("    .undefined = .{f},\n", .{std.zig.fmtIdPU(@tagName(sev))});
-    try w.writeAll("};\n");
+    try w.writeAll("    .imports = &.{");
+    for (l.imports) |im| {
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, im.role);
+        try whenList(w, im.role.kind, im.when);
+        if (im.file) |f| try w.print(", .file = \"{f}\"", .{std.zig.fmtString(f)});
+        try w.writeAll(" },");
+    }
+    try w.writeAll(if (l.imports.len > 0) "\n    },\n" else "},\n");
+    try w.writeAll("    .members = &.{");
+    for (l.members) |m| {
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, m.role);
+        try w.print(", .of = ir.slot(.{f}, .{f}) }},", .{ std.zig.fmtIdPU(m.role.kind), std.zig.fmtIdPU(m.of) });
+    }
+    try w.writeAll(if (l.members.len > 0) "\n    },\n" else "},\n");
+    try w.writeAll("    .qualifies = &.{");
+    for (l.qualifies) |q| {
+        try w.writeAll("\n        .{ .at = ");
+        try slotOf(w, q.role);
+        try w.print(", .in = ir.slot(.{f}, .{f}) }},", .{ std.zig.fmtIdPU(q.role.kind), std.zig.fmtIdPU(q.in) });
+    }
+    try w.writeAll(if (l.qualifies.len > 0) "\n    },\n" else "},\n");
+    // Each namespace once, in the order the lines first name it.
+    var spaces: std.ArrayList([]const u8) = .empty;
+    for (l.nominals) |n| {
+        for (spaces.items) |s| {
+            if (std.mem.eql(u8, s, n.ns)) break;
+        } else try spaces.append(allocator, n.ns);
+    }
+    try w.writeAll("    .nominals = &.{");
+    for (l.nominals, 0..) |n, i| {
+        const ns = for (spaces.items, 0..) |s, k| {
+            if (std.mem.eql(u8, s, n.ns)) break k;
+        } else unreachable;
+        try w.print("{s}.{{ .cat = .{f}, .ns = {d} }}", .{ if (i > 0) ", " else "", std.zig.fmtIdPU(n.token), ns });
+    }
+    try w.writeAll("},\n    .namespaces = &.{");
+    for (spaces.items, 0..) |s, i| try w.print("{s}\"{f}\"", .{ if (i > 0) ", " else "", std.zig.fmtString(s) });
+    try w.writeAll("},\n    .extensions = &.{");
+    for (in.h.extensions, 0..) |e, i| try w.print("{s}\"{f}\"", .{ if (i > 0) ", " else "", std.zig.fmtString(e) });
+    try w.writeAll("},\n};\n");
 }
 
 /// `, .when = &.{ ... }`: the conditions of a line on a `kind` node.
@@ -379,6 +420,12 @@ const hooks_body =
     \\/// Format Document.
     \\/// pub fn format(arena: std.mem.Allocator, path: []const u8, text: []const u8) !?[]const u8
     \\pub const format = lsp.todo;
+    \\
+    \\/// The file an import of `@lsp` names when its name is a module's, not
+    \\/// a path; null to take the name as a path relative to the file `from`.
+    \\/// The client's `modules` setting answers before it.
+    \\/// pub fn resolveImport(arena: std.mem.Allocator, from: []const u8, name: []const u8) !?[]const u8
+    \\pub const resolveImport = lsp.todo;
     \\
     \\// --- The analysis: the program checked as a whole -------------------------
     \\
@@ -546,7 +593,13 @@ pub fn packageJson(allocator: Allocator, in: Input) Error![]const u8 {
     try json.string(w, try allocator.print("The language server: a path, or a name on `PATH`, from user settings only. Empty: the extension's own `bin/{s}-lsp`, else `{s}-lsp` on `PATH`.", .{ h.id, h.id }));
     try w.writeAll("\n        },\n        ");
     try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.root" }));
-    try w.writeAll(": {\n          \"type\": \"string\",\n          \"default\": \"\",\n          \"markdownDescription\": \"The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program.\"\n        }\n      }\n    },\n    \"semanticTokenTypes\": [");
+    try w.writeAll(": {\n          \"type\": \"string\",\n          \"default\": \"\",\n          \"markdownDescription\": \"The file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder. Empty: each file's own program.\"\n        }");
+    if (hasImports(in)) {
+        try w.writeAll(",\n        ");
+        try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.modules" }));
+        try w.writeAll(": {\n          \"type\": \"object\",\n          \"default\": {},\n          \"additionalProperties\": {\"type\": \"string\"},\n          \"markdownDescription\": \"The file of each module name an import names, by name; a relative path is relative to the first workspace folder. An import of another name names a file relative to the importing file.\"\n        }");
+    }
+    try w.writeAll("\n      }\n    },\n    \"semanticTokenTypes\": [");
     var n: usize = 0;
     for (std.enums.values(Scope)) |scope| {
         const name = try tokenType(allocator, scope);
@@ -632,7 +685,7 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
         \\|---|---|
         \\| `{s}.server.path` | the language server: a path, or a name on `PATH`, read from user settings only; empty means the extension's `bin/{s}-lsp`, else `{s}-lsp` on `PATH` |
         \\| `{s}.server.root` | the file the program starts from, which the server analyzes, relative to the first workspace folder; empty means each file's own program |
-        \\
+        \\{s}
         \\## Building and packaging
         \\
         \\The language server is a Zig project beside this directory:
@@ -654,6 +707,7 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
         h.id,
         h.id,
         id.settings,
+        if (hasImports(in)) try allocator.print("| `{s}.server.modules` | the file of each module name an import names (`{{\"std\": \"/path/to/std.zig\"}}`), relative to the first workspace folder; an import of another name names a file relative to the importing file |\n", .{id.settings}) else "",
         h.id,
         if (id.repository.len == 0) " --allow-missing-repository" else "",
         if (id.repository.len == 0) "; `--allow-missing-repository`, without a\n`repository` in `identity.json`" else "",
@@ -728,7 +782,7 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\  );
         \\  return "";
         \\}}
-        \\
+        \\{s}
         \\/** @param {{vscode.ExtensionContext}} context */
         \\async function start(context) {{
         \\  const command = serverCommand(context);
@@ -738,7 +792,7 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\      {{ scheme: "file", language: id }},
         \\      {{ scheme: "untitled", language: id }},
         \\    ],
-        \\    initializationOptions: {{ root: serverRoot() }},
+        \\    initializationOptions: {{ root: serverRoot(){s} }},
         \\    outputChannel: output,
         \\  }});
         \\  try {{
@@ -800,9 +854,35 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\
         \\module.exports = {{ activate, deactivate }};
         \\
-    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2] });
+    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2], if (hasImports(in)) modules_js else "", if (hasImports(in)) ", modules: serverModules()" else "" });
     return out.written();
 }
+
+/// Whether the grammar's `@lsp` imports files, which gives the extension
+/// its `server.modules` setting.
+fn hasImports(in: Input) bool {
+    const l = in.lsp orelse return false;
+    return l.imports.len > 0;
+}
+
+/// extension.js's reading of `server.modules`, for a language that imports.
+const modules_js =
+    \\
+    \\/** The files of module names, each absolute: a relative one is
+    \\ * relative to the first workspace folder. */
+    \\function serverModules() {
+    \\  const set = vscode.workspace.getConfiguration(prefix).get("server.modules") || {};
+    \\  const folders = vscode.workspace.workspaceFolders;
+    \\  const modules = {};
+    \\  for (const [module, file] of Object.entries(set)) {
+    \\    if (typeof file !== "string" || !file) continue;
+    \\    const relative = !path.isAbsolute(file) && folders && folders.length > 0;
+    \\    modules[module] = relative ? path.join(folders[0].uri.fsPath, file) : file;
+    \\  }
+    \\  return modules;
+    \\}
+    \\
+;
 
 /// A file of the server copied from the language: its path under
 /// `server/src` and its text.

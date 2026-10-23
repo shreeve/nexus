@@ -441,5 +441,6 @@
     {"name": "array_type", "roles": [{"name": "size", "type": "any", "optional": false, "rest": false}, {"name": "type", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "fun_type", "roles": [{"name": "params", "type": "group", "optional": true, "rest": false}, {"name": "returns", "type": "any", "optional": true, "rest": false}, {"name": "fails", "type": "any", "optional": true, "rest": false}], "side": [], "wrapper": false},
     {"name": "results_type", "roles": [{"name": "types", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": null
 }

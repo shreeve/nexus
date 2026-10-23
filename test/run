@@ -703,6 +703,20 @@ check_scopes() {
     return 0
 }
 
+# check_members <suite dir>: the suite's compare-members (grammars/zig)
+# finds no wrong member or import on its cases and its members/ files:
+# every one the grammar's @lsp resolves is the declaration, or the file,
+# a resolution over std.zig.Ast names.
+check_members() {
+    local dir=$1 out rc
+    out=$(with_timeout 600 "$dir/compare-members" -O debug "$dir/cases" "$dir/members" 2>&1)
+    rc=$?
+    echo "$out" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON="compare-members exited $rc: $(grep -m1 -E 'names|import|error' <<<"$out" || tail -1 <<<"$out")"; return 1; fi
+    if ! grep -qE '^wrong in all: 0$' <<<"$out"; then REASON="unexpected summary: $(tail -2 <<<"$out" | head -1)"; return 1; fi
+    return 0
+}
+
 check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     local out
     out=$(NO_COLOR=1 with_timeout 300 test/diff -O debug -j 4 --keep "$OUTROOT/diff" "$NEXUS" "$NEXUS" \
@@ -945,6 +959,7 @@ worker() {
         unit-nexus)  check_unit_nexus; ok=$? ;;
         diff-tool)   check_diff_tool; ok=$? ;;
         scopes)      check_scopes "$a"; ok=$? ;;
+        members)     check_members "$a"; ok=$? ;;
         cli)         check_cli; ok=$? ;;
         doc-frag)    check_doc_fragment "$a"; ok=$? ;;
         fmt)         check_fmt; ok=$? ;;
@@ -1065,7 +1080,7 @@ add() { # add <id> <kind> [args...]
     selected "$1" || return 1
     local IFS=$'\x1f' to=$EARLY
     case $2 in
-        unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server|scopes) to=$LONG ;;
+        unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server|scopes|members) to=$LONG ;;
         case|bug|hl|session) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
@@ -1133,6 +1148,7 @@ for dir in grammars/*/ test/*/; do
     done
     add "determinism/$name" determinism "$dir" "$name"
     [[ -x $dir/compare-scopes ]] && add "$name/scopes" scopes "$dir"
+    [[ -x $dir/compare-members ]] && add "$name/members" members "$dir"
     add "wasm32/$name" wasm32 "$dir" && need_build "$dir"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"

@@ -1,0 +1,15 @@
+> initialize module core=util.tally module std_lib=app.tally quiet
+> open main.tally
+> definition main.tally 6:14
+util.tally 2:4-2:7
+> definition main.tally 7:18
+util.tally 7:4-7:10
+> definition main.tally 8:17
+app.tally 2:5-2:6
+> definition main.tally 9:14
+util.tally 11:5-11:13
+> definition main.tally 10:18
+null
+> completion main.tally 8:17
+  {"kind":9,"label":"lib"}
+  {"kind":6,"label":"n"}

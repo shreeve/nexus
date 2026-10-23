@@ -16,9 +16,15 @@
 //!   doc       TOKEN [strip "text"]
 //!   undefined error|warning
 //!
-//! The lines of imports, members, binding, colours and words (`import`,
-//! `member`, `qualify`, `nominal`, `bind`, `color`, `words`) are not read
-//! yet: each is an error that says so.
+//! and those of files and members:
+//!
+//!   import    KIND.ROLE [when [^KIND.]ROLE ["text"] ...] [file "{}.ext"]
+//!   member    KIND.ROLE of:ROLE
+//!   qualify   KIND.ROLE in:ROLE
+//!   nominal   TOKEN [ns:NAME]
+//!
+//! The lines of binding, colours and words (`bind`, `color`, `words`) are
+//! not read yet: each is an error that says so.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -59,6 +65,29 @@ pub const Define = struct {
 
 pub const Severity = enum { @"error", warning };
 
+/// `import KIND.ROLE`: the leaf of ROLE (its first, for a rest role) names
+/// a file, which is the node's value.
+pub const Import = struct {
+    role: RoleRef,
+    when: []const Define.When = &.{},
+    /// `file "{}.ext"`: the file's path, `{}` standing for the leaf's
+    /// name; null for the name itself.
+    file: ?[]const u8 = null,
+};
+
+/// `member KIND.ROLE of:ROLE`: the leaf is looked up among the members of
+/// what the node's `of` role denotes.
+pub const Member = struct { role: RoleRef, of: []const u8 };
+
+/// `qualify KIND.ROLE in:ROLE`: the leaf is looked up in the file the
+/// node's `in` role, an import, names.
+pub const Qualify = struct { role: RoleRef, in: []const u8 };
+
+/// `nominal TOKEN [ns:NAME]`: every leaf of the token is a name of its
+/// namespace, one across the workspace; without `ns:` the namespace is
+/// the token's.
+pub const Nominal = struct { token: []const u8, ns: []const u8 };
+
 /// `@lsp`, read and checked.
 pub const Lsp = struct {
     scopes: []const Scope,
@@ -73,6 +102,10 @@ pub const Lsp = struct {
     docToken: ?[]const u8 = null,
     docStrip: []const u8 = "",
     undefined: ?Severity = null,
+    imports: []const Import = &.{},
+    members: []const Member = &.{},
+    qualifies: []const Qualify = &.{},
+    nominals: []const Nominal = &.{},
 
     pub const Scope = struct { kind: []const u8, unordered: bool };
     pub const Skip = struct { role: RoleRef, when: []const Define.When = &.{} };
@@ -88,7 +121,7 @@ pub const symbol_kinds = [_][]const u8{
 };
 
 /// The keys of the lines a later Nexus reads.
-const later = [_][]const u8{ "import", "member", "qualify", "nominal", "bind", "color", "words" };
+const later = [_][]const u8{ "bind", "color", "words" };
 
 /// Reads `@lsp` against the schema and the lexer's tokens; the first
 /// mistake is reported and returned as LspError.
@@ -131,6 +164,14 @@ const Reader = struct {
     undefinedPos: ?u32 = null,
     /// The first `doc:leading`, which needs a `doc` line.
     leadingPos: ?u32 = null,
+    imports: std.ArrayList(Import) = .empty,
+    members: std.ArrayList(Member) = .empty,
+    memberPos: std.ArrayList(u32) = .empty,
+    qualifies: std.ArrayList(Qualify) = .empty,
+    /// Where each qualify line's role and its `in:` role start.
+    qualifyPos: std.ArrayList([2]u32) = .empty,
+    nominals: std.ArrayList(Nominal) = .empty,
+    nominalPos: std.ArrayList(u32) = .empty,
 
     const DefinePos = struct { line: u32, outer: ?u32, parent: ?u32 };
 
@@ -156,10 +197,16 @@ const Reader = struct {
                 try self.docLine(line);
             } else if (eql(key, "undefined")) {
                 try self.undefinedLine(line);
+            } else if (eql(key, "import")) {
+                try self.importLine(line);
+            } else if (eql(key, "member") or eql(key, "qualify")) {
+                try self.memberLine(line, eql(key, "qualify"));
+            } else if (eql(key, "nominal")) {
+                try self.nominalLine(line);
             } else if (isLater(key)) {
-                return self.fail(line.key.pos, "`{s}` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc and undefined", .{key});
+                return self.fail(line.key.pos, "`{s}` lines of @lsp are not supported yet: this Nexus reads scope, define, use, skip, builtin, doc, undefined, import, member, qualify and nominal", .{key});
             } else {
-                return self.fail(line.key.pos, "unknown @lsp line `{s}` (scope, define, use, skip, builtin, doc, undefined)", .{key});
+                return self.fail(line.key.pos, "unknown @lsp line `{s}` (scope, define, use, skip, builtin, doc, undefined, import, member, qualify, nominal)", .{key});
             }
         }
         if (self.defines.items.len == 0) return self.fail(lines.pos, "@lsp defines no names: give it a `define KIND.ROLE SYMBOLKIND` line", .{});
@@ -174,6 +221,10 @@ const Reader = struct {
             .docToken = self.docToken,
             .docStrip = self.docStrip,
             .undefined = self.undefinedSeverity,
+            .imports = try self.imports.toOwnedSlice(self.allocator),
+            .members = try self.members.toOwnedSlice(self.allocator),
+            .qualifies = try self.qualifies.toOwnedSlice(self.allocator),
+            .nominals = try self.nominals.toOwnedSlice(self.allocator),
         };
     }
 
@@ -196,6 +247,29 @@ const Reader = struct {
         };
         for (self.builtinTokens.items, self.builtinTokenPos.items) |t, pos| if (!contains(self.uses.items, t))
             return self.fail(pos, "builtin {s}: {s} is no `use` token, so its leaves are never looked up", .{ upper(self.allocator, t), upper(self.allocator, t) });
+        // A member's or a qualified name's leaf is looked up by its line
+        // alone: no `define` or `skip` line without `when` takes it.
+        for (self.members.items, self.memberPos.items) |m, pos| try self.takenOnce(m.role, pos, "a member");
+        for (self.qualifies.items, self.qualifyPos.items) |q, pos| {
+            try self.takenOnce(q.role, pos[0], "qualified");
+            for (self.members.items) |m| if (sameRole(m.role, q.role))
+                return self.fail(pos[0], "{s}.{s} is both {s} and {s}", .{ q.role.kind, q.role.role, "a member", "qualified" });
+            const imported = for (self.imports.items) |im| {
+                if (eql(im.role.kind, q.role.kind) and eql(im.role.role, q.in)) break true;
+            } else false;
+            if (!imported) return self.fail(pos[1], "in:{s} names the file the name is in: give {s}.{s} an `import` line", .{ q.in, q.role.kind, q.in });
+        }
+        for (self.nominals.items, self.nominalPos.items) |n, pos| if (contains(self.uses.items, n.token))
+            return self.fail(pos, "{s} is a `use` token too: a leaf is looked up in its scopes, or is a name of a namespace, not both", .{upper(self.allocator, n.token)});
+    }
+
+    /// No `define` or `skip` line without `when` takes the role of a
+    /// `member` or `qualify` line at `pos`.
+    fn takenOnce(self: *Reader, role: RoleRef, pos: u32, comptime what: []const u8) Error!void {
+        for (self.defines.items) |d| if (sameRole(d.role, role) and d.when.len == 0)
+            return self.fail(pos, "{s}.{s} is both {s} and {s}", .{ role.kind, role.role, "defined", what });
+        for (self.skips.items) |s| if (sameRole(s.role, role) and s.when.len == 0)
+            return self.fail(pos, "{s}.{s} is both {s} and {s}", .{ role.kind, role.role, "skipped", what });
     }
 
     // --- Lines ------------------------------------------------------------
@@ -427,6 +501,86 @@ const Reader = struct {
             return self.fail(line.words[0].pos, "write `undefined error` or `undefined warning`", .{});
     }
 
+    fn importLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
+        const words = line.words;
+        if (words.len == 0) return self.fail(line.key.pos, "an import line names a role: import KIND.ROLE [when ROLE \"text\"] [file \"{{}}.ext\"]", .{});
+        const role = try self.roleOf(words[0], "import");
+        if (!holdsLeaf(self.roleIn(role.kind, role.role).?)) return self.fail(words[0].pos, "import {s}.{s}: the role holds no token, and a token names the file", .{ role.kind, role.role });
+        var im: Import = .{ .role = role };
+        var whens: std.ArrayList(Define.When) = .empty;
+        var i: usize = 1;
+        while (i < words.len) : (i += 1) {
+            const w = words[i];
+            if (eql(w.text, "when")) {
+                i = try self.whenAt(words, i, role.kind, &whens);
+            } else if (eql(w.text, "file")) {
+                if (im.file != null) return self.fail(w.pos, "import {s}.{s} has file twice", .{ role.kind, role.role });
+                if (i + 1 >= words.len or words[i + 1].text[0] != '"') return self.fail(w.pos, "`file` takes the file's path, with `{{}}` for the name: file \"{{}}.ext\"", .{});
+                i += 1;
+                const path = try self.stringOf(words[i], "file's path");
+                if (std.mem.find(u8, path, "{}") == null) return self.fail(words[i].pos, "file {s}: the path has no `{{}}` for the name", .{words[i].text});
+                im.file = path;
+            } else return self.fail(w.pos, "unknown option '{s}' of import (when, file)", .{w.text});
+        }
+        im.when = try whens.toOwnedSlice(self.allocator);
+        for (self.imports.items) |o| if (sameRole(o.role, role) and sameWhens(o.when, im.when))
+            return self.fail(words[0].pos, "{s}.{s} is imported twice: give each line a different `when`", .{ role.kind, role.role });
+        try self.imports.append(self.allocator, im);
+    }
+
+    /// `member KIND.ROLE of:ROLE`, or with `qualify`, `qualify KIND.ROLE
+    /// in:ROLE`.
+    fn memberLine(self: *Reader, line: grammar.LspLines.Line, qualify: bool) Error!void {
+        const key = if (qualify) "qualify" else "member";
+        const option = if (qualify) "in" else "of";
+        const words = line.words;
+        if (words.len == 0) return self.fail(line.key.pos, "a {s} line names a role, then the role of {s}: {s} KIND.ROLE {s}:ROLE", .{ key, if (qualify) "the file the name is in" else "what the name is a member of", key, option });
+        const role = if (qualify) try self.roleOf(words[0], "qualify") else try self.roleOf(words[0], "member");
+        if (!holdsLeaf(self.roleIn(role.kind, role.role).?)) return self.fail(words[0].pos, "{s} {s}.{s}: the role holds no token, and a name is a token", .{ key, role.kind, role.role });
+        if (words.len < 2) return self.fail(line.key.pos, "{s} {s}.{s} needs {s}:ROLE", .{ key, role.kind, role.role, option });
+        const w = words[1];
+        if (words.len > 2 or !std.mem.startsWith(u8, w.text, option) or w.text.len == option.len or w.text[option.len] != ':') {
+            const bad = if (words.len > 2 and std.mem.startsWith(u8, w.text, option)) words[2] else w;
+            return self.fail(bad.pos, "unknown option '{s}' of {s} ({s}:ROLE)", .{ bad.text, key, option });
+        }
+        const name = w.text[option.len + 1 ..];
+        const argPos = w.pos + @as(u32, @intCast(option.len + 1));
+        if (eql(name, role.role)) return self.fail(argPos, "{s}:{s} is the name's own role", .{ option, name });
+        const r = try self.slotRole(role.kind, name, argPos, if (qualify) "in:" else "of:");
+        if (qualify) {
+            if (!holdsLeaf(r)) return self.fail(argPos, "in:{s}: the role holds no token, and a token names the file", .{name});
+            for (self.qualifies.items) |q| if (sameRole(q.role, role))
+                return self.fail(words[0].pos, "{s}.{s} is qualified already", .{ role.kind, role.role });
+            try self.qualifies.append(self.allocator, .{ .role = role, .in = name });
+            try self.qualifyPos.append(self.allocator, .{ words[0].pos, argPos });
+        } else {
+            if (r.type == .tag) return self.fail(argPos, "of:{s} is a tag role; what a name is a member of is a node or a leaf", .{name});
+            for (self.members.items) |m| if (sameRole(m.role, role))
+                return self.fail(words[0].pos, "{s}.{s} is a member already", .{ role.kind, role.role });
+            try self.members.append(self.allocator, .{ .role = role, .of = name });
+            try self.memberPos.append(self.allocator, words[0].pos);
+        }
+    }
+
+    fn nominalLine(self: *Reader, line: grammar.LspLines.Line) Error!void {
+        const words = line.words;
+        if (words.len == 0) return self.fail(line.key.pos, "a nominal line names a token: nominal TOKEN [ns:NAME]", .{});
+        const token = try self.tokenOf(words[0]);
+        for (self.nominals.items) |n| if (eql(n.token, token))
+            return self.fail(words[0].pos, "{s} is a nominal token already", .{words[0].text});
+        for (self.trivia) |t| if (std.ascii.eqlIgnoreCase(t, token))
+            return self.fail(words[0].pos, "{s} is @trivia, so it is never in the tree", .{words[0].text});
+        var n: Nominal = .{ .token = token, .ns = token };
+        for (words[1..], 1..) |w, i| {
+            if (i > 1 or !std.mem.startsWith(u8, w.text, "ns:")) return self.fail(w.pos, "unknown option '{s}' of nominal (ns:NAME)", .{w.text});
+            const ns = w.text[3..];
+            if (ns.len == 0 or wordLen(ns) != ns.len) return self.fail(w.pos + 3, "ns:NAME names the namespace with letters, digits and '_', not '{s}'", .{ns});
+            n.ns = ns;
+        }
+        try self.nominals.append(self.allocator, n);
+        try self.nominalPos.append(self.allocator, words[0].pos);
+    }
+
     // --- Names --------------------------------------------------------------
 
     /// A kind of the schema, as written (a quoted kind's escapes decoded).
@@ -523,6 +677,17 @@ fn holdsLeaf(r: Schema.Role) bool {
         .leaf, .any, .node => true,
         .tag, .group, .kinds => false,
     };
+}
+
+fn sameRole(a: RoleRef, b: RoleRef) bool {
+    return eql(a.kind, b.kind) and eql(a.role, b.role);
+}
+
+/// The length of the run of letters, digits and '_' that starts `s`.
+fn wordLen(s: []const u8) usize {
+    var i: usize = 0;
+    while (i < s.len and (std.ascii.isAlphanumeric(s[i]) or s[i] == '_')) i += 1;
+    return i;
 }
 
 /// Whether two lists of `when`s are the same conditions.

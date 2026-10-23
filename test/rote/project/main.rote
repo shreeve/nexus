@@ -1,0 +1,10 @@
+; The main routine.
+start:
+do setup
+do add^math
+do ^math
+set $count = $count + 1
+do twice^math
+setup:
+set $total = 0
+do nothing^math

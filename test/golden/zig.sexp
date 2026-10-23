@@ -1121,8 +1121,10 @@
     (lsp_line `define` `error_name.name` `enum_member` `member` `doc:doc`)
     (lsp_line `use` `IDENTIFIER`)
     (lsp_line `skip` `builtin_call.name` `enum_literal.name` `field_init.name` `asm_output.name` `asm_input.name`)
-    (lsp_line `skip` `field_access.name` `error_value.name` `break.label` `continue.label` `param.name`)
+    (lsp_line `skip` `error_value.name` `break.label` `continue.label` `param.name`)
     (lsp_line `skip` `param.name` `when` `^fn_proto.modifier` `"extern"`)
+    (lsp_line `member` `field_access.name` `of:operand`)
+    (lsp_line `import` `builtin_call.args` `when` `name` `"@import"`)
     (lsp_line `builtin` `"u8"` `"u16"` `"u32"` `"u64"` `"usize"` `"isize"` `"bool"` `"void"` `"type"` `"anytype"` `"true"` `"false"` `"null"` `"undefined"` `"i8"` `"i16"` `"i32"` `"i64"` `"i128"` `"u1"` `"u128"` `"f16"` `"f32"` `"f64"` `"f80"` `"f128"` `"anyerror"` `"anyframe"` `"anyopaque"` `"noreturn"` `"comptime_int"` `"comptime_float"` `"c_char"` `"c_short"` `"c_ushort"` `"c_int"` `"c_uint"` `"c_long"` `"c_ulong"` `"c_longlong"` `"c_ulonglong"` `"c_longdouble"` `"_"`)
     (lsp_line `doc` `DOC_COMMENT` `strip` `"///"`))
   (manifest

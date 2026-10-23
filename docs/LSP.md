@@ -13,9 +13,11 @@ you type, semantic tokens, folding, selection ranges and keyword
 completion. A grammar that declares its names and scopes (`@lsp`,
 [GRAMMAR.md, "Names and scopes"](GRAMMAR.md#names-and-scopes)) gives
 the outline, go to definition, references, highlights, rename, the
-names in scope and hover too, within each file. The rest (members,
-other files, types, type errors, signature help, formatting) needs to
-know what the program means, which only the language knows. For that
+names in scope, the members after `.` and hover too, across the files
+of the workspace: its imports, members, qualified names and names of
+namespaces. The rest (types, the members of a value whose type needs
+inference, type errors, signature help, formatting) needs to know what
+the program means, which only the language knows. For that
 the command writes `hooks.zig`, a file of functions to fill in, each
 left as a stub. Writing a function turns on the features behind it, in
 place of the grammar's; a stub left alone turns nothing on, and the
@@ -60,7 +62,7 @@ editors/
         ├── lsp.zig                     the server
         ├── parser.zig                  the grammar's parser, with spans
         ├── language.zig                the grammar's table for the server
-        ├── scopes.zig                  with `@lsp`: the names of each open file
+        ├── scopes.zig                  with `@lsp`: the names of each file, across files
         ├── hooks.zig                   the language's functions: written once
         └── lang.zig ...                with --lang, the lang module and the files it imports
 ```
@@ -75,8 +77,9 @@ never again. It prints `Wrote` for each file it writes and `Kept` for a
 - The highlighting files are those of `nexus --highlight all`
   ([GRAMMAR.md, "The files"](GRAMMAR.md#the-files)).
 - `parser.zig` is the grammar's parser as `nexus --spans` writes it.
-- `scopes.zig`, with `@lsp`, indexes the names of each open file by the
-  tables `language.zig` holds; like `lsp.zig`, it is Nexus's own, the
+- `scopes.zig`, with `@lsp`, indexes the names of each file by the
+  tables `language.zig` holds, and resolves imports, members and
+  qualified names across files; like `lsp.zig`, it is Nexus's own, the
   same for every language.
 - `language.zig` holds what the server needs to know about the grammar:
   the language's name and id, the `@highlight` scope of each token by its
@@ -147,12 +150,13 @@ given a standard `superType`, so a theme colours it either way:
 `constantNumeric` a number, `constant` and `constantSymbol` enum members,
 `stringEscape` a string, `functionBuiltin` a function,
 `variableParameter` a parameter and `variableSpecial` a variable;
-`punctuation` and `invalid` have none), and two settings:
+`punctuation` and `invalid` have none), and its settings:
 
 | Setting | Meaning |
 |---|---|
 | `PREFIX.server.path` | the server: a path, or a name on `PATH`; empty means the extension's `bin/LANG-lsp`, else `LANG-lsp` on `PATH` |
 | `PREFIX.server.root` | the file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder; empty means each file's own program ([The analysis](#the-analysis)) |
+| `PREFIX.server.modules` | with `@lsp` `import` lines: the file of each module name an import names, as `{"std": "/path/to/lib/std/std.zig"}`; a relative path is relative to the first workspace folder ([Names across files](#names-across-files)) |
 
 `server.path` names a program to run, so only the user's own settings
 give it: it has `"scope": "machine"`, `package.json` lists it among the
@@ -163,7 +167,8 @@ chooses the server, trusted or not.
 `extension.js` starts the server with `vscode-languageclient` for the
 language's documents of the `file` and `untitled` schemes (not the
 `git:` or diff views of them), and passes `server.root` as the
-`root` option, absolute. A relative root with no folder open is left
+`root` option, absolute, and `server.modules` as the `modules` option,
+each file absolute. A relative root with no folder open is left
 out, and the extension says so. A change to a `PREFIX.server` setting
 restarts the server: one restart at a time, each after the one before
 has finished, and changes that come before a restart begins share it,
@@ -227,26 +232,34 @@ With every function of `hooks.zig` a stub, the server gives:
   solid token to its last and inside the one after it.
 - **Names, with `@lsp`.** Each request reads the names of the file's
   current text, indexed again after each change (a file with syntax
-  errors through the tolerant parse, with `@repair`):
+  errors through the tolerant parse, with `@repair`), and of the files
+  its names lead to ([Names across files](#names-across-files)):
   - the outline: the definitions of the file's own scope, each with the
     definitions of the scope inside it (a function's parameters, the
     members of the container its `value:` opens), its detail
     (`detail`, else `type:`) beside it;
-  - go to definition, references and highlights of the name at the
-    position, within the file;
+  - go to definition of the name at the position, in its file or
+    another (a member, a qualified name), and of an import's name, the
+    file; a name of a namespace (`nominal`) has none;
+  - references of the name across the workspace, and its highlights in
+    the file; of an import's name, the imports of its file (in the files
+    that hold the file's name without its extension, or a module name
+    the `modules` option gives it);
   - hover: the definition's detail as code (its name, without one), its
     type, and its doc;
-  - completion: the names in sight at the position, nearest first, then
-    the keywords; none where the word there is a definition's or a
-    skipped role's (after a member's `.`);
-  - rename: the definition and every use of it in the file, refused
-    (`-32803`, with the reason) when another file can see the name
-    (`export:`; by default a name of the file's own scope), when the new
-    name is not one token of the old one's kind, and unless the file
-    indexed again with the edits made resolves every use as before, the
+  - completion: after a member's `.` (and at a qualified name), the
+    members of what is before it, alone; else the names in sight at the
+    position, nearest first, then the keywords; none where the word
+    there is a definition's or a skipped role's;
+  - rename: the definition and every name of it in the workspace, or
+    every name of a namespace's, refused (`-32803`, with the reason)
+    when the new name is not one token of the old one's kind, for an
+    import's name, and unless every file that holds either name, indexed
+    again with the edits made, resolves every name as before, the
     renamed ones to the renamed definition: a rename that would capture
-    another use, or that another use would capture, or that defines the
-    new name twice in one scope, is refused;
+    another name, or that another name would capture, that defines the
+    new name twice in one scope, or that gives a namespace's name one it
+    has already, is refused;
   - with `undefined error` or `warning`, a diagnostic at each use that
     nothing defines and no `builtin` names, unless the language writes
     `analyze`, whose diagnostics are its own.
@@ -254,6 +267,27 @@ With every function of `hooks.zig` a stub, the server gives:
   takes at the cursor: each word that, put in place of the word the
   cursor is in, the parse reads past. None when the text before that word
   already has an error.
+
+### Names across files
+
+With `@lsp`'s `import`, `member`, `qualify` and `nominal` lines, a name
+leads to other files:
+
+- **An import's file.** An import's name (a string's contents, or a
+  name) is a module's when the client's `modules` option
+  (`PREFIX.server.modules`) names its file, else when the language's
+  `resolveImport` gives one; else it is a path relative to the importing
+  file, made with `file "{}.ext"` when the line has it. A document
+  without a path (`untitled:`) imports modules alone.
+- **The text of a file.** An open document's text, saved or not, is the
+  one every request reads; a file not open is read from disk, and its
+  index kept while its text on disk is the one it read (the 256 used
+  last).
+- **The workspace.** References and rename search every open document
+  and every file of the language's extensions (`@highlight`'s
+  `extensions`) under the client's workspace folders (`workspaceFolders`,
+  else `rootUri`), in no folder whose name starts with `.`, up to 20,000
+  files; of those, only the files that hold the name are indexed.
 
 ## The functions of `hooks.zig`
 
@@ -287,9 +321,12 @@ advertised nor ever called. A function that reads the analysis without
 With `@lsp`, a function the language writes replaces the grammar's
 names for the features it turns on, one function at a time: `symbols`
 the outline, `symbolAt` definition, references, highlights and rename,
-`describe` hover, `visible` the names completion offers; the others are
-still the grammar's. A function may import `scopes.zig` and index a
-text itself (`scopes.index`) to build on the grammar's names.
+`describe` hover, `visible` the names completion offers, `members` those
+it offers after `.`; the others are still the grammar's. A function may
+import `scopes.zig` and index a text itself (`scopes.index`), or
+resolve across files (`scopes.Resolver` over a `scopes.World`), to
+build on the grammar's names. `resolveImport` names the file of an
+import's module when the `modules` option does not.
 
 | Function | Turns on |
 |---|---|
@@ -298,6 +335,7 @@ text itself (`scopes.index`) to build on the grammar's names.
 | `symbols` | the outline and breadcrumbs |
 | `folds` | the language's folding ranges, in place of the grammar's |
 | `format` | Format Document |
+| `resolveImport` | with `@lsp` `import` lines: the file of a module's name, after the `modules` option |
 | `analyze` | the analysis's diagnostics; every function below reads the analysis |
 | `symbolAt` | go to definition, references, document highlight, rename |
 | `typeAt` | with `describe`: hover over an expression, go to type definition |
@@ -330,6 +368,15 @@ and a `Scope`, one of `@highlight`'s scopes; an `OutlineItem` is a name, a
 and its children; a `Fold` is a range, of comments or not. `format`
 returns the whole file formatted, or null when it is formatted already.
 An error from any of them answers nothing.
+
+`resolveImport` gives the file an import of `@lsp` names when its name
+is a module's (`@import("std")`), not a path: the file's path, or null
+to take the name as a path relative to the importing file `from`. The
+client's `modules` option answers first. An error answers nothing.
+
+```zig fragment
+pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]const u8
+```
 
 ### The analysis
 
@@ -413,9 +460,9 @@ pub fn renamable(a: *Analysis, symbol: lsp.Symbol) bool
 
 | Request | Answer |
 |---|---|
-| `completion` | `members` when it gives a list; else `modules` when it gives a list; else `visible` (with `@lsp`, without it: the names in sight), then the keywords the grammar takes there |
+| `completion` | `members` when it gives a list (with `@lsp`, without it: the members after `.` or at a qualified name); else `modules` when it gives a list; else `visible` (with `@lsp`, without it: the names in sight), then the keywords the grammar takes there |
 | `hover` | `describe` of `symbolAt`, else `describe` of `typeAt` (with `@lsp`, without `describe`: the name's detail, type and doc) |
-| `definition` | the declaration of `symbolAt` (with `@lsp`, without it, the grammar's names give `definition`, `references`, `documentHighlight` and `rename` within the file) |
+| `definition` | the declaration of `symbolAt` (with `@lsp`, without it, the grammar's names give `definition`, `references`, `documentHighlight` and `rename` across the workspace) |
 | `typeDefinition` | the declaration in `describe` of `typeAt` |
 | `references` | `references` of `symbolAt`; without it, every token of every file the analysis read whose `symbolAt` has the same `id` |
 | `documentHighlight` | those references in this file |
@@ -448,10 +495,13 @@ The editor suite (`test/editor`) builds Tally's server three times: in
 `full/` with `full/hooks.zig`, which writes every function but
 `references` so the server's own search runs too, and replaces Tally's
 `@lsp` names; in `names/` with the `hooks.zig` that `--editor` writes,
-so the names come from `@lsp` alone; and in `stub/` with that
+so the names come from `@lsp` alone; in `modules/` with that
+`hooks.zig` and `resolveImport` written; and in `stub/` with that
 `hooks.zig` and the grammar without `@lsp` (a variant's `without` file
 names the directives its server is built without), which gives only
-what the syntax does. `test/lib/lsp` replays each `.session` file of a
+what the syntax does. The Rote suite (`test/rote`) builds the server of
+a language of routines whose names are qualified (`do add^math`) and
+nominal (`$count`). `test/lib/lsp` replays each `.session` file of a
 directory against its server, on the files of `project/`, and compares
 what the server answers with the `.out` file beside it. A session is one
 command a line:
@@ -475,7 +525,9 @@ line:
 `@highlight`, the suite runs `--editor` and checks the files it writes
 against the highlighting files, the parser and the goldens, and checks
 that the server compiles; for Zig's, `grammars/zig/compare-scopes` checks
-the names its `@lsp` resolves against the compiler's
+the names its `@lsp` resolves against the compiler's, and
+`grammars/zig/compare-members` its members and imports against a
+resolution of its own over `std.zig.Ast`
 ([grammars/zig/README.md](../grammars/zig/README.md#names-and-scopes)).
 
 The suite checks the extension under Node, without VS Code
@@ -486,7 +538,8 @@ standard or declared, each declared type is one it sends, each
 scenarios of `test/editor/client/` run `extension.js` against stub
 `vscode` and `vscode-languageclient` modules and compare every call it
 makes with a golden: the server it runs (bundled, on `PATH`, from user
-settings, never from a workspace's, trusted or not), the root it passes,
+settings, never from a workspace's, trusted or not), the root and the
+modules it passes,
 the document selector, one output channel, restarts that wait for each
 other and share a change, a server that does not start, and a
 `companion` extension with an identity of its own. `tools/cli` checks
