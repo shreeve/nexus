@@ -1339,8 +1339,10 @@ fn parseDiagnostics(a: Allocator, path: []const u8, text: []const u8) error{OutO
             if (std.mem.findScalar(u8, message, ' ')) |sp| if (sp > 0 and message[sp - 1] == ':') {
                 message = message[sp + 1 ..];
             };
+            // The offending token, or the end of a line before it (zero width).
+            const end = if (f.at == f.span.start) f.span.end else f.at;
             const list = try a.alloc(Diagnostic, 1);
-            list[0] = .{ .span = .{ .path = path, .start = f.span.start, .end = f.span.end }, .message = message };
+            list[0] = .{ .span = .{ .path = path, .start = f.at, .end = end }, .message = message };
             return list;
         },
     };

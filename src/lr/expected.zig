@@ -10,6 +10,9 @@
 //!      nonterminals can begin with, ascending by symbol id.
 //! Start markers and the `error` symbol never appear. Identical lists are
 //! stored once.
+//!
+//! A generated parser also gets the nonterminals with an `@errors` name
+//! (`namedRules`), to say what a syntax error comes after.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,6 +33,8 @@ pub const Expected = struct {
     offsets: []const u32,
     /// Index of each state's list.
     ofState: []const u16,
+    /// The nonterminals with an `@errors` name, ascending.
+    namedRules: []const u16,
 
     pub fn forState(self: Expected, state: usize) []const u16 {
         const i = self.ofState[state];
@@ -114,10 +119,14 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
         ofState[si] = gop.value_ptr.*;
     }
 
+    var namedRules: std.ArrayList(u16) = .empty;
+    for (named, 0..) |n, s| if (n) try namedRules.append(a, @intCast(s));
+
     return .{
         .symbols = try symbols.toOwnedSlice(a),
         .offsets = try offsets.toOwnedSlice(a),
         .ofState = ofState,
+        .namedRules = try namedRules.toOwnedSlice(a),
     };
 }
 

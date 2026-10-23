@@ -195,7 +195,9 @@ With every function of `hooks.zig` a stub, the server gives:
 
 - **Syntax errors as you type.** On every change, the strict parse's
   error, worded as `writeError` words it, at the token where the parse
-  failed.
+  failed, or, when that token is on a later line than the one before
+  it, zero width at the end of that one
+  ([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its
   text (a literal or a `@keywords` word), else its token name. The token
   types are `@highlight`'s 19 scopes.

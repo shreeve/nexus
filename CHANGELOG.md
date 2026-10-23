@@ -85,6 +85,21 @@
 
 ### Changed
 
+- Syntax errors of every generated parser are short and placed where a
+  reader looks ([SEMANTICS.md, "Syntax errors"](docs/SEMANTICS.md#syntax-errors)).
+  `writeError` lists what the parser can take after the reductions it
+  would make without the offending token, from the last `@errors`-named
+  rule they complete onward (every module has `namedRules`), and names
+  that rule:
+  `expected ';' after an expression, got 'pub'` where it listed every
+  token that could follow the operand, 65 for Zig. A token that is not
+  the grammar's (`err`) shows its text, `got ';'`. When the offending
+  token starts on a later line than the end of the token before it, the
+  error is at that end, zero width: `Failure` has `at`, where the error
+  is reported (`span` is still the token), and the generated language
+  server's diagnostic range is `at`. Only a failed parse does this
+  work; parsing speed is unchanged. `expected(state)`,
+  `expectedNames(state, buf)` and `maxExpected` are unchanged.
 - An `@highlight` entry with a context, `line-start` or `line-end` may
   name a literal, token or `@keywords` group that another entry lists
   (`storage.modifier '*' not before … after …` beside `operator "*"`);
@@ -132,6 +147,10 @@
   number matched anywhere.
 
 Additive: no migration required. Downstream:
+- Rig, em, nexis: every syntax error `writeError` writes changes text,
+  and many move to the end of the line before; tests that pin its text
+  or position change with it. A lang module that words its own message
+  from `lastError()` may report it at `at` for the same placement.
 - Rig, em, nexis: rewrite `editors/` with `nexus --highlight all`. Rig's
   files change in one entry, `("called" | "rarely" | "inline") after
   …`, which coloured `called` and `rarely` anywhere; its sample colours

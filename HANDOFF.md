@@ -76,8 +76,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
    - From Rig's dry run (`rig/.git/revamp/r3/nexus-lsp-dryrun.md`):
-     `analyze` runs on the request thread; a syntax error lists every
-     expected token.
+     `analyze` runs on the request thread.
    - Next: `@lsp`, names and scopes declared in the grammar, so that
      definition, references and scope completion need no `analyze`;
      hooks in TypeScript or JavaScript over JSON lines; `rig lsp` onto
