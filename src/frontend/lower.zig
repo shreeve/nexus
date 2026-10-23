@@ -82,6 +82,9 @@ pub const GrammarLowerer = struct {
     trivia: std.ArrayList([]const u8) = .empty,
     repair: ?grammar.RepairSpec = null,
     highlight: ?grammar.HighlightLines = null,
+    messages: ?[]const grammar.Message = null,
+    /// The `@messages` directive, for locating it.
+    messagesNode: ?Sexp = null,
 
     /// Lowers a parsed grammar file.
     pub fn lowerParsed(allocator: Allocator, parsed: *const @import("frontend.zig").Parsed) LowerError!GrammarIR {
@@ -105,6 +108,8 @@ pub const GrammarLowerer = struct {
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
         try self.checkKeywordsUsed();
+        if (self.messagesNode) |node| if (self.rules.items.len == 0)
+            return self.failAt(if (self.spans) |p| p.span(node).start else self.posOf(node), "@messages needs parser rules: a grammar without them generates the lexer alone", .{});
         const extraTags = try self.extraTags.toOwnedSlice(allocator);
         // Without a `name!` rule, the first rule is the start symbol.
         if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
@@ -133,6 +138,7 @@ pub const GrammarLowerer = struct {
             .repair = self.repair,
             .keywordGroups = try self.keywordGroups.toOwnedSlice(allocator),
             .highlight = self.highlight,
+            .messages = self.messages,
             .lexer = self.lexer,
         };
     }
@@ -228,7 +234,7 @@ pub const GrammarLowerer = struct {
         switch (kind) {
             // Each directive but @as (one line per promoted token) appears
             // once; repeated blocks are not merged.
-            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords, .highlight => {
+            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords, .highlight, .messages => {
                 if (self.directives.contains(kind))
                     return self.failAt(self.spans.?.span(entry).start, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
                 self.directives.insert(kind);
@@ -249,6 +255,7 @@ pub const GrammarLowerer = struct {
             .repair => try self.lowerRepair(entry),
             .keywords => for (ir.Keywords.groups(entry)) |group| try self.lowerKeywordGroup(group),
             .highlight => try self.lowerHighlight(entry),
+            .messages => try self.lowerMessages(entry),
             .rule => {
                 if (self.section != .parser)
                     return self.fail(entry, "rules belong in the @parser section", .{});
@@ -819,6 +826,86 @@ pub const GrammarLowerer = struct {
             .pos = if (self.spans) |p| p.span(node).start else self.posOf(node),
             .lines = try lines.toOwnedSlice(self.allocator),
         };
+    }
+
+    /// `@messages`: each line's kind, start symbol, sentence and message.
+    /// Symbols are resolved against the grammar, and the sentences run
+    /// through its tables, by src/messages.zig.
+    fn lowerMessages(self: *GrammarLowerer, node: Sexp) LowerError!void {
+        self.messagesNode = node;
+        var out: std.ArrayList(grammar.Message) = .empty;
+        for (ir.Messages.lines(node)) |line| {
+            const kindNode = ir.Message.kind(line);
+            const kindText = self.text(kindNode);
+            const kind = std.meta.stringToEnum(grammar.Message.Kind, kindText) orelse
+                return self.fail(kindNode, "a @messages line starts with `at` or `after`, not '{s}'", .{kindText});
+            const startNode = ir.Message.start(line);
+            const parts = ir.Message.parts(line);
+            var prefix: std.ArrayList(grammar.Message.Name) = .empty;
+            for (parts[0 .. parts.len - 1]) |part| {
+                if (part.isKind(.msg_choice))
+                    return self.fail(part, "only the last element of an example may be a choice", .{});
+                const guard = ir.MsgSym.guard(part);
+                if (guard != .nil)
+                    return self.fail(guard, "only the last element of an example takes a guard: the text of the token the parser cannot take", .{});
+                try prefix.append(self.allocator, try self.messageName(ir.MsgSym.name(part)));
+            }
+            const lastNode = parts[parts.len - 1];
+            const alts: []const Sexp = if (lastNode.isKind(.msg_choice)) ir.MsgChoice.alts(lastNode) else parts[parts.len - 1 ..];
+            var last: std.ArrayList(grammar.Message.Last) = .empty;
+            for (alts) |alt| {
+                const nameNode = ir.MsgSym.name(alt);
+                const name = try self.messageName(nameNode);
+                const guardNode = ir.MsgSym.guard(alt);
+                const isRule = name.name[0] != '"' and !std.ascii.isUpper(name.name[0]);
+                if (isRule and guardNode != .nil)
+                    return self.fail(guardNode, "a guard is the text of a token; '{s}' is a rule", .{name.name});
+                if (isRule)
+                    return self.fail(nameNode, "an example ends with the token the parser cannot take; '{s}' is a rule", .{name.name});
+                var entry: grammar.Message.Last = .{ .name = name };
+                if (guardNode != .nil) {
+                    const at = self.loc(guardNode);
+                    entry.guard = try self.string(guardNode);
+                    entry.guardLine = at.line;
+                    entry.guardCol = at.col;
+                }
+                try last.append(self.allocator, entry);
+            }
+            const textNode = ir.Message.text(line);
+            try self.checkPlaceholders(textNode);
+            const l = self.loc(line);
+            try out.append(self.allocator, .{
+                .kind = kind,
+                .start = if (startNode == .nil) null else try self.messageName(startNode),
+                .prefix = try prefix.toOwnedSlice(self.allocator),
+                .last = try last.toOwnedSlice(self.allocator),
+                .text = try self.string(textNode),
+                .line = l.line,
+                .col = l.col,
+            });
+        }
+        self.messages = try out.toOwnedSlice(self.allocator);
+    }
+
+    /// A symbol of a `@messages` sentence: a literal (its escapes checked,
+    /// quotes kept), a token name or a rule name.
+    fn messageName(self: *GrammarLowerer, node: Sexp) LowerError!grammar.Message.Name {
+        const at = self.loc(node);
+        return .{ .name = try self.symbolText(node), .line = at.line, .col = at.col };
+    }
+
+    /// The placeholders of a message are `{got}` and `{expected}`; every
+    /// `{` starts one.
+    fn checkPlaceholders(self: *GrammarLowerer, node: Sexp) LowerError!void {
+        const body = stripQuotes(self.text(node));
+        var i: usize = 0;
+        while (std.mem.findScalarPos(u8, body, i, '{')) |open| {
+            const close = std.mem.findScalarPos(u8, body, open, '}') orelse body.len - 1;
+            const name = body[open + 1 .. @max(open + 1, close)];
+            if (!std.mem.eql(u8, name, "got") and !std.mem.eql(u8, name, "expected"))
+                return self.failAt(node.src.pos + 1 + open, "unknown placeholder `{s}` (a message may use {{got}} and {{expected}})", .{body[open .. close + 1]});
+            i = close + 1;
+        }
     }
 
     fn lowerOp(self: *GrammarLowerer, node: Sexp) LowerError!void {

@@ -221,6 +221,9 @@ pub const GrammarIR = struct {
     keywordGroups: []const KeywordGroup = &.{},
     /// `@highlight`: its lines as written; null when the file has none.
     highlight: ?HighlightLines = null,
+    /// `@messages`: its entries in the order written; null when the file
+    /// has none.
+    messages: ?[]const Message = null,
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
 };
@@ -560,6 +563,42 @@ pub const HighlightLines = struct {
             }
             return pos;
         }
+    };
+};
+
+/// One `@messages` entry: an example mistake, written as grammar symbols
+/// the way rules write them, and the message for it.
+pub const Message = struct {
+    kind: Kind,
+    /// `name!:`: the start symbol the example starts at; null for the
+    /// first start symbol.
+    start: ?Name = null,
+    /// The elements before the last: rule names, token names and literals
+    /// (quotes kept), as written.
+    prefix: []const Name,
+    /// The last element: the token the parser cannot take, or each token
+    /// of a choice, each with its text guard.
+    last: []const Last,
+    /// The message, escapes decoded.
+    text: []const u8,
+    /// Where the entry starts (its `at` or `after`).
+    line: u32,
+    col: u32,
+
+    /// `at` keys on the state that rejects the token, `after` on the
+    /// anchor of its reduction chain (the construct being finished).
+    pub const Kind = enum { at, after };
+
+    pub const Name = struct { name: []const u8, line: u32, col: u32 };
+
+    pub const Last = struct {
+        name: Name,
+        /// `TOKEN("text")`: the token's text, escapes decoded; null when
+        /// any text matches.
+        guard: ?[]const u8 = null,
+        /// Where the guard's string is written.
+        guardLine: u32 = 0,
+        guardCol: u32 = 0,
     };
 };
 

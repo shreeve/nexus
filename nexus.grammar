@@ -66,6 +66,7 @@ tokens
     kw_repair
     kw_keywords
     kw_highlight
+    kw_messages
     keyword
     kw_wrapper
     kw_via
@@ -149,6 +150,7 @@ tokens
     KW_ERRORS: "errors", KW_DISPLAY: "display", KW_INFIX: "infix",
     KW_SCHEMA: "schema", KW_TAGS: "tags", KW_TRIVIA: "trivia",
     KW_REPAIR: "repair", KW_KEYWORDS: "keywords", KW_HIGHLIGHT: "highlight",
+    KW_MESSAGES: "messages",
     KEYWORD: "a keyword",
     KW_WRAPPER: "wrapper", KW_VIA: "via", KW_OVER: "over",
     KW_LEFT: "left", KW_RIGHT: "right", KW_NONE: "none", KW_LEXER: "lexer",
@@ -188,7 +190,7 @@ tokens
 # ===========================================================================
 
 @schema
-    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|highlight|rule
+    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|highlight|messages|rule
 
     # Section markers: `@lexer`, `@parser`
     section          name:leaf
@@ -234,6 +236,10 @@ tokens
     kw_group         name:leaf ...words:leaf
     highlight        ...lines:hl_line
     hl_line          key:leaf ...texts:leaf
+    messages         ...lines:message
+    message          kind:leaf start:leaf? text:leaf ...parts:msg_sym|msg_choice
+    msg_choice       ...alts:msg_sym
+    msg_sym          name:leaf guard:leaf?
 
     # Rules
     rule             name:start|name ...alts:alt
@@ -364,6 +370,7 @@ directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_REPAIR lines:repair_lines            → (repair)
           | "@" KW_KEYWORDS groups:keyword_lines        → (keywords)
           | "@" KW_HIGHLIGHT lines:highlight_lines      → (highlight)
+          | "@" KW_MESSAGES lines:message_lines         → (messages)
 
 # --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
 #
@@ -522,6 +529,39 @@ highlight_line  = key:KEYWORD texts:highlight_texts → (hl_line)
 
 highlight_texts =                                   → ()
                 | highlight_texts PATTERN           → (...1 2)
+
+# --- @messages: one example mistake per indented line ---
+#
+#   at|after [start!:] sentence → "message"
+#
+# The sentence is grammar symbols (rule names, token names, literals); its
+# last element may be a choice `( a | b )`. A token written against `(`
+# takes a text guard, `TOKEN("text")`. The arrow and the message may go on
+# an indented line of their own. The lexer wrapper keeps the arrow out of
+# action mode in this block.
+
+message_lines = CONT message_line                   → (2)
+              | message_lines CONT message_line     → (...1 3)
+
+message_line  = kind:IDENT [start:message_start] parts:message_parts ARROW text:STRING
+                                                    → (message)
+
+message_start = IDENT "!" ":"                       → 1
+
+message_parts = message_part                        → (1)
+              | message_parts message_part          → (...1 2)
+              | message_parts CONT                  → 1
+
+message_part  = message_sym
+              | "(" alts:message_alts ")"           → (msg_choice)
+
+message_alts  = message_sym                         → (1)
+              | message_alts "|" message_sym        → (...1 3)
+
+message_sym   = name:(IDENT | TOKEN) X "("          → (msg_sym)
+              | name:(IDENT | TOKEN) "(" guard:STRING ")"
+                                                    → (msg_sym)
+              | name:STRING                         → (msg_sym)
 
 # ===========================================================================
 # Productions
