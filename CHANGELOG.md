@@ -24,7 +24,9 @@
   generates the same bytes as before. `nexus check --messages grammar`
   prints the coverage: each place an `after` entry can key on that has
   none, with its shortest example and automatic message, then how many
-  have one.
+  have one. The Zig grammar has 31 entries: over the 98 inputs both it
+  and std.zig.Ast reject, 43 errors are now Ast's text word for word
+  ([grammars/zig/README.md](grammars/zig/README.md#syntax-errors)).
 - Clause rules: a rule with no actions whose every alternative labels the
   same roles in the same order fills those roles of the node of every
   alternative that uses it, as if its labels were written there, and is

@@ -6192,6 +6192,7 @@ pub const BaseParser = struct {
     /// it completed none), and the offending token by its name, or by its
     /// text when it is not a token of the grammar (`got '?'`).
     pub fn writeFailure(self: *const BaseParser, w: *std.Io.Writer, f: Failure) std.Io.Writer.Error!void {
+        if (messageFor(&f, self.source)) |text| return writeMessage(self, w, f, text);
         const at = self.lineCol(f.at);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
         var buf: [maxExpected][]const u8 = undefined;
@@ -6468,6 +6469,77 @@ pub const BaseParser = struct {
         try w.writeByte('"');
     }
 };
+
+
+// =============================================================================
+// Messages (`@messages`)
+// =============================================================================
+
+/// An `@messages` entry: the message for an error at `symbol` whose failure
+/// state (`after` false) or anchor (`after` true) is `state`, when the
+/// offending token's text is `guard` (any text when null).
+const Message = struct {
+    after: bool,
+    state: u16,
+    symbol: u16,
+    guard: ?[]const u8,
+    text: []const u8,
+};
+
+/// The grammar's message for `f`, whose token's text is in `source`: an
+/// `at` entry on its failure state first, then an `after` entry on its
+/// anchor (the first state of its expectation); of each kind, an entry
+/// whose guard is the token's text before one without a guard. Null when
+/// none matches. Only `writeFailure` calls it, on the error path.
+fn messageFor(f: *const Failure, source: []const u8) ?[]const u8 {
+    const text = f.span.text(source);
+    for ([_]bool{ false, true }) |after| {
+        if (after and f.expectation.len == 0) continue;
+        const state = if (after) f.expectation.states[0] else f.state;
+        var unguarded: ?[]const u8 = null;
+        for (messages) |m| {
+            if (m.after != after or m.state != state or m.symbol != f.symbol) continue;
+            const guard = m.guard orelse {
+                unguarded = m.text;
+                continue;
+            };
+            if (std.mem.eql(u8, guard, text)) return m.text;
+        }
+        if (unguarded) |t| return t;
+    }
+    return null;
+}
+
+/// `line:col: ` and the message `text` for `f`, at its `at`: `{got}` is
+/// the offending token as `writeFailure` names it, `{expected}` what it
+/// lists as expected ("A, B or C").
+fn writeMessage(p: *const BaseParser, w: *std.Io.Writer, f: Failure, text: []const u8) std.Io.Writer.Error!void {
+    const at = p.lineCol(f.at);
+    try w.print("{d}:{d}: ", .{ at.line, at.col });
+    var rest = text;
+    while (std.mem.findScalar(u8, rest, '{')) |open| {
+        // Generation checks that each `{` opens `{got}` or `{expected}`.
+        const close = std.mem.findScalarPos(u8, rest, open, '}') orelse break;
+        try w.writeAll(rest[0..open]);
+        if (std.mem.eql(u8, rest[open + 1 .. close], "got")) {
+            const got = symbolName(f.symbol);
+            const shown = f.span.text(p.source);
+            if (f.symbol == errorSymbol and BaseParser.shownText(shown)) {
+                try w.print("'{s}'", .{shown});
+            } else try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
+        } else {
+            var buf: [maxExpected][]const u8 = undefined;
+            const want = BaseParser.failureNames(&f, &buf);
+            for (want, 0..) |name, i| {
+                if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
+                try w.writeAll(name);
+            }
+            if (want.len == 0) try w.writeAll("nothing");
+        }
+        rest = rest[close + 1 ..];
+    }
+    try w.writeAll(rest);
+}
 
 
 // =============================================================================
@@ -11000,6 +11072,257 @@ fn symbolName(sym: u16) []const u8 {
         else => "",
     };
 }
+
+/// `@messages`: the message for an error at `symbol` in failure state
+/// `state` (`at`) or with anchor `state` (`after`), when the token's text
+/// is `guard` (any text when null).
+const messages = [_]Message{
+    .{ .after = false, .state = 41, .symbol = 1, .guard = null, .text = "unattached documentation comment" },
+    .{ .after = false, .state = 41, .symbol = 220, .guard = null, .text = "documentation comments cannot be attached to tests" },
+    .{ .after = false, .state = 220, .symbol = 359, .guard = null, .text = "same line documentation comment" },
+    .{ .after = false, .state = 223, .symbol = 252, .guard = null, .text = "documentation comments cannot be attached to comptime blocks" },
+    .{ .after = false, .state = 444, .symbol = 235, .guard = null, .text = "pointer modifier {got} not allowed on array child type" },
+    .{ .after = false, .state = 444, .symbol = 281, .guard = null, .text = "pointer modifier {got} not allowed on array child type" },
+    .{ .after = false, .state = 444, .symbol = 283, .guard = null, .text = "pointer modifier {got} not allowed on array child type" },
+    .{ .after = false, .state = 444, .symbol = 284, .guard = null, .text = "pointer modifier {got} not allowed on array child type" },
+    .{ .after = false, .state = 668, .symbol = 238, .guard = null, .text = "bit range only allowed on single item pointers" },
+    .{ .after = false, .state = 709, .symbol = 335, .guard = null, .text = "variable initialized with '==' instead of '='" },
+    .{ .after = false, .state = 736, .symbol = 335, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 736, .symbol = 336, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 736, .symbol = 337, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 736, .symbol = 338, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 736, .symbol = 339, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 736, .symbol = 340, .guard = null, .text = "comparison operators cannot be chained" },
+    .{ .after = false, .state = 934, .symbol = 281, .guard = null, .text = "extra align qualifier" },
+    .{ .after = false, .state = 952, .symbol = 221, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 952, .symbol = 229, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 952, .symbol = 237, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 952, .symbol = 311, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 952, .symbol = 312, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 952, .symbol = 313, .guard = null, .text = "function prototype has parameter after varargs" },
+    .{ .after = false, .state = 1495, .symbol = 1, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 220, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 221, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 223, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 229, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 232, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 235, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = false, .state = 1495, .symbol = 236, .guard = null, .text = "expected ';' or block after function prototype" },
+    .{ .after = true, .state = 16, .symbol = 222, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 16, .symbol = 229, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 16, .symbol = 238, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 16, .symbol = 246, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 16, .symbol = 259, .guard = null, .text = "binary operator {got} has whitespace on one side, but not the other" },
+    .{ .after = true, .state = 16, .symbol = 262, .guard = null, .text = "binary operator {got} has whitespace on one side, but not the other" },
+    .{ .after = true, .state = 16, .symbol = 277, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 16, .symbol = 280, .guard = null, .text = "binary operator {got} has whitespace on one side, but not the other" },
+    .{ .after = true, .state = 16, .symbol = 359, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 222, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 229, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 238, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 246, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 277, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 213, .symbol = 359, .guard = null, .text = "expected ',' after field" },
+    .{ .after = true, .state = 214, .symbol = 229, .guard = null, .text = "declarations are not allowed between container fields" },
+    .{ .after = true, .state = 214, .symbol = 237, .guard = null, .text = "declarations are not allowed between container fields" },
+    .{ .after = true, .state = 215, .symbol = 229, .guard = null, .text = "declarations are not allowed between container fields" },
+    .{ .after = true, .state = 215, .symbol = 237, .guard = null, .text = "declarations are not allowed between container fields" },
+    .{ .after = true, .state = 412, .symbol = 1, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 220, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 221, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 223, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 224, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 225, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 226, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 229, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 230, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 232, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 235, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 412, .symbol = 236, .guard = null, .text = "expected ';' after declaration" },
+    .{ .after = true, .state = 519, .symbol = 227, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 229, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 263, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 286, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 288, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 289, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 519, .symbol = 292, .guard = null, .text = "expected ',' after argument" },
+    .{ .after = true, .state = 619, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 619, .symbol = 360, .guard = null, .text = "binary operator has whitespace on one side, but not the other" },
+    .{ .after = true, .state = 689, .symbol = 221, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 689, .symbol = 229, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 689, .symbol = 237, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 689, .symbol = 311, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 689, .symbol = 312, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 689, .symbol = 313, .guard = null, .text = "expected ',' after parameter" },
+    .{ .after = true, .state = 840, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 840, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 883, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 915, .symbol = 221, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 229, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 235, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 236, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 242, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 243, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 244, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 248, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 249, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 254, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 265, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 266, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 267, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 268, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 292, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 915, .symbol = 302, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1113, .symbol = 358, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1114, .symbol = 358, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1259, .symbol = 227, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 229, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 230, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 247, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 286, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 288, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1259, .symbol = 289, .guard = null, .text = "expected ',' after switch prong" },
+    .{ .after = true, .state = 1578, .symbol = 221, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 229, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 235, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 236, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 242, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 243, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 244, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 248, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 249, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 254, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 265, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 266, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 267, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 268, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 292, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1578, .symbol = 302, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 221, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 229, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 235, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 236, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 242, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 243, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 244, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 248, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 249, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 254, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 265, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 266, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 267, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 268, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 292, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1681, .symbol = 302, .guard = null, .text = "expected ';' or 'else' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1777, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 221, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 229, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 235, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 236, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 242, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 243, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 244, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 248, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 249, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 254, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 265, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 266, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 267, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 268, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 292, .guard = null, .text = "expected ';' after statement" },
+    .{ .after = true, .state = 1779, .symbol = 302, .guard = null, .text = "expected ';' after statement" },
+};
 
 fn isTrivia(_: TokenCat) bool {
     return false;

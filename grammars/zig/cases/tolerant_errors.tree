@@ -13,12 +13,12 @@
       (call `g` `a`)@78..88)@37..91)@25..91
   (var_decl _ _ _ _ _ _ `const` `c` _ _ _ _ `3`)@92..103)@0..104
 !tolerant 5 repairs (1 inserted, 4 deleted, 0 dropped)
-!first 1:12: expected ';' after an expression, got 'const'
+!first 1:12: expected ';' after declaration
 const b = 2;
 ^~~~~
-!next 4:30: expected ',' or '}' after a switch prong, got a number literal
+!next 4:30: expected ',' after switch prong
     x = switch (y) { .a => 1 2, };
                              ^
-!next 5:9: expected ',' or ')' after an expression, got an identifier
+!next 5:9: expected ',' after argument
     g(a b c d);
         ^

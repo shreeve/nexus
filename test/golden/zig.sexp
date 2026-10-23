@@ -1329,6 +1329,606 @@
     (name_pair `param_decl` `"a parameter"`)
     (name_pair `field_init` `"a field initializer"`)
     (name_pair `switch_prong` `"a switch prong"`))
+  (messages
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `expr_s` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `expr_s` _)
+      (msg_sym `"="` _)
+      (msg_sym `expr` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)
+        (msg_sym `INVALID` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `expr` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)
+        (msg_sym `INVALID` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"comptime"` _)
+      (msg_sym `expr_c` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"defer"` _)
+      (msg_sym `assign_c` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"if"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `assign_c` _)
+      (msg_sym `"else"` _)
+      (msg_sym `statement_semi` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"if"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `block_expr` _)
+      (msg_sym `"else"` _)
+      (msg_sym `statement_semi` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' or 'else' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"if"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `assign_c` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' or 'else' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"while"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `assign_c` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' or 'else' after statement"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `"for"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `ptr_list_payload` _)
+      (msg_sym `assign_c` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"return"` _)
+        (msg_sym `"if"` _)
+        (msg_sym `"while"` _)
+        (msg_sym `"for"` _)
+        (msg_sym `"switch"` _)
+        (msg_sym `"defer"` _)
+        (msg_sym `"errdefer"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"try"` _)
+        (msg_sym `"break"` _)
+        (msg_sym `"continue"` _)
+        (msg_sym `"}"` _)))
+    (message
+      `after`
+      _
+      `"expected ';' after declaration"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `expr` _)
+      (msg_choice
+        (msg_sym `EOF` _)
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `"pub"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"fn"` _)
+        (msg_sym `"test"` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"export"` _)
+        (msg_sym `"extern"` _)
+        (msg_sym `"inline"` _)
+        (msg_sym `"threadlocal"` _)))
+    (message
+      `after`
+      _
+      `"expected ',' after argument"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `NUMBER_LITERAL` _)
+        (msg_sym `STRING_LITERAL` _)
+        (msg_sym `CHAR_LITERAL` _)
+        (msg_sym `BUILTIN` _)
+        (msg_sym `"."` _)
+        (msg_sym `"&"` _)))
+    (message
+      `after`
+      _
+      `"expected ',' after parameter"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `param_decl` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `LABEL` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"noalias"` _)
+        (msg_sym `"anytype"` _)
+        (msg_sym `"..."` _)))
+    (message
+      `after`
+      _
+      `"expected ',' after field"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `"struct"` _)
+      (msg_sym `"{"` _)
+      (msg_sym `container_field` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `":"` _)
+        (msg_sym `";"` _)
+        (msg_sym `"]"` _)
+        (msg_sym `")"` _)
+        (msg_sym `BAD_DOC_COMMENT` _)))
+    (message
+      `after`
+      _
+      `"expected ',' after field"`
+      (msg_sym `container_field` _)
+      (msg_sym `","` _)
+      (msg_sym `container_field` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `":"` _)
+        (msg_sym `";"` _)
+        (msg_sym `"]"` _)
+        (msg_sym `")"` _)
+        (msg_sym `BAD_DOC_COMMENT` _)))
+    (message
+      `after`
+      _
+      `"expected ',' after switch prong"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `"switch"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `"{"` _)
+      (msg_sym `switch_prong` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `NUMBER_LITERAL` _)
+        (msg_sym `CHAR_LITERAL` _)
+        (msg_sym `STRING_LITERAL` _)
+        (msg_sym `"."` _)
+        (msg_sym `"else"` _)
+        (msg_sym `"inline"` _)))
+    (message
+      `at`
+      _
+      `"comparison operators cannot be chained"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"=="` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_choice
+        (msg_sym `"=="` _)
+        (msg_sym `"!="` _)
+        (msg_sym `"<"` _)
+        (msg_sym `">"` _)
+        (msg_sym `"<="` _)
+        (msg_sym `">="` _)))
+    (message
+      `after`
+      _
+      `"binary operator {got} has whitespace on one side, but not the other"`
+      (msg_sym `container_field` _)
+      (msg_choice
+        (msg_sym `MINUS_PREFIX` _)
+        (msg_sym `MINUS_PERCENT_PREFIX` _)
+        (msg_sym `ASTERISK_PREFIX` _)))
+    (message
+      `after`
+      _
+      `"binary operator has whitespace on one side, but not the other"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"{"` _)
+      (msg_sym `expr_s` _)
+      (msg_sym `BAD_OPERATOR` _))
+    (message
+      `after`
+      _
+      `"declarations are not allowed between container fields"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `"struct"` _)
+      (msg_sym `"{"` _)
+      (msg_sym `container_field` _)
+      (msg_sym `","` _)
+      (msg_sym `container_decl` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `LABEL` _)))
+    (message
+      `after`
+      _
+      `"declarations are not allowed between container fields"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"="` _)
+      (msg_sym `"struct"` _)
+      (msg_sym `"{"` _)
+      (msg_sym `container_field` _)
+      (msg_sym `","` _)
+      (msg_sym `container_decl` _)
+      (msg_sym `container_decl` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `LABEL` _)))
+    (message
+      `at`
+      _
+      `"unattached documentation comment"`
+      (msg_sym `DOC_COMMENT` _)
+      (msg_sym `EOF` _))
+    (message
+      `at`
+      _
+      `"documentation comments cannot be attached to tests"`
+      (msg_sym `DOC_COMMENT` _)
+      (msg_sym `"test"` _))
+    (message
+      `at`
+      _
+      `"documentation comments cannot be attached to comptime blocks"`
+      (msg_sym `DOC_COMMENT` _)
+      (msg_sym `"comptime"` _)
+      (msg_sym `"{"` _))
+    (message
+      `at`
+      _
+      `"same line documentation comment"`
+      (msg_sym `container_field` _)
+      (msg_sym `","` _)
+      (msg_sym `BAD_DOC_COMMENT` _))
+    (message
+      `at`
+      _
+      `"bit range only allowed on single item pointers"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `":"` _)
+      (msg_sym `"["` _)
+      (msg_sym `PTR_STAR` _)
+      (msg_sym `"]"` _)
+      (msg_sym `"align"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `":"` _))
+    (message
+      `at`
+      _
+      `"extra align qualifier"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `":"` _)
+      (msg_sym `"*"` _)
+      (msg_sym `"align"` _)
+      (msg_sym `"("` _)
+      (msg_sym `expr` _)
+      (msg_sym `")"` _)
+      (msg_sym `"align"` _))
+    (message
+      `at`
+      _
+      `"pointer modifier {got} not allowed on array child type"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `":"` _)
+      (msg_sym `"["` _)
+      (msg_sym `expr` _)
+      (msg_sym `"]"` _)
+      (msg_choice
+        (msg_sym `"align"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"volatile"` _)
+        (msg_sym `"allowzero"` _)))
+    (message
+      `at`
+      _
+      `"variable initialized with '==' instead of '='"`
+      (msg_sym `"const"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `":"` _)
+      (msg_sym `type_expr` _)
+      (msg_sym `"=="` _))
+    (message
+      `at`
+      _
+      `"function prototype has parameter after varargs"`
+      (msg_sym `"fn"` _)
+      (msg_sym `IDENTIFIER` _)
+      (msg_sym `"("` _)
+      (msg_sym `"..."` _)
+      (msg_sym `","` _)
+      (msg_choice
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `LABEL` _)
+        (msg_sym `"comptime"` _)
+        (msg_sym `"noalias"` _)
+        (msg_sym `"anytype"` _)
+        (msg_sym `"..."` _)))
+    (message
+      `at`
+      _
+      `"expected ';' or block after function prototype"`
+      (msg_sym `"fn"` _)
+      (msg_sym `"("` _)
+      (msg_sym `")"` _)
+      (msg_sym `type_expr` _)
+      (msg_choice
+        (msg_sym `EOF` _)
+        (msg_sym `IDENTIFIER` _)
+        (msg_sym `"pub"` _)
+        (msg_sym `"const"` _)
+        (msg_sym `"var"` _)
+        (msg_sym `"fn"` _)
+        (msg_sym `"test"` _)
+        (msg_sym `"comptime"` _))))
   (repair
     (repair_line `holes` `IDENTIFIER`)
     (repair_line `structure` `"}"` `")"` `"]"` `"{"` `"("` `"="` `"=>"` `"|"`)

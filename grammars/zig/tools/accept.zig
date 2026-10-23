@@ -30,8 +30,9 @@
 //!
 //! --messages prints, for every input both parsers reject, the syntax
 //! error each gives (Nexus's writeError, Ast's renderError), and counts
-//! how many of Nexus's name at most 6 expected items, and how many report
-//! the error at the same line and column as Ast.
+//! how many of Nexus's name at most 6 expected items (a message of the
+//! grammar's `@messages` names none), how many report the error at the
+//! same line and column as Ast, and how many are Ast's text exactly.
 //!
 //! --bench N times both parsers over the files held in memory, best of N
 //! rounds, single thread: Nexus's strict parse (one parser, reset per
@@ -158,6 +159,7 @@ pub fn main(init: std.process.Init) !void {
     var bytes: usize = 0;
     var short_msg: usize = 0;
     var same_line_col: usize = 0;
+    var same_text: usize = 0;
 
     const total = paths.items.len + inline_inputs.items.len;
     for (0..total) |k| {
@@ -183,9 +185,10 @@ pub fn main(init: std.process.Init) !void {
             both_reject += 1;
             if (a.pos == b.pos) same_pos += 1;
             if (messages) {
-                const short, const same = try writeMessages(gpa, &p, input, w);
+                const short, const same, const exact = try writeMessages(gpa, &p, input, w);
                 short_msg += @intFromBool(short);
                 same_line_col += @intFromBool(same);
+                same_text += @intFromBool(exact);
             }
             continue;
         }
@@ -204,17 +207,17 @@ pub fn main(init: std.process.Init) !void {
     try w.print("{d} inputs ({d:.2} MB): {d} accepted by both, {d} rejected by both ({d} at the same byte), {d} differ\n", .{
         count, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ,
     });
-    if (messages) try w.print("{d} rejected by both: {d} Nexus messages name at most 6 expected items, {d} are at Ast's line and column\n", .{
-        both_reject, short_msg, same_line_col,
+    if (messages) try w.print("{d} rejected by both: {d} Nexus messages name at most 6 expected items, {d} are at Ast's line and column, {d} are Ast's text\n", .{
+        both_reject, short_msg, same_line_col, same_text,
     });
     try w.flush();
     if (differ != 0) std.process.exit(1);
 }
 
 /// Both syntax errors of an input both parsers reject (`p` holds Nexus's
-/// failed parse); returns whether Nexus's names at most 6 expected items
-/// and whether it is at Ast's line and column.
-fn writeMessages(gpa: std.mem.Allocator, p: *parser.Parser, input: Input, w: *Io.Writer) !struct { bool, bool } {
+/// failed parse); returns whether Nexus's names at most 6 expected items,
+/// whether it is at Ast's line and column, and whether it is Ast's text.
+fn writeMessages(gpa: std.mem.Allocator, p: *parser.Parser, input: Input, w: *Io.Writer) !struct { bool, bool, bool } {
     var nexus: Io.Writer.Allocating = .init(gpa);
     defer nexus.deinit();
     try p.writeError(&nexus.writer);
@@ -232,7 +235,7 @@ fn writeMessages(gpa: std.mem.Allocator, p: *parser.Parser, input: Input, w: *Io
     const items = std.mem.count(u8, text[0..got], ", ") + std.mem.count(u8, text[0..got], " or ") + 1;
     const at = text[0 .. std.mem.findScalar(u8, text, ' ') orelse 0];
     const std_at = std_msg.written()[0 .. std.mem.findScalar(u8, std_msg.written(), ' ') orelse 0];
-    return .{ items <= 6, std.mem.eql(u8, at, std_at) };
+    return .{ items <= 6, std.mem.eql(u8, at, std_at), std.mem.eql(u8, text, std_msg.written()) };
 }
 
 fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64, w: *Io.Writer) !void {

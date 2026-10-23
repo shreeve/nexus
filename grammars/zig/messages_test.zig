@@ -60,8 +60,8 @@ test "a missing body" {
     try expectMessage("test {\n    while (a) }\n", "2:15: expected a block, an assignment, ':' or '|', got '}'");
     // 2:23: expected expression or assignment, found '}'
     try expectMessage("test {\n    switch (x) { 1 => }\n}\n", "2:23: expected an assignment or '|', got '}'");
-    // 1:12: expected ';' or block after function prototype
-    try expectMessage("fn f() void", "1:12: expected ';' or '{' after a type expression, got EOF");
+    // expected_semi_or_lbrace, from @messages.
+    try expectAst("fn f() void");
 }
 
 test "a destructure" {
@@ -73,40 +73,87 @@ test "a container member" {
     // 1:21: expected type expression, found ','
     try expectMessage("const U = enum(u8) {,};\n", "1:21: expected a container field, a declaration, a document comment or '}', got ','");
 }
-
-test "a chained comparison" {
-    // 1:18: comparison operators cannot be chained
-    try expectMessage("const x = a == b == c;\n", "1:18: expected 'or' after an expression, got '=='");
+/// Nexus's message for `src` is Ast's, word for word, at Ast's line and
+/// column: zig.grammar's `@messages` gives it.
+fn expectAst(src: [:0]const u8) !void {
+    const gpa = std.testing.allocator;
+    var tree = try std.zig.Ast.parse(gpa, src, .{ .recover = false, .mode = .zig });
+    defer tree.deinit(gpa);
+    try std.testing.expect(tree.errors.len > 0);
+    const e = tree.errors[0];
+    const loc = tree.tokenLocation(0, e.token);
+    var want: std.Io.Writer.Allocating = .init(gpa);
+    defer want.deinit();
+    try want.writer.print("{d}:{d}: ", .{ loc.line + 1, loc.column + 1 + tree.errorOffset(e) });
+    try tree.renderError(e, &want.writer);
+    try expectMessage(src, want.written());
 }
 
 // After a complete operand the parser has only reductions left: the error
-// lists what the construct the reductions complete can take, after it.
-// When the next token is on a later line, the error is at the end of the
-// line before.
+// is worded after the construct the reductions complete. When the next
+// token is on a later line, the error is at the end of the line before.
+// zig.grammar's @messages words the common ones as Parse.zig does.
 
 test "a missing ';' at the end of a line" {
-    // 1:27: expected ';' after declaration
-    try expectMessage("const std = @import(\"std\")\npub fn main() void {}\n", "1:27: expected ';' after an expression, got 'pub'");
-    // 2:10: expected ';' after statement
-    try expectMessage("test {\n    x = 1\n}\n", "2:10: expected ';' after an expression, got '}'");
-    // 3:11: expected ';' after statement
-    try expectMessage("test {\n    var a = 1;\n    a += 2\n    _ = a;\n}\n", "3:11: expected ';' after an expression, got an identifier");
-    // 2:15: expected ';' or 'else' after statement
-    try expectMessage("test {\n    if (c) x()\n    y();\n}\n", "2:15: expected ';' or 'else' after an assignment, got an identifier");
-    // 2:9: expected ';' after statement. An expression statement may go
-    // on as an assignment: the list names each assignment operator.
-    try expectMessage("test {\n    ({})\n    var b = 1;\n}\n", "2:9: expected ',', ';', '=', '*=', '*|=', '/=', '%=', '+=', '+|=', '-=', '-|=', '<<=', '<<|=', '>>=', '&=', '^=', '|=', '*%=', '+%=' or '-%=' after an expression, got 'var'");
+    // expected_semi_after_decl
+    try expectAst("const std = @import(\"std\")\npub fn main() void {}\n");
+    try expectAst("const x = 1\nconst y = 2;\n");
+    // expected_semi_after_stmt: an assignment, a declaration, an
+    // expression statement, `comptime`, `defer`, an if-else statement.
+    try expectAst("test {\n    x = 1\n}\n");
+    try expectAst("test {\n    var a = 1;\n    a += 2\n    _ = a;\n}\n");
+    try expectAst("test {\n    const x = 1\n    const y = 2;\n}\n");
+    try expectAst("test {\n    ({})\n    var b = 1;\n}\n");
+    try expectAst("test {\n    comptime a & b\n    c & d;\n}\n");
+    try expectAst("test {\n    defer x()\n    y();\n}\n");
+    try expectAst("test {\n    if (c) {} else x()\n    y();\n}\n");
+    // expected_semi_or_else: if, while and for statements.
+    try expectAst("test {\n    if (c) x()\n    y();\n}\n");
+    try expectAst("test {\n    while (c) x()\n    y();\n}\n");
+    try expectAst("test {\n    for (a) |b| x()\n    y();\n}\n");
+    // A token no entry lists: the automatic message.
+    try expectMessage("test {\n    x = 1\n    \"s\";\n}\n", "2:10: expected ';' after an expression, got a string literal");
 }
 
 test "a missing ',' in a list" {
-    // 2:9: expected ',' after argument
-    try expectMessage("test {\n    f(a b);\n}\n", "2:9: expected ',' or ')' after an expression, got an identifier");
-    // 1:12: expected ',' after parameter
-    try expectMessage("fn f(a: u8 b: u8) void {}\n", "1:12: expected ',' or ')' after a parameter, got an identifier");
-    // 2:10: expected ',' after field
-    try expectMessage("const S = struct {\n    a: u8\n    b: u8,\n};\n", "2:10: expected ',' or '}' after a container field, got an identifier");
-    // 3:15: expected ',' after switch prong
-    try expectMessage("test {\n    switch (x) {\n        1 => a\n        2 => b,\n    }\n}\n", "3:15: expected ',' or '}' after a switch prong, got a number literal");
-    // 2:23: expected ',' after initializer
+    try expectAst("test {\n    f(a b);\n}\n");
+    try expectAst("fn f(a: u8 b: u8) void {}\n");
+    try expectAst("const S = struct {\n    a: u8\n    b: u8,\n};\n");
+    try expectAst("test {\n    switch (x) {\n        1 => a\n        2 => b,\n    }\n}\n");
+    // 2:23: expected ',' after initializer. Inside a block, the items of
+    // `.{ ... }` have no entry.
     try expectMessage("test {\n    const a = .{ 1, 2 3 };\n}\n", "2:23: expected ',' or '}' after an expression, got a number literal");
+}
+
+test "a mistake Parse.zig names" {
+    try expectAst("const x = a == b == c;\n");
+    try expectAst("test {\n    return a < b < c;\n}\n");
+    try expectAst("var x: [*]align(0:0:0)u8 = bar;\n");
+    try expectAst("const a: *align(4) align(8) u8;\n");
+    try expectAst("var a: [10]align(10) u8 = e;\n");
+    try expectAst("comptime {\n    var z: u32 == 12 + 1;\n}\n");
+    try expectAst("extern fn f(a: u32, ..., b: u32) void;\n");
+    try expectAst("fn()0");
+    try expectAst("_ = 2 -1,\n");
+}
+
+/// Nexus's message for `src` is `want`, where Ast reports the mistake at
+/// an earlier token than the parser can find it.
+fn expectEarlier(src: [:0]const u8, want: []const u8) !void {
+    const gpa = std.testing.allocator;
+    var p = parser.Parser.init(gpa, src);
+    defer p.deinit();
+    try std.testing.expectError(error.ParseError, p.parseRoot());
+    var a: std.Io.Writer.Allocating = .init(gpa);
+    defer a.deinit();
+    try p.writeError(&a.writer);
+    try std.testing.expectEqualStrings(want, a.written());
+}
+
+test "a mistake Parse.zig finds a token earlier" {
+    // 3:5: declarations are not allowed between container fields. The
+    // parser finds it at the field after the declaration.
+    try expectEarlier("const S = struct {\n    a: u8,\n    const b = 1;\n    c: u8,\n};\n", "3:17: declarations are not allowed between container fields");
+    // 1:1: documentation comments cannot be attached to tests
+    try expectEarlier("///\ntest {}\n", "1:4: documentation comments cannot be attached to tests");
 }
