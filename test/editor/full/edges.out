@@ -24,14 +24,10 @@ diagnostics odd.tally none
 > open app.tally
 diagnostics lib.tally
   {"message":"undefined name missing","range":"1:12-1:19","severity":1,"source":"tally"}
-diagnostics app.tally none
 > change app.tally
-diagnostics app.tally none
 > save app.tally
 diagnostics lib.tally none
-diagnostics app.tally none
 > open main.tally
-diagnostics app.tally none
 diagnostics main.tally
   {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
   {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}

@@ -5,19 +5,12 @@ diagnostics main.tally
   {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
   {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
   {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
-diagnostics util.tally none
 > open main.tally
-diagnostics util.tally none
-diagnostics main.tally
-  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
-  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
-  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
 > change main.tally
 diagnostics main.tally
   {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
 > save main.tally
 notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the analysis of main.tally failed: NoProgram","type":1}}
-diagnostics util.tally none
 diagnostics main.tally
   {"message":"expected an expression, got end of line","range":"2:24-3:1","severity":1,"source":"tally"}
   {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
@@ -30,7 +23,6 @@ diagnostics main.tally
 diagnostics main.tally
   {"message":"the analysis failed: NoProgram","range":"1:1-1:1","severity":1,"source":"tally"}
 > save main.tally
-diagnostics util.tally none
 diagnostics main.tally none
 > references util.tally 2:4
   main.tally 2:18-2:21

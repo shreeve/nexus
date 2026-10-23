@@ -1,0 +1,13 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open spans.tally
+> folds spans.tally
+  {"endLine":3,"startLine":0}
+> selection spans.tally 2:12
+  {"parent":{"parent":{"parent":{"parent":{"range":"1:1-6:13"},"range":"1:1-4:2"},"range":"1:9-4:2"},"range":"2:5-2:13"},"range":"2:12-2:13"}
+> selection spans.tally 6:9
+  {"parent":{"parent":{"parent":{"range":"1:1-6:13"},"range":"6:1-6:13"},"range":"6:9-6:13"},"range":"6:9-6:10"}
+> selection spans.tally 6:12
+  {"parent":{"parent":{"parent":{"range":"1:1-6:13"},"range":"6:1-6:13"},"range":"6:9-6:13"},"range":"6:11-6:12"}
+> selection spans.tally 7:1
+  {"range":"7:1-7:1"}

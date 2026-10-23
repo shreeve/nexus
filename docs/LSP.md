@@ -96,7 +96,7 @@ theme colours them), and two settings:
 | Setting | Meaning |
 |---|---|
 | `LANG.server.path` | the server: a path, or a name on `PATH`; empty means the extension's `bin/LANG-lsp`, else `LANG-lsp` on `PATH` |
-| `LANG.server.root` | the file the program starts from, which the server analyzes; empty means the file opened or saved |
+| `LANG.server.root` | the file the program starts from, which the server analyzes; empty means each file's own program ([The analysis](#the-analysis)) |
 
 `extension.js` starts the server for the language's files with
 `vscode-languageclient` and restarts it when a setting changes. When the
@@ -118,13 +118,18 @@ With every function of `hooks.zig` a stub, the server gives:
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its
   text (a literal or a `@keywords` word), else its token name. The token
   types are `@highlight`'s 19 scopes.
-- **Folding.** Each node of the tree that spans lines, and each run of
-  comment tokens on consecutive lines. A grammar with `@repair` is parsed
+- **Folding.** Each node of the tree whose solid tokens span lines, and
+  each run of comment tokens on consecutive lines. A solid token is one
+  with text other than blanks and line ends that is not a comment; a
+  node's span runs on to the next token, over the blank lines, comments
+  and zero-width layout tokens after it, and its fold ends at its last
+  solid token. A grammar with `@repair` is parsed
   tolerantly here ([SEMANTICS.md, "Tolerant
   parsing"](SEMANTICS.md#tolerant-parsing)), so a file that does not
   parse still folds.
-- **Selection ranges.** The spans of the nodes around the cursor, inner
-  to outer.
+- **Selection ranges.** The solid token the cursor is in (else the one
+  it ends), then the nodes around it, inner to outer, each from its first
+  solid token to its last and inside the one after it.
 - **Keyword completion.** The words of `language.zig` that the parser
   takes at the cursor: each word that, put in place of the word the
   cursor is in, the parse reads past. None when the text before that word
@@ -209,14 +214,20 @@ pub fn analyze(arena: Allocator, root: []const u8, overlay: lsp.Overlay) !lsp.An
 `analyze` checks a program as a whole and keeps what the other functions
 need in `Analysis`, a type the language declares. `root` is the file the
 program starts from: the client's `root` option (`LANG.server.root`) when
-it gives one, else the file opened or saved. `overlay.read(arena, path)`
+it gives one; else the root of the newest analysis that covers the file
+opened or saved (its root, a file it read, or a file its diagnostics
+name); else that file itself. `overlay.read(arena, path)`
 reads a file the way the editor sees it: an open file's text, unsaved
 edits and all, else the file on disk. `Analyzed(Analysis)` is the
 analysis, its diagnostics in every file, and the files it read.
 
 The server runs `analyze` when a file opens and when it is saved, never
 as you type, and holds the result in an arena of its own until the next
-analysis replaces it. An analysis that fails (`analyze` returns an error)
+analysis of the same root replaces it. It holds one analysis per root,
+so separate programs open side by side keep theirs, up to eight; a ninth
+drops the one a request or an analysis used least recently, and the
+diagnostics it gave. Requests on a file read the analysis of its program:
+the root's, with a `root` option, else the newest that covers the file. An analysis that fails (`analyze` returns an error)
 leaves the one before in place, and says so: the server logs "the
 analysis of ROOT failed: ERROR" (`window/logMessage`), and the file whose
 opening or saving ran it has an error at its start, "the analysis failed:
@@ -228,9 +239,10 @@ those requests answer nothing in it.
 
 Diagnostics are published to every file they name, opened or not. An
 open file shows its syntax errors and, while its text is the text the
-analysis read, the analysis's diagnostics; an edit hides those until the
-next save. A file the last analysis named and the new one does not is
-cleared. A diagnostic's `notes` are its related locations.
+analysis of its program read, that analysis's diagnostics; an edit hides
+those until the next save. A file no held analysis names any more is
+cleared. A file's diagnostics are sent only when they differ from the
+ones last sent to it, and an empty list only to clear some. A diagnostic's `notes` are its related locations.
 
 The functions that read the analysis take a position, a `Pos`: a path and
 a byte offset in that file's text. In a file edited since the analysis,

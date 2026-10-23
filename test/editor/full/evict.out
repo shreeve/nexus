@@ -1,0 +1,36 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open p1.tally
+diagnostics p1.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p2.tally
+diagnostics p2.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p3.tally
+diagnostics p3.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p4.tally
+diagnostics p4.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p5.tally
+diagnostics p5.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p6.tally
+diagnostics p6.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p7.tally
+diagnostics p7.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> open p8.tally
+diagnostics p8.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> hover p1.tally 1:1
+null
+> open p9.tally
+diagnostics p2.tally none
+diagnostics p9.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+> save p2.tally
+diagnostics p2.tally
+  {"message":"undefined name nothing","range":"1:1-1:8","severity":1,"source":"tally"}
+diagnostics p3.tally none

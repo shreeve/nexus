@@ -137,12 +137,10 @@ error -32803 nothing to rename here
 > folds main.tally
   {"endLine":9,"startLine":6}
 > selection main.tally 8:13
-  {"parent":{"parent":{"parent":{"parent":{"parent":{"range":"1:1-16:1"},"range":"7:1-10:2"},"range":"7:21-10:2"},"range":"8:5-8:23"},"range":"8:13-8:23"},"range":"8:13-8:14"}
+  {"parent":{"parent":{"parent":{"parent":{"parent":{"range":"1:1-15:12"},"range":"7:1-10:2"},"range":"7:21-10:2"},"range":"8:5-8:23"},"range":"8:13-8:23"},"range":"8:13-8:14"}
 > change main.tally
 diagnostics main.tally none
 > save main.tally
-diagnostics main.tally none
 > close main.tally
-diagnostics main.tally none
 > hover main.tally 1:5
 error -32602 no open document
