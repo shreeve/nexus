@@ -1,9 +1,11 @@
 # tally.grammar: Tally, the language of the editor suite. `nexus --editor`
 # writes its VS Code extension and language server, which the suite builds
-# twice: in full/, with full/hooks.zig (every function of the language
-# written), and in stub/, with the hooks.zig `--editor` writes. Each
-# directory's sessions are replayed against its server, on the files of
-# project/ (test/lib/lsp).
+# three times: in full/, with full/hooks.zig (every function of the
+# language written, in place of the names @lsp declares); in names/, with
+# the hooks.zig `--editor` writes, so the names come from @lsp alone; and
+# in stub/, with that hooks.zig and the grammar without @lsp (stub/without),
+# so the grammar gives only what its syntax does. Each directory's sessions
+# are replayed against its server, on the files of project/ (test/lib/lsp).
 
 @lexer
 
@@ -35,6 +37,36 @@ tokens
 .                           → err
 
 @parser
+
+@schema
+    module          ...stmts
+    use             name:leaf
+    let             name:leaf value
+    fn              name:leaf params:params body:block
+    params          ...names:leaf
+    return          value
+    block           ...stmts
+    name            id:leaf
+    num, str        value:leaf
+    member          object name:leaf
+    call            callee ...args
+    "+", "-", "*"   left right
+
+# A file's names: its functions, `let`s and `use`s, in any order; a
+# function's parameters, then a block's `let`s, each from its definition
+# on. A name after `.` is a member, which @lsp does not resolve.
+@lsp
+    scope       module unordered
+    scope       fn block
+    define      fn.name         function  outer  doc:leading  detail:..body
+    define      params.names    variable
+    define      let.name        variable  value:value  doc:leading
+    define      use.name        module
+    use         IDENT
+    skip        member.name
+    builtin     "print"
+    doc         COMMENT strip "#"
+    undefined   warning
 
 @display
     IDENT: "a name", NEWLINE: "end of line"

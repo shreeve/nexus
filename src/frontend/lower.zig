@@ -85,6 +85,7 @@ pub const GrammarLowerer = struct {
     messages: ?[]const grammar.Message = null,
     /// The `@messages` directive, for locating it.
     messagesNode: ?Sexp = null,
+    lsp: ?grammar.LspLines = null,
 
     /// Lowers a parsed grammar file.
     pub fn lowerParsed(allocator: Allocator, parsed: *const @import("frontend.zig").Parsed) LowerError!GrammarIR {
@@ -110,6 +111,8 @@ pub const GrammarLowerer = struct {
         try self.checkKeywordsUsed();
         if (self.messagesNode) |node| if (self.rules.items.len == 0)
             return self.failAt(if (self.spans) |p| p.span(node).start else self.posOf(node), "@messages needs parser rules: a grammar without them generates the lexer alone", .{});
+        if (self.lsp) |l| if (!self.directives.contains(.schema))
+            return self.failAt(l.pos, "@lsp needs @schema: its lines name the schema's kinds and roles", .{});
         const extraTags = try self.extraTags.toOwnedSlice(allocator);
         // Without a `name!` rule, the first rule is the start symbol.
         if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
@@ -139,6 +142,7 @@ pub const GrammarLowerer = struct {
             .keywordGroups = try self.keywordGroups.toOwnedSlice(allocator),
             .highlight = self.highlight,
             .messages = self.messages,
+            .lsp = self.lsp,
             .lexer = self.lexer,
         };
     }
@@ -234,7 +238,7 @@ pub const GrammarLowerer = struct {
         switch (kind) {
             // Each directive but @as (one line per promoted token) appears
             // once; repeated blocks are not merged.
-            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords, .highlight, .messages => {
+            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords, .highlight, .messages, .lsp => {
                 if (self.directives.contains(kind))
                     return self.failAt(self.spans.?.span(entry).start, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
                 self.directives.insert(kind);
@@ -256,6 +260,7 @@ pub const GrammarLowerer = struct {
             .keywords => for (ir.Keywords.groups(entry)) |group| try self.lowerKeywordGroup(group),
             .highlight => try self.lowerHighlight(entry),
             .messages => try self.lowerMessages(entry),
+            .lsp => try self.lowerLsp(entry),
             .rule => {
                 if (self.section != .parser)
                     return self.fail(entry, "rules belong in the @parser section", .{});
@@ -823,6 +828,24 @@ pub const GrammarLowerer = struct {
             });
         }
         self.highlight = .{
+            .pos = if (self.spans) |p| p.span(node).start else self.posOf(node),
+            .lines = try lines.toOwnedSlice(self.allocator),
+        };
+    }
+
+    /// `@lsp`: each line's words as written, read by src/lsp/names.zig.
+    fn lowerLsp(self: *GrammarLowerer, node: Sexp) LowerError!void {
+        var lines: std.ArrayList(grammar.LspLines.Line) = .empty;
+        for (ir.Lsp.lines(node)) |line| {
+            const key = ir.LspLine.key(line);
+            var words: std.ArrayList(grammar.LspLines.Word) = .empty;
+            for (ir.LspLine.words(line)) |w| try words.append(self.allocator, .{ .text = self.text(w), .pos = w.src.pos });
+            try lines.append(self.allocator, .{
+                .key = .{ .text = self.text(key), .pos = key.src.pos },
+                .words = try words.toOwnedSlice(self.allocator),
+            });
+        }
+        self.lsp = .{
             .pos = if (self.spans) |p| p.span(node).start else self.posOf(node),
             .lines = try lines.toOwnedSlice(self.allocator),
         };

@@ -1,0 +1,93 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"definitionProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"'nothing' is not defined","range":"15:1-15:8","severity":2,"source":"tally"}
+> symbols main.tally
+  {"kind":2,"name":"util","range":"1:1-1:9","selectionRange":"1:5-1:9"}
+  {"kind":13,"name":"total","range":"4:1-4:27","selectionRange":"4:5-4:10"}
+  {"kind":13,"name":"name","range":"5:1-5:36","selectionRange":"5:5-5:9"}
+  {"children":[{"kind":13,"name":"x","range":"7:10-7:11","selectionRange":"7:10-7:11"},{"kind":13,"name":"factor","range":"7:13-7:19","selectionRange":"7:13-7:19"}],"detail":"fn scale(x, factor)","kind":12,"name":"scale","range":"7:1-10:2","selectionRange":"7:4-7:9"}
+> definition main.tally 4:13
+main.tally 1:5-1:9
+> definition main.tally 12:1
+main.tally 7:4-7:9
+> definition main.tally 8:13
+main.tally 7:10-7:11
+> definition main.tally 9:24
+main.tally 8:9-8:10
+> definition main.tally 7:4
+main.tally 7:4-7:9
+> definition main.tally 4:18
+null
+> definition main.tally 7:1
+null
+> definition main.tally 15:1
+null
+> definition main.tally 6:1
+null
+> references main.tally 7:10
+  main.tally 7:10-7:11
+  main.tally 8:13-8:14
+> references main.tally 8:13
+  main.tally 7:10-7:11
+  main.tally 8:13-8:14
+> references main.tally 1:6
+  main.tally 1:5-1:9
+  main.tally 4:13-4:17
+  main.tally 5:12-5:16
+  main.tally 9:12-9:16
+  main.tally 13:1-13:5
+  main.tally 14:1-14:5
+> highlight main.tally 8:9
+  {"range":"8:9-8:10"}
+  {"range":"9:24-9:25"}
+> highlight main.tally 4:8
+  {"range":"4:5-4:10"}
+  {"range":"12:7-12:12"}
+  {"range":"13:10-13:15"}
+> hover main.tally 7:6
+{"contents":{"kind":"markdown","value":"```tally\nfn scale(x, factor)\n```"}}
+> hover main.tally 4:7
+{"contents":{"kind":"markdown","value":"```tally\ntotal\n```\n\nThe running total."}}
+> hover main.tally 13:10
+{"contents":{"kind":"markdown","value":"```tally\ntotal\n```\n\nThe running total."}}
+> hover main.tally 8:17
+{"contents":{"kind":"markdown","value":"```tally\nfactor\n```"}}
+> hover main.tally 4:18
+null
+> completion main.tally 8:13
+  {"kind":6,"label":"factor"}
+  {"kind":6,"label":"x"}
+  {"detail":"fn scale(x, factor)","kind":3,"label":"scale"}
+  {"kind":6,"label":"name"}
+  {"documentation":{"kind":"markdown","value":"The running total."},"kind":6,"label":"total"}
+  {"kind":9,"label":"util"}
+> completion main.tally 13:5
+  {"detail":"fn scale(x, factor)","kind":3,"label":"scale"}
+  {"kind":6,"label":"name"}
+  {"documentation":{"kind":"markdown","value":"The running total."},"kind":6,"label":"total"}
+  {"kind":9,"label":"util"}
+  {"kind":14,"label":"fn"}
+  {"kind":14,"label":"let"}
+  {"kind":14,"label":"return"}
+  {"kind":14,"label":"use"}
+> completion main.tally 4:18
+[]
+> completion main.tally 4:6
+[]
+> open util.tally
+> symbols util.tally
+  {"children":[{"kind":13,"name":"a","range":"2:8-2:9","selectionRange":"2:8-2:9"},{"kind":13,"name":"b","range":"2:11-2:12","selectionRange":"2:11-2:12"}],"detail":"fn add(a, b)","kind":12,"name":"add","range":"2:1-4:2","selectionRange":"2:4-2:7"}
+  {"children":[{"kind":13,"name":"n","range":"7:11-7:12","selectionRange":"7:11-7:12"}],"detail":"fn double(n)","kind":12,"name":"double","range":"7:1-9:2","selectionRange":"7:4-7:10"}
+  {"kind":13,"name":"greeting","range":"11:1-11:23","selectionRange":"11:5-11:13"}
+> hover util.tally 8:12
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> hover util.tally 11:7
+{"contents":{"kind":"markdown","value":"```tally\ngreeting\n```"}}
+> references util.tally 3:12
+  util.tally 2:8-2:9
+  util.tally 3:12-3:13
+> open lib.tally
+diagnostics lib.tally
+  {"message":"'missing' is not defined","range":"1:12-1:19","severity":2,"source":"tally"}

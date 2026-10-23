@@ -1,0 +1,38 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"definitionProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"'nothing' is not defined","range":"15:1-15:8","severity":2,"source":"tally"}
+> rename main.tally 7:10 base
+{"changes":{"main.tally":[{"newText":"base","range":"7:10-7:11"},{"newText":"base","range":"8:13-8:14"}]}}
+> rename main.tally 9:24 scaled
+{"changes":{"main.tally":[{"newText":"scaled","range":"8:9-8:10"},{"newText":"scaled","range":"9:24-9:25"}]}}
+> rename main.tally 7:10 y
+{"changes":{"main.tally":[{"newText":"y","range":"7:10-7:11"},{"newText":"y","range":"8:13-8:14"}]}}
+> rename main.tally 8:9 x
+{"changes":{"main.tally":[{"newText":"x","range":"8:9-8:10"},{"newText":"x","range":"9:24-9:25"}]}}
+> rename main.tally 7:13 x
+error -32803 'x' would capture the use of 'x' on line 8
+> rename main.tally 7:5 grow
+error -32803 'scale' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+> rename main.tally 4:6 sum
+error -32803 'total' is visible to other files, and the server resolves names within one file: it renames only what other files cannot see
+> rename main.tally 7:1 g
+error -32803 nothing to rename here
+> rename main.tally 15:2 something
+error -32803 nothing to rename here
+> rename main.tally 8:9 a+b
+error -32803 the new name is not one token
+> rename main.tally 8:9 fn
+error -32803 the new name is not a name of the same kind
+> change main.tally
+diagnostics main.tally none
+> rename main.tally 3:9 a
+error -32803 'a' is defined in this scope already
+> rename main.tally 3:9 c
+{"changes":{"main.tally":[{"newText":"c","range":"3:9-3:10"}]}}
+> change main.tally
+> rename main.tally 1:6 b
+error -32803 'b' would capture the use of 'b' on line 2
+> rename main.tally 1:6 d
+{"changes":{"main.tally":[{"newText":"d","range":"1:6-1:7"},{"newText":"d","range":"3:12-3:13"}]}}

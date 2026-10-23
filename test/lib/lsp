@@ -8,7 +8,9 @@ SERVER is a language server `nexus --editor` wrote, built; ROOT the
 directory of the files the session names; SESSION a file of commands, one
 a line (`#` starts a comment):
 
-  initialize [utf-8] [root FILE]   the first command: the client's options
+  initialize [utf-8] [root FILE] [quiet]
+                                   the first command: the client's options;
+                                     `quiet` prints nothing of the result
   open FILE                        didOpen with FILE's text, or with the
                                      `| ` lines after it; a FILE that starts
                                      with `untitled:` is an unsaved document
@@ -196,7 +198,8 @@ class Session:
             msg = self.request("initialize", params)
             self.legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]["tokenTypes"]
             self.notify("initialized", {})
-            self.show(msg)
+            if "quiet" not in args:
+                self.show(msg)
         elif cmd == "open":
             text = body if body is not None else open(os.path.join(self.root, args[0]), encoding="utf-8", newline="").read()
             self.versions[args[0]] = 1

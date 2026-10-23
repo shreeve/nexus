@@ -22,6 +22,133 @@
   (lex_rule `[a-z_] [a-z_0-9]*` _ `ident`)
   (lex_rule `.` _ `err`)
   (section `parser`)
+  (schema
+    (kind_decl
+      (kinds `module`)
+      (roles
+        (role rest `stmts` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `use`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `let`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role _ `value` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `fn`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `params`
+          (type `params`)
+          _)
+        (role
+          _
+          `body`
+          (type `block`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `params`)
+      (roles
+        (role
+          rest
+          `names`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `return`)
+      (roles
+        (role _ `value` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `block`)
+      (roles
+        (role rest `stmts` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `name`)
+      (roles
+        (role
+          _
+          `id`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `num` `str`)
+      (roles
+        (role
+          _
+          `value`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `member`)
+      (roles
+        (role _ `object` _ _)
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `call`)
+      (roles
+        (role _ `callee` _ _)
+        (role rest `args` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `"+"` `"-"` `"*"`)
+      (roles
+        (role _ `left` _ _)
+        (role _ `right` _ _))
+      _
+      _))
+  (lsp
+    (lsp_line `scope` `module` `unordered`)
+    (lsp_line `scope` `fn` `block`)
+    (lsp_line `define` `fn.name` `function` `outer` `doc:leading` `detail:..body`)
+    (lsp_line `define` `params.names` `variable`)
+    (lsp_line `define` `let.name` `variable` `value:value` `doc:leading`)
+    (lsp_line `define` `use.name` `module`)
+    (lsp_line `use` `IDENT`)
+    (lsp_line `skip` `member.name`)
+    (lsp_line `builtin` `"print"`)
+    (lsp_line `doc` `COMMENT` `strip` `"#"`)
+    (lsp_line `undefined` `warning`))
   (display
     (name_pair `IDENT` `"a name"`)
     (name_pair `NEWLINE` `"end of line"`))

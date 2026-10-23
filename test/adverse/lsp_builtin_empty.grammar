@@ -1,0 +1,64 @@
+# A builtin line names something.
+# error: lsp_builtin_empty.grammar:47:5:
+# error: a builtin line names strings or one token: builtin "name" ... | builtin TOKEN
+@lexer
+
+tokens
+    ident, number, comment, newline, kw_let, kw_fn, eq, plus, minus
+    lbrace, rbrace, lparen, rparen, comma, eof, err
+
+'#' [^\n]*                  → comment
+'\n'                        → newline
+"let"                       → kw_let
+"fn"                        → kw_fn
+'='                         → eq
+'+'                         → plus
+'-'                         → minus
+'{'                         → lbrace
+'}'                         → rbrace
+'('                         → lparen
+')'                         → rparen
+','                         → comma
+[0-9]+                      → number
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    prog        ...stmts
+    let         name:leaf value | eq
+    fn          name:leaf params:group? body:block
+    block       ...stmts
+    name        id:leaf
+    num         value:leaf base:tag(dec)
+    neg         sign:tag(minus) value
+    call        name:leaf ...args
+
+@trivia COMMENT
+
+@lsp
+    scope    prog unordered
+    scope    fn block
+    define   fn.name  function  outer  doc:leading  detail:..body
+    define   let.name variable  value:value
+    use      IDENT
+    doc      COMMENT strip "#"
+    builtin
+
+prog!  = body                               → (prog ...1)
+
+body   = stmt                               → (1)
+       | body NEWLINE stmt                  → (...1 3)
+
+stmt   = KW_LET IDENT eq:"=" expr           → (let 2 4)
+       | KW_FN IDENT "(" [L(IDENT)] ")" block
+                                            → (fn 2 4 6)
+       | expr
+
+block  = "{" body "}"                       → (block ...2)
+
+expr   = IDENT                              → (name 1)
+       | NUMBER                             → (num 1 dec)
+       | "-" expr                           → (neg minus 2)
+       | IDENT "(" [L(expr)] ")"            → (call 1 ...3)

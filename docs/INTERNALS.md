@@ -17,6 +17,7 @@ grammar file
   ├─ lexgen/       regex AST → NFA → DFA → minimized DFA → direct-coded Zig
   │  highlight/    @highlight read against the lexer spec (checks, order)
   │  semantics.zig resolve: schema, inventory, role placement, coverage
+  │  lsp/names.zig @lsp read against the schema and the tokens (checks)
   │  expand.zig    → Grammar (plain BNF: symbols, rules, action trees)
   │  semantics.zig checkTypes: static result types
   │  check.zig     every symbol defined, every rule reachable, tokens bound, X hints resolved
@@ -110,14 +111,21 @@ without `@highlight` (`highlight/<grammar>/files` checks it).
 defaults it writes when the file is missing),
 and the server's `build.zig`, `main.zig`, `language.zig` (the grammar's
 token scopes and completion words, read from `Highlight` and the
-grammar) and the stub `hooks.zig`; it copies the lang module and the
-files it imports. The server itself, `lsp.zig`, is
-`src/lsp/server_template.zig` under a header, written as it is. Like the
-runtime template it is a real Zig file, seen by `zig fmt`, but it
-imports the `parser.zig`, `language.zig` and `hooks.zig` beside it in a
-server, so it compiles only there: `editor/*/server` compiles it for
-every grammar with `@highlight`, and the editor suite builds and drives
-it.
+grammar, and with `@lsp` its lines as tables, each slot written as the
+parser's `ir.slot`) and the stub `hooks.zig`; it copies the lang module
+and the files it imports. `src/lsp/names.zig` reads `@lsp` once the
+schema and the lexer's tokens are known, every check of GRAMMAR.md
+("Names and scopes") a located error, in generation and `nexus check`
+alike. The server itself, `lsp.zig`, is `src/lsp/server_template.zig`
+under a header, written as it is, and with `@lsp` the names engine,
+`scopes.zig`, is `src/lsp/scopes_template.zig` the same way: it indexes
+a text in one walk of its tree by the tables of `language.zig`, so it
+knows no language, and `lsp.zig` reaches it only when `language.zig`
+declares `names`. Like the runtime template both are real Zig files,
+seen by `zig fmt`, but they import the `parser.zig`, `language.zig` and
+`hooks.zig` beside them in a server, so they compile only there:
+`editor/*/server` compiles them for every grammar with `@highlight`,
+and the editor suite builds and drives them.
 
 ### Lexer generation
 
@@ -390,7 +398,7 @@ check them:
 | located errors, exit 1, nothing written | `adverse/*`, `tools/cli` |
 | deterministic output | `determinism/*`, `gen/*`, `describe/*`, `highlight/*/files`, `editor/*/files` (byte-exact goldens) |
 | editor files colour as documented | `highlight/*` (samples through the TextMate and highlight.js references and Vim) |
-| language servers answer as documented | `editor/*` (every server compiles), `editor/full/*` and `editor/stub/*` (sessions) |
+| language servers answer as documented | `editor/*` (every server compiles), `editor/full/*`, `editor/names/*` and `editor/stub/*` (sessions), `zig/scopes` (Zig's names against AstGen's) |
 | the bootstrap converges | `bootstrap` |
 | LALR is LALR | `unit/nexus` (lookaheads equal merged canonical LR(1)) |
 | every generated parser compiles and runs | every suite and doc example |
@@ -432,6 +440,8 @@ current numbers and how to compare two builds.
 | `src/lsp/editor.zig` | `--editor`: the VS Code extension, the server's files, the stub `hooks.zig` |
 | `src/lsp/identity.zig` | the extension's `identity.json`: its defaults, and reading it, with located errors |
 | `src/lsp/server_template.zig` | the language server, written as each server's `lsp.zig` |
+| `src/lsp/names.zig` | `@lsp`: its lines read against the schema and the tokens, with their checks |
+| `src/lsp/scopes_template.zig` | the names engine, written as `scopes.zig` beside a server of a grammar with `@lsp` |
 | `src/describe.zig` | `--describe`: the grammar as JSON |
 | `src/json.zig` | JSON strings |
 | `src/semantics.zig` | schema, placement, coverage, static types |

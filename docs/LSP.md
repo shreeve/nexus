@@ -10,13 +10,16 @@ nexus --editor lang.grammar editors
 
 The grammar alone gives the syntactic half of the server: syntax errors as
 you type, semantic tokens, folding, selection ranges and keyword
-completion. The rest (the outline, hover, go to definition, references,
-rename, completion of names and members, signature help, type errors,
-formatting) needs to know what the program means, which only the language
-knows. For that the command writes `hooks.zig`, a file of functions to
-fill in, each left as a stub. Writing a function turns on the features
-behind it; a stub left alone turns nothing on, and the server never
-advertises a feature it cannot give.
+completion. A grammar that declares its names and scopes (`@lsp`,
+[GRAMMAR.md, "Names and scopes"](GRAMMAR.md#names-and-scopes)) gives
+the outline, go to definition, references, highlights, rename, the
+names in scope and hover too, within each file. The rest (members,
+other files, types, type errors, signature help, formatting) needs to
+know what the program means, which only the language knows. For that
+the command writes `hooks.zig`, a file of functions to fill in, each
+left as a stub. Writing a function turns on the features behind it, in
+place of the grammar's; a stub left alone turns nothing on, and the
+server never advertises a feature it cannot give.
 
 [test/editor](../test/editor) is a worked example: Tally, a small
 language, with a `hooks.zig` that writes every function
@@ -57,6 +60,7 @@ editors/
         ├── lsp.zig                     the server
         ├── parser.zig                  the grammar's parser, with spans
         ├── language.zig                the grammar's table for the server
+        ├── scopes.zig                  with `@lsp`: the names of each open file
         ├── hooks.zig                   the language's functions: written once
         └── lang.zig ...                with --lang, the lang module and the files it imports
 ```
@@ -71,17 +75,22 @@ never again. It prints `Wrote` for each file it writes and `Kept` for a
 - The highlighting files are those of `nexus --highlight all`
   ([GRAMMAR.md, "The files"](GRAMMAR.md#the-files)).
 - `parser.zig` is the grammar's parser as `nexus --spans` writes it.
+- `scopes.zig`, with `@lsp`, indexes the names of each open file by the
+  tables `language.zig` holds; like `lsp.zig`, it is Nexus's own, the
+  same for every language.
 - `language.zig` holds what the server needs to know about the grammar:
   the language's name and id, the `@highlight` scope of each token by its
   name or its text, and the words completion can offer. Those are each
   literal terminal, each token whose one rule is a literal, and each
   `@keywords` terminal that is a word, where `@highlight`'s `word-chars`
-  says what a word is.
+  says what a word is. With `@lsp`, it holds its lines too (`names`),
+  each slot as the parser's `ir.slot` of its kind and role.
 - With `--lang`, the lang module is copied beside `parser.zig`, as the
   parser imports it, with every file it imports by a relative path. A
   file it imports from outside its own directory, a file that cannot be
   read, and a file named like one of the server's own (`main.zig`,
-  `lsp.zig`, `parser.zig`, `language.zig`, `hooks.zig`) are errors.
+  `lsp.zig`, `parser.zig`, `language.zig`, `scopes.zig`, `hooks.zig`)
+  are errors.
 
 ### The extension's identity
 
@@ -216,6 +225,31 @@ With every function of `hooks.zig` a stub, the server gives:
 - **Selection ranges.** The solid token the cursor is in (else the one
   it ends), then the nodes around it, inner to outer, each from its first
   solid token to its last and inside the one after it.
+- **Names, with `@lsp`.** Each request reads the names of the file's
+  current text, indexed again after each change (a file with syntax
+  errors through the tolerant parse, with `@repair`):
+  - the outline: the definitions of the file's own scope, each with the
+    definitions of the scope inside it (a function's parameters, the
+    members of the container its `value:` opens), its detail
+    (`detail`, else `type:`) beside it;
+  - go to definition, references and highlights of the name at the
+    position, within the file;
+  - hover: the definition's detail as code (its name, without one), its
+    type, and its doc;
+  - completion: the names in sight at the position, nearest first, then
+    the keywords; none where the word there is a definition's or a
+    skipped role's (after a member's `.`);
+  - rename: the definition and every use of it in the file, refused
+    (`-32803`, with the reason) when another file can see the name
+    (`export:`; by default a name of the file's own scope), when the new
+    name is not one token of the old one's kind, and unless the file
+    indexed again with the edits made resolves every use as before, the
+    renamed ones to the renamed definition: a rename that would capture
+    another use, or that another use would capture, or that defines the
+    new name twice in one scope, is refused;
+  - with `undefined error` or `warning`, a diagnostic at each use that
+    nothing defines and no `builtin` names, unless the language writes
+    `analyze`, whose diagnostics are its own.
 - **Keyword completion.** The words of `language.zig` that the parser
   takes at the cursor: each word that, put in place of the word the
   cursor is in, the parse reads past. None when the text before that word
@@ -249,6 +283,13 @@ The server asks at compile time which functions are written: a
 declaration of type `lsp.Todo` is not, and its features are neither
 advertised nor ever called. A function that reads the analysis without
 `analyze` written is a compile error.
+
+With `@lsp`, a function the language writes replaces the grammar's
+names for the features it turns on, one function at a time: `symbols`
+the outline, `symbolAt` definition, references, highlights and rename,
+`describe` hover, `visible` the names completion offers; the others are
+still the grammar's. A function may import `scopes.zig` and index a
+text itself (`scopes.index`) to build on the grammar's names.
 
 | Function | Turns on |
 |---|---|
@@ -372,15 +413,15 @@ pub fn renamable(a: *Analysis, symbol: lsp.Symbol) bool
 
 | Request | Answer |
 |---|---|
-| `completion` | `members` when it gives a list; else `modules` when it gives a list; else `visible`, then the keywords the grammar takes there |
-| `hover` | `describe` of `symbolAt`, else `describe` of `typeAt` |
-| `definition` | the declaration of `symbolAt` |
+| `completion` | `members` when it gives a list; else `modules` when it gives a list; else `visible` (with `@lsp`, without it: the names in sight), then the keywords the grammar takes there |
+| `hover` | `describe` of `symbolAt`, else `describe` of `typeAt` (with `@lsp`, without `describe`: the name's detail, type and doc) |
+| `definition` | the declaration of `symbolAt` (with `@lsp`, without it, the grammar's names give `definition`, `references`, `documentHighlight` and `rename` within the file) |
 | `typeDefinition` | the declaration in `describe` of `typeAt` |
 | `references` | `references` of `symbolAt`; without it, every token of every file the analysis read whose `symbolAt` has the same `id` |
 | `documentHighlight` | those references in this file |
 | `rename` | those references and the declaration, when `renamable` allows it (by default every symbol renames) and the new name lexes as one token of the same kind as the old name |
 | `signatureHelp` | `signatures` |
-| `documentSymbol` | `symbols` |
+| `documentSymbol` | `symbols` (with `@lsp`, without it: the grammar's outline) |
 | `foldingRange`, `semanticTokens` | `folds` and `tokens`, else the grammar's |
 | `formatting` | `format` |
 
@@ -403,10 +444,14 @@ Whatever the language writes, the server:
 
 ## Tests
 
-The editor suite (`test/editor`) builds Tally's server twice: in `full/`
-with `full/hooks.zig`, which writes every function but `references` so
-the server's own search runs too, and in `stub/` with the `hooks.zig`
-that `--editor` writes. `test/lib/lsp` replays each `.session` file of a
+The editor suite (`test/editor`) builds Tally's server three times: in
+`full/` with `full/hooks.zig`, which writes every function but
+`references` so the server's own search runs too, and replaces Tally's
+`@lsp` names; in `names/` with the `hooks.zig` that `--editor` writes,
+so the names come from `@lsp` alone; and in `stub/` with that
+`hooks.zig` and the grammar without `@lsp` (a variant's `without` file
+names the directives its server is built without), which gives only
+what the syntax does. `test/lib/lsp` replays each `.session` file of a
 directory against its server, on the files of `project/`, and compares
 what the server answers with the `.out` file beside it. A session is one
 command a line:
@@ -429,7 +474,9 @@ line:
 `test/lib/lsp` lists every command. For every other grammar with
 `@highlight`, the suite runs `--editor` and checks the files it writes
 against the highlighting files, the parser and the goldens, and checks
-that the server compiles.
+that the server compiles; for Zig's, `grammars/zig/compare-scopes` checks
+the names its `@lsp` resolves against the compiler's
+([grammars/zig/README.md](../grammars/zig/README.md#names-and-scopes)).
 
 The suite checks the extension under Node, without VS Code
 (`test/lib/vscode`). For every grammar, `package.json`'s semantic token

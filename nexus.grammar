@@ -67,6 +67,7 @@ tokens
     kw_keywords
     kw_highlight
     kw_messages
+    kw_lsp
     keyword
     kw_wrapper
     kw_via
@@ -150,7 +151,7 @@ tokens
     KW_ERRORS: "errors", KW_DISPLAY: "display", KW_INFIX: "infix",
     KW_SCHEMA: "schema", KW_TAGS: "tags", KW_TRIVIA: "trivia",
     KW_REPAIR: "repair", KW_KEYWORDS: "keywords", KW_HIGHLIGHT: "highlight",
-    KW_MESSAGES: "messages",
+    KW_MESSAGES: "messages", KW_LSP: "lsp",
     KEYWORD: "a keyword",
     KW_WRAPPER: "wrapper", KW_VIA: "via", KW_OVER: "over",
     KW_LEFT: "left", KW_RIGHT: "right", KW_NONE: "none", KW_LEXER: "lexer",
@@ -190,7 +191,7 @@ tokens
 # ===========================================================================
 
 @schema
-    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|highlight|messages|rule
+    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|highlight|messages|lsp|rule
 
     # Section markers: `@lexer`, `@parser`
     section          name:leaf
@@ -240,6 +241,8 @@ tokens
     message          kind:leaf start:leaf? text:leaf ...parts:msg_sym|msg_choice
     msg_choice       ...alts:msg_sym
     msg_sym          name:leaf guard:leaf?
+    lsp              ...lines:lsp_line
+    lsp_line         key:leaf ...words:leaf
 
     # Rules
     rule             name:start|name ...alts:alt
@@ -371,6 +374,7 @@ directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_KEYWORDS groups:keyword_lines        → (keywords)
           | "@" KW_HIGHLIGHT lines:highlight_lines      → (highlight)
           | "@" KW_MESSAGES lines:message_lines         → (messages)
+          | "@" KW_LSP lines:lsp_lines                  → (lsp)
 
 # --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
 #
@@ -562,6 +566,19 @@ message_sym   = name:(IDENT | TOKEN) X "("          → (msg_sym)
               | name:(IDENT | TOKEN) "(" guard:STRING ")"
                                                     → (msg_sym)
               | name:STRING                         → (msg_sym)
+
+# --- @lsp: one declaration per indented line, `key word word ...` ---
+#
+# The lexer wrapper scans each line as it scans a @keywords group: the
+# first word (IDENT: `scope`, `define`, `use` ...), then each word after
+# it whole (KEYWORD: `var_decl.name`, `value:init`, `detail:..body`,
+# `"///"`). A line indented further than the block's first line continues
+# the line above. src/lsp/names.zig reads each line from its words.
+
+lsp_lines     = CONT lsp_line                       → (2)
+              | lsp_lines CONT lsp_line             → (...1 3)
+
+lsp_line      = key:IDENT words:keyword_words       → (lsp_line)
 
 # ===========================================================================
 # Productions

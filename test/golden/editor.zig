@@ -444,7 +444,7 @@ pub const BaseLexer = struct {
 pub const Lexer = BaseLexer;
 
 // =============================================================================
-// Tag enum (the tags the actions produce, then @tags)
+// Tag and Role enums (from @schema)
 // =============================================================================
 
 pub const Tag = enum(u8) {
@@ -465,8 +465,20 @@ pub const Tag = enum(u8) {
     @"*",
 };
 
-/// Roles exist only in schema mode.
-pub const Role = enum(u16) { _ };
+pub const Role = enum(u16) {
+    @"stmts",
+    @"name",
+    @"value",
+    @"params",
+    @"body",
+    @"names",
+    @"id",
+    @"object",
+    @"callee",
+    @"args",
+    @"left",
+    @"right",
+};
 
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
@@ -2613,15 +2625,215 @@ fn writeMessage(p: *const BaseParser, w: *std.Io.Writer, f: Failure, text: []con
 
 
 // =============================================================================
+// IR accessors (from @schema)
+// =============================================================================
+
+// Inside `ir`, generated kind and role names (a kind `tag` has the view
+// `ir.Tag`) could shadow the module's own names, so `ir` refers to them
+// through these aliases, whose names no kind or role can take.
+const @"ir.Sexp" = Sexp;
+const @"ir.Tag" = Tag;
+const @"ir.Role" = Role;
+
+/// Role-based access to schema nodes. `get`/`rest` look the slot up by the
+/// node's kind; the per-kind views (`ir.Set.target(node)`) are resolved at
+/// compile time. Asking for a role the node's kind does not have panics in
+/// safety-checked builds and yields nil (or no items) otherwise.
+pub const ir = struct {
+    /// The child in `role` (nil when absent).
+    pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
+        const k = kindFor(node, "ir.get", role) orelse return .nil;
+        const at = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
+        const items = node.list.items();
+        return if (at < items.len) items[at] else .nil;
+    }
+
+    /// The children in rest role `role`.
+    pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
+        const k = kindFor(node, "ir.rest", role) orelse return &.{};
+        const at = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
+        const items = node.list.items();
+        return if (at < items.len) items[at..] else &.{};
+    }
+
+    /// Whether nodes of `kind` have `role` (slot or rest role).
+    pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
+        return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
+    }
+
+    /// The slot of `role` in nodes of `kind` (the head is slot 0), at
+    /// compile time; a compile error when `kind` has no such slot role. For
+    /// lang Parser wrappers that build or rewrite nodes:
+    /// `items[ir.slot(.set, .value)] = v`.
+    pub fn slot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime slotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no slot role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The first slot of rest role `role` in nodes of `kind`, at compile
+    /// time; a compile error when `kind` has no such rest role.
+    pub fn restSlot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime restSlotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no rest role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The fixed length of `kind` nodes: the head plus one slot per slot
+    /// role (rest children follow).
+    pub fn width(comptime kind: @"ir.Tag") usize {
+        return comptime blk: {
+            var n: usize = 1;
+            while (roleAt(kind, n) != null) n += 1;
+            break :blk n;
+        };
+    }
+
+    fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
+        if (node.kind()) |k| return k;
+        if (@import("builtin").optimize.runtimeSafety()) std.debug.panic(what ++ "(.{s}): not a schema node: {s}", .{ @tagName(role), @tagName(node) });
+        return null;
+    }
+
+    fn missing(kind: @"ir.Tag", role: @"ir.Role", comptime what: []const u8, value: anytype) @TypeOf(value) {
+        if (@import("builtin").optimize.runtimeSafety()) {
+            const hint = if (slotOf(kind, role) != null) " (a slot role; use ir.get)" else if (restSlotOf(kind, role) != null) " (a rest role; use ir.rest)" else "";
+            std.debug.panic(what ++ ": kind '{s}' has no role '{s}'{s}", .{ @tagName(kind), @tagName(role), hint });
+        }
+        return value;
+    }
+
+    pub const Module = struct {
+        pub fn @"stmts"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"module", 1, "ir.Module.stmts");
+        }
+    };
+    pub const Use = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"use", 1, "ir.Use.name");
+        }
+    };
+    pub const Let = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"let", 1, "ir.Let.name");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"let", 2, "ir.Let.value");
+        }
+    };
+    pub const Fn = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fn", 1, "ir.Fn.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fn", 2, "ir.Fn.params");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fn", 3, "ir.Fn.body");
+        }
+    };
+    pub const Params = struct {
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"params", 1, "ir.Params.names");
+        }
+    };
+    pub const Return = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"return", 1, "ir.Return.value");
+        }
+    };
+    pub const Block = struct {
+        pub fn @"stmts"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"block", 1, "ir.Block.stmts");
+        }
+    };
+    pub const Name = struct {
+        pub fn @"id"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"name", 1, "ir.Name.id");
+        }
+    };
+    pub const Num = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"num", 1, "ir.Num.value");
+        }
+    };
+    pub const Str = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"str", 1, "ir.Str.value");
+        }
+    };
+    pub const Member = struct {
+        pub fn @"object"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"member", 1, "ir.Member.object");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"member", 2, "ir.Member.name");
+        }
+    };
+    pub const Call = struct {
+        pub fn @"callee"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"call", 1, "ir.Call.callee");
+        }
+        pub fn @"args"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"call", 2, "ir.Call.args");
+        }
+    };
+    pub const @"+" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"+", 1, "ir.@\"+\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"+", 2, "ir.@\"+\".right");
+        }
+    };
+    pub const @"-" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"-", 1, "ir.@\"-\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"-", 2, "ir.@\"-\".right");
+        }
+    };
+    pub const @"*" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"*", 1, "ir.@\"*\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"*", 2, "ir.@\"*\".right");
+        }
+    };
+};
+
+/// Slot `slot` of `node`, a node of `kind` (checked in safety builds).
+fn @"ir.at"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot] else .nil;
+}
+
+/// The children of `node` from `slot` on.
+fn @"ir.restAt"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) []const Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot..] else &.{};
+}
+
+fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
+    if (@import("builtin").optimize.runtimeSafety() and !node.isKind(kind)) {
+        const actual = if (node.kind()) |k| @tagName(k) else @tagName(node);
+        std.debug.panic(what ++ ": node is '{s}', not '" ++ @tagName(kind) ++ "'", .{actual});
+    }
+}
+
+
+// =============================================================================
 // Grammar
 // =============================================================================
 
 /// Node spans and rule ids are recorded (`@schema` or `--spans`).
-pub const nodeStore = false;
+pub const nodeStore = true;
 /// Element extents are kept for side-band labels and nested nodes.
-const elemEnds = false;
+const elemEnds = true;
 /// Lists keep trailing nils: positions are fixed by the schema.
-const keepTrailingNils = false;
+const keepTrailingNils = true;
 const hasTrivia = true;
 /// The grammar has `@repair`: `parseTolerant` is available.
 pub const hasRepair = true;
@@ -2662,26 +2874,26 @@ fn promote(_: *BaseParser, _: Token) u16 {
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
-        0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = pass[0]; n += 1; break :blk self.finishItems(out, .spread); },
+        0 => blk: { const out = self.allocItems(1 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"module" }; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
+        1 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         2 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); },
-        5 => self.buildOf(&.{ .{ .tag = .@"use" }, .{ .elem = 1 } }, pass, .tree, true),
-        6 => self.buildOf(&.{ .{ .tag = .@"let" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        5 => self.buildOf(&.{ .{ .tag = .@"use" }, .{ .elem = 1 } }, pass, .tree, false),
+        6 => self.buildOf(&.{ .{ .tag = .@"let" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, false),
         7 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         8 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        11 => self.sexp(.@"fn", &.{pass[1], self.nested(self.sexpSpread(.@"params", pass[3]), 3, 3), pass[5]}),
-        12 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, true),
-        14 => self.sexpSpread(.@"block", pass[1]),
-        15 => self.buildOf(&.{ .{ .tag = .@"name" }, .{ .elem = 0 } }, pass, .tree, true),
-        16 => self.buildOf(&.{ .{ .tag = .@"num" }, .{ .elem = 0 } }, pass, .tree, true),
-        17 => self.buildOf(&.{ .{ .tag = .@"str" }, .{ .elem = 0 } }, pass, .tree, true),
-        18 => self.buildOf(&.{ .{ .tag = .@"member" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        11 => self.build(&.{ .{ .tag = .@"fn" }, pass[1], self.nested(blk1: { const out = self.allocItems(1 + pass[3].items().len) catch break :blk1 self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"params" }; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk1 self.finishItems(out, .tree); }, 3, 3), pass[5] }, .tree),
+        12 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, false),
+        14 => blk: { const out = self.allocItems(1 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"block" }; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
+        15 => self.buildOf(&.{ .{ .tag = .@"name" }, .{ .elem = 0 } }, pass, .tree, false),
+        16 => self.buildOf(&.{ .{ .tag = .@"num" }, .{ .elem = 0 } }, pass, .tree, false),
+        17 => self.buildOf(&.{ .{ .tag = .@"str" }, .{ .elem = 0 } }, pass, .tree, false),
+        18 => self.buildOf(&.{ .{ .tag = .@"member" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         19 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         20 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        23 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-        26 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"+" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        27 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"-" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        28 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        23 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"call" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        26 => self.buildOf(&.{ .{ .tag = .@"+" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
+        27 => self.buildOf(&.{ .{ .tag = .@"-" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
+        28 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         else => unreachable,
     };
 }
@@ -2860,20 +3072,153 @@ fn ruleSideLabels(rule: u16) []const SideLabel {
     return &.{};
 }
 
-fn slotOf(_: Tag, _: Role) ?usize {
-    return null;
+// =============================================================================
+// Schema slots
+// =============================================================================
+
+/// Slot of `role` in nodes of `kind` (the head is slot 0).
+fn slotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"use" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"let" => switch (role) {
+            .@"name" => 1,
+            .@"value" => 2,
+            else => null,
+        },
+        .@"fn" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            .@"body" => 3,
+            else => null,
+        },
+        .@"return" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"name" => switch (role) {
+            .@"id" => 1,
+            else => null,
+        },
+        .@"num" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"str" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"member" => switch (role) {
+            .@"object" => 1,
+            .@"name" => 2,
+            else => null,
+        },
+        .@"call" => switch (role) {
+            .@"callee" => 1,
+            else => null,
+        },
+        .@"+" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"-" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"*" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restSlotOf(_: Tag, _: Role) ?usize {
-    return null;
+/// First slot of rest role `role` in nodes of `kind`.
+fn restSlotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"module" => if (role == .@"stmts") 1 else null,
+        .@"params" => if (role == .@"names") 1 else null,
+        .@"block" => if (role == .@"stmts") 1 else null,
+        .@"call" => if (role == .@"args") 2 else null,
+        else => null,
+    };
 }
 
-fn roleAt(_: Tag, _: usize) ?Role {
-    return null;
+/// The slot role at `slot` of nodes of `kind`.
+fn roleAt(kind: Tag, slot: usize) ?Role {
+    return switch (kind) {
+        .@"use" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"let" => switch (slot) {
+            1 => .@"name",
+            2 => .@"value",
+            else => null,
+        },
+        .@"fn" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            3 => .@"body",
+            else => null,
+        },
+        .@"return" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"name" => switch (slot) {
+            1 => .@"id",
+            else => null,
+        },
+        .@"num" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"str" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"member" => switch (slot) {
+            1 => .@"object",
+            2 => .@"name",
+            else => null,
+        },
+        .@"call" => switch (slot) {
+            1 => .@"callee",
+            else => null,
+        },
+        .@"+" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"-" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"*" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restRoleOf(_: Tag) ?struct { role: Role, slot: usize } {
-    return null;
+fn restRoleOf(kind: Tag) ?struct { role: Role, slot: usize } {
+    return switch (kind) {
+        .@"module" => .{ .role = .@"stmts", .slot = 1 },
+        .@"params" => .{ .role = .@"names", .slot = 1 },
+        .@"block" => .{ .role = .@"stmts", .slot = 1 },
+        .@"call" => .{ .role = .@"args", .slot = 2 },
+        else => null,
+    };
 }
 
 // =============================================================================

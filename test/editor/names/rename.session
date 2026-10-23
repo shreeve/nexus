@@ -1,0 +1,40 @@
+# Rename from @lsp: the definition and every use of it in the file, after
+# a check that indexes the renamed text again and refuses (-32803) any
+# rename that changes what another name resolves to.
+initialize
+open main.tally
+# A parameter and a local.
+rename main.tally 7:10 base
+rename main.tally 9:24 scaled
+# A local is in sight after its `let`: `x` -> `y` leaves the use in
+# `let y = x * factor` naming the parameter, and `y` -> `x` the same.
+rename main.tally 7:10 y
+rename main.tally 8:9 x
+# `factor` -> `x`: two parameters named `x`, and the use of the first
+# would name the second.
+rename main.tally 7:13 x
+# A name in the file's own scope is visible to other files.
+rename main.tally 7:5 grow
+rename main.tally 4:6 sum
+# Not a name, not one token, not a name of the same kind.
+rename main.tally 7:1 g
+rename main.tally 15:2 something
+rename main.tally 8:9 a+b
+rename main.tally 8:9 fn
+# A second definition of the new name in the same scope.
+change main.tally
+| fn f() {
+|     let a = 1
+|     let b = 2
+| }
+rename main.tally 3:9 a
+rename main.tally 3:9 c
+# `a` -> `b` would make the use of the file's `b` name the parameter.
+change main.tally
+| fn f(a) {
+|     let c = b
+|     return a
+| }
+| let b = 1
+rename main.tally 1:6 b
+rename main.tally 1:6 d

@@ -1,0 +1,57 @@
+> initialize
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"definitionProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"'nothing' is not defined","range":"15:1-15:8","severity":2,"source":"tally"}
+> edit main.tally 7:1-7:1 "let rate = 2\n"
+diagnostics main.tally
+  {"message":"'nothing' is not defined","range":"16:1-16:8","severity":2,"source":"tally"}
+> definition main.tally 13:1
+main.tally 8:4-8:9
+> references main.tally 8:10
+  main.tally 8:10-8:11
+  main.tally 9:13-9:14
+> edit main.tally 9:17-9:23 "rate"
+> references main.tally 7:5
+  main.tally 7:5-7:9
+  main.tally 9:17-9:21
+> highlight main.tally 9:18
+  {"range":"7:5-7:9"}
+  {"range":"9:17-9:21"}
+> edit main.tally 16:1-16:8 "print"
+diagnostics main.tally none
+> definition main.tally 16:1
+null
+> hover main.tally 16:1
+null
+> change main.tally
+diagnostics main.tally
+  {"message":"expected a name, got end of line","range":"2:18-3:1","severity":1,"source":"tally"}
+  {"message":"expected an expression, got end of line","range":"4:16-5:1","severity":1,"source":"tally"}
+> completion main.tally 2:18
+[]
+> completion main.tally 3:1
+  {"detail":"fn f(a)","kind":3,"label":"f"}
+  {"kind":6,"label":"total"}
+  {"kind":9,"label":"util"}
+> completion main.tally 4:16
+  {"kind":6,"label":"a"}
+  {"detail":"fn f(a)","kind":3,"label":"f"}
+  {"kind":6,"label":"total"}
+  {"kind":9,"label":"util"}
+> definition main.tally 4:13
+main.tally 3:6-3:7
+> open untitled:Scratch-1
+diagnostics untitled:Scratch-1
+  {"message":"'two' is not defined","range":"5:7-5:10","severity":2,"source":"tally"}
+> definition untitled:Scratch-1 3:20
+untitled:Scratch-1 1:5-1:8
+> references untitled:Scratch-1 2:11
+  untitled:Scratch-1 2:10-2:11
+  untitled:Scratch-1 3:12-3:13
+  untitled:Scratch-1 3:16-3:17
+> rename untitled:Scratch-1 2:11 m
+{"changes":{"untitled:Scratch-1":[{"newText":"m","range":"2:10-2:11"},{"newText":"m","range":"3:12-3:13"},{"newText":"m","range":"3:16-3:17"}]}}
+> symbols untitled:Scratch-1
+  {"kind":13,"name":"one","range":"1:1-1:12","selectionRange":"1:5-1:8"}
+  {"children":[{"kind":13,"name":"n","range":"2:10-2:11","selectionRange":"2:10-2:11"}],"detail":"fn twice(n)","kind":12,"name":"twice","range":"2:1-4:2","selectionRange":"2:4-2:9"}

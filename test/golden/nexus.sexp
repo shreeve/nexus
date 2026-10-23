@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `kw_highlight` `kw_messages` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `kw_highlight` `kw_messages` `kw_lsp` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -70,6 +70,7 @@
     (name_pair `KW_KEYWORDS` `"keywords"`)
     (name_pair `KW_HIGHLIGHT` `"highlight"`)
     (name_pair `KW_MESSAGES` `"messages"`)
+    (name_pair `KW_LSP` `"lsp"`)
     (name_pair `KEYWORD` `"a keyword"`)
     (name_pair `KW_WRAPPER` `"wrapper"`)
     (name_pair `KW_VIA` `"via"`)
@@ -114,7 +115,7 @@
         (role
           rest
           `entries`
-          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `highlight` `messages` `rule`)
+          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `highlight` `messages` `lsp` `rule`)
           _))
       _
       _)
@@ -746,6 +747,31 @@
           `guard`
           (type `leaf`)
           opt))
+      _
+      _)
+    (kind_decl
+      (kinds `lsp`)
+      (roles
+        (role
+          rest
+          `lines`
+          (type `lsp_line`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `lsp_line`)
+      (roles
+        (role
+          _
+          `key`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `words`
+          (type `leaf`)
+          _))
       _
       _)
     (kind_decl
@@ -1561,6 +1587,15 @@
           `lines`
           (ref `message_lines`)))
       (node `messages`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_LSP`)
+        (label
+          `lines`
+          (ref `lsp_lines`)))
+      (node `lsp`)
       _))
   (rule
     (name `conflict_lines`)
@@ -2480,6 +2515,36 @@
           `name`
           (tok `STRING`)))
       (node `msg_sym`)
+      _))
+  (rule
+    (name `lsp_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `lsp_line`))
+      (list
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `lsp_lines`)
+        (tok `CONT`)
+        (ref `lsp_line`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `lsp_line`)
+    (alt
+      _
+      ((label
+          `key`
+          (tok `IDENT`))
+        (label
+          `words`
+          (ref `keyword_words`)))
+      (node `lsp_line`)
       _))
   (rule
     (name `production`)

@@ -60,3 +60,33 @@ pub fn isWord(c: u8) bool {
         else => false,
     };
 }
+
+/// `@lsp`: the scopes, definitions and uses scopes.zig indexes each file by.
+pub const scopes = @import("scopes.zig");
+const ir = parser.ir;
+
+pub const names: scopes.Table = .{
+    .scopes = &.{
+        .{ .kind = .module, .unordered = true },
+        .{ .kind = .@"fn" },
+        .{ .kind = .block },
+    },
+    .file_unordered = true,
+    .defines = &.{
+        .{ .at = .{ .kind = .@"fn", .slot = ir.slot(.@"fn", .name) }, .symbol = .function, .outer = true, .doc = .leading, .detail = .{ .upto = ir.slot(.@"fn", .body) } },
+        .{ .at = .{ .kind = .params, .slot = ir.restSlot(.params, .names), .rest = true }, .symbol = .variable },
+        .{ .at = .{ .kind = .let, .slot = ir.slot(.let, .name) }, .symbol = .variable, .value = ir.slot(.let, .value), .doc = .leading },
+        .{ .at = .{ .kind = .use, .slot = ir.slot(.use, .name) }, .symbol = .module },
+    },
+    .skips = &.{
+        .{ .at = .{ .kind = .member, .slot = ir.slot(.member, .name) } },
+    },
+    .uses = &.{.ident},
+    .builtins = &.{
+        "print",
+    },
+    .builtin_tokens = &.{},
+    .doc_token = .comment,
+    .doc_strip = "#",
+    .undefined = .warning,
+};

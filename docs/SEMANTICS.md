@@ -347,6 +347,10 @@ untyped `tag` roles. It has no catch-all, so a misspelled tag is a
 generation error, not a new tag. `@tags a b` adds tags only a lang wrapper
 uses. The `Role` enum lists every role name.
 
+The kinds and roles also name a language's scopes, definitions and uses
+for its language server: `@lsp` ([GRAMMAR.md, "Names and
+scopes"](GRAMMAR.md#names-and-scopes)) needs a schema.
+
 ## Role-named actions
 
 In schema mode an action's list is a node of the kind at its head, and its

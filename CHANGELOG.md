@@ -4,6 +4,42 @@
 
 ### Added
 
+- `@lsp` (preamble or @parser section), its lexical lines: a language's
+  names and scopes in terms of its `@schema`, so that the language
+  server `nexus --editor` writes gives the outline, go to definition,
+  references, document highlights, rename, completion of the names in
+  scope and hover with no code in `hooks.zig`
+  ([GRAMMAR.md, "Names and scopes"](docs/GRAMMAR.md#names-and-scopes)).
+  `scope KIND ... [unordered]` opens scopes; `define KIND.ROLE
+  SYMBOLKIND` makes a leaf a definition, with `when ROLE ["text"]` and
+  `when ^KIND.ROLE ["text"]` (a role's text or presence, the node's or
+  its parent's), `outer`, `member`|`lexical`, `value:`, `type:`,
+  `doc:ROLE`|`doc:leading`, `export:ROLE`|`export:^KIND` and
+  `detail`|`detail:..ROLE`; `use TOKEN ...` makes the other leaves of a
+  token uses; `skip KIND.ROLE ... [when ...]`, `builtin "name" ... |
+  TOKEN`, `doc TOKEN [strip "text"]`, and `undefined error|warning`,
+  diagnostics at the names nothing defines. Every mistake is a located
+  error; the lines of later steps (`import`, `member`, `qualify`,
+  `nominal`, `bind`, `color`, `words`) are an error that says so. With
+  `@lsp`, `--editor` writes `server/src/scopes.zig`, the names engine,
+  and the tables in `language.zig`; the server indexes each open file's
+  current text, after every change, and answers within the file.
+  A rename is checked: refused for a name other files can see, and
+  unless the renamed text, indexed again, resolves every use as before.
+  A function `hooks.zig` writes (`symbols`, `symbolAt`, `describe`,
+  `visible`) replaces the grammar's names for its features. The
+  generated parser is the same with or without `@lsp`. The Zig grammar
+  declares Zig's names, and `grammars/zig/compare-scopes` checks them
+  against the compiler's (std.zig.AstGen): over the 2,400 corpus files
+  AstGen accepts, 938,569 resolved uses and no disagreement
+  ([grammars/zig/README.md](grammars/zig/README.md#names-and-scopes)).
+  Tally, the editor suite's language, has `@schema` and `@lsp`; its
+  `names/` server answers from `@lsp` alone, `stub/` is built without
+  it.
+- Doc tests: a ` ```session ` block, then an ` ```out ` block, is a
+  session the last grammar's language server must answer as shown;
+  `test/lib/lsp` takes `initialize quiet`, which prints nothing of the
+  result.
 - `@messages` (preamble or @parser section): syntax errors a grammar
   knows to be common get messages of their own, by example
   ([GRAMMAR.md, "Messages"](docs/GRAMMAR.md#messages)). Each line is
@@ -124,6 +160,11 @@
 
 ### Changed
 
+- The language server (`lsp.zig`) is the same file for every grammar,
+  and serves the names of `@lsp` when `language.zig` declares them; a
+  server without `@lsp` answers as before. `scopes.zig` is a file of the
+  server, so a lang module named so (or importing one) is not copied
+  into it.
 - Syntax errors of every generated parser are short and placed where a
   reader looks ([SEMANTICS.md, "Syntax errors"](docs/SEMANTICS.md#syntax-errors)).
   `writeError` lists what the parser can take after the reductions it
@@ -186,6 +227,20 @@
   number matched anywhere.
 
 Additive: no migration required. Downstream:
+- Rig, em, nexis: `@lsp` is new syntax (`@lsp` was an error), so no
+  grammar changes meaning, and generated parsers are byte for byte the
+  same; a server written by `--editor` without `@lsp` answers as before.
+  Optional: declare a language's names, then drop the `hooks.zig`
+  functions they serve. It needs `@schema` (Rig, em; nexis would add
+  one). For instance `scope KIND unordered` for a file or module kind,
+  `scope` for the kinds of functions and blocks, `define fun.name
+  function outer detail:..body` for a function's name, `define
+  label.name function doc:leading` for an M label, `use IDENT`, and
+  `skip` for the leaf after a member operator. What the lexical lines
+  cannot say waits for the later steps: Rig's binding by assignment
+  (`bind`), members, imports and `LABEL^ROUTINE` (`member`, `import`,
+  `qualify`), and M's locals and globals (`nominal`). No lang module
+  of theirs is named `scopes.zig`.
 - Rig, em, nexis: `@messages` is new syntax (`@messages` was an error),
   so no grammar changes meaning, and a grammar without it generates the
   same parser. Optional: write the messages a language words by hand in
