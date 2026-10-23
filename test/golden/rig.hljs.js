@@ -19,6 +19,8 @@ export default function (hljs) {
       {"scope": "keyword", "match": "(?:called|inline)(?=[\\x09 ]+(?:fun|sub))"},
       {"scope": "keyword", "match": "^[\\x09 ]*rarely(?![\\x09 ]*[^\\x09\\x0a #])"},
       {"scope": "keyword", "match": "^[\\x09 ]*new(?=[\\x09 ]+[A-Z_a-z])"},
+      {"scope": "keyword", "match": "^(?:pub[\\x09 ]+)?api(?=[\\x09 ]+[A-Z_a-z])"},
+      {"scope": "keyword", "match": "^(?<![0-9A-Za-z_])add(?![0-9A-Za-z_])(?=[\\x09 ]+[!(*?A-\\[\\^_a-z~])"},
       {"scope": "keyword", "match": "(?<= )(?<![0-9A-Za-z_])of(?![0-9A-Za-z_])(?= )"},
       {"scope": "keyword", "match": "from[\\x09 ]+static(?![0-9A-Z_a-z])"},
       {"scope": "keyword", "match": "(?<= )(?:from|keeps)(?= [@-Z_a-z])"},
