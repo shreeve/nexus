@@ -335,7 +335,15 @@ its `messages` table, and `writeFailure`'s `messageLookup` slot calls
 `messageFor`; a grammar without one gets neither, and the same bytes as if
 the feature did not exist. `src/messages.zig` follows the reduction chain
 as the runtime's `expectationOf` does, step for step, so an entry's key is
-the one the parser computes at that error.
+the one the parser computes at that error. The `complete` section, last
+in the module, is written only into the parser of a language server
+(`--editor`), so every other generated module is the same bytes:
+`pauseAt` parses to an offset and keeps the parse as it was before it
+shifted the last token whose lexer had not read past it, a copy of the
+state stack and of the lexer, and `takesAt` goes on from there over
+another text, shifting and reducing on a copy of the stack as the parser
+does, to tell whether the token at the offset is taken. Keyword
+completion asks it of each word.
 
 At run time the parser keeps the state stack, the value stack, the spare
 capacity of lists being extended (indexed like the value stack), and with

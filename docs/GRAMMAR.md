@@ -1705,11 +1705,13 @@ pattern with no editor form; and a second `@highlight`.
 
 `@lsp` (in the preamble or the @parser section, at most once) declares a
 language's names: which nodes open scopes, which leaves define names and
-which use them, which import files, and which name members of something
-else, names of another file, or names of a namespace. From it the
-language server `nexus --editor` writes ([LSP.md](LSP.md)) gives the
-outline, go to definition, references, document highlights, rename,
-completion of the names in scope and after `.`, and hover, across the
+which use them, which assignments bind them, which import files, and
+which name members of something else, names of another file, or names of
+a namespace; and the colours of names by what they name, and words to
+complete beside the grammar's. From it the language server `nexus
+--editor` writes ([LSP.md](LSP.md)) gives the outline, go to definition,
+references, document highlights, rename, completion of the names in
+scope and after `.`, hover, and semantic tokens by meaning, across the
 files of the workspace, with no code in `hooks.zig`. `@lsp` names the
 kinds and roles of `@schema` ([SEMANTICS.md](SEMANTICS.md#schema)), so
 it needs one; it changes nothing in the generated parser.
@@ -1895,6 +1897,10 @@ symbol kinds as the server names them (`file`, `module`, `namespace`,
 | `member KIND.ROLE of:ROLE` | the leaf in ROLE is a member of what the `of` role denotes, looked up among its members |
 | `qualify KIND.ROLE in:ROLE` | the leaf in ROLE names a definition of the file's own scope of the file the `in` role, an import, names (`LABEL^ROUTINE`); without the `in` role, the leaf is what it would be without the line |
 | `nominal TOKEN [ns:NAME]` | every leaf of the token is a name of the namespace NAME (the token's own, without `ns:`): all of one text are one name across the workspace, which no definition declares |
+| `bind KIND.ROLE SYMBOLKIND [when ...]` | the leaf in ROLE, an assignment's target, defines a name unless a definition of the name is in sight there, which it then uses |
+| `color KIND.ROLE SCOPE [MODIFIER ...] [when ...]` | the semantic token of the leaf in ROLE, and of every name of the definition it makes |
+| `color KIND start\|end SCOPE [MODIFIER ...] [when ...]` | the semantic token of a KIND node's first or last token |
+| `words "lit" ...` | words completion offers beside the grammar's: words a lang Lexer makes keywords of |
 
 The options of `define`:
 
@@ -1902,7 +1908,8 @@ The options of `define`:
 |---|---|
 | `when ROLE "text"` | only when the node's ROLE leaf is `text` (an absent role's text is empty) |
 | `when ROLE` | only when the node has ROLE |
-| `when ^KIND.ROLE ["text"]` | the same of a role of the node's parent, which is a KIND |
+| `when ROLE:KIND` | only when the node's ROLE holds a KIND node |
+| `when ^KIND.ROLE ["text"]` | the same of a role of the node's parent, which is a KIND (`^KIND.ROLE:KIND` too) |
 | `outer` | the name belongs to the scope around the nearest one |
 | `member` / `lexical` | the name is only a member of its scope (a field: never in sight by itself), or only in sight (never a member, which `member` and `qualify` look up); by default both |
 | `value:ROLE` | the node's value: when it opens a scope, that scope's names are the name's children in the outline; the members of the name are those of what the value denotes |
@@ -1914,8 +1921,8 @@ The options of `define`:
 `when` may be given more than once; every one must hold. Two `define`
 lines for one role differ in their `when`s, and the first whose
 conditions hold defines; a leaf none takes is what it would be without
-them. `import` takes `when` as `define` does, and so do two `import`
-lines for one role.
+them. `import`, `bind` and `color` take `when` as `define` does, and so
+do two such lines for one role.
 
 ### How names resolve
 
@@ -1931,7 +1938,11 @@ definition and for one whose node opens the scope it belongs to, like a
 capture). A use no definition answers is a builtin when `builtin` names
 it, else unresolved; a builtin's name is never a definition in sight (a
 `member` definition may have one, as an enum's field `true` does). A
-member is never in sight.
+member is never in sight. A leaf a `bind` line takes, after the walk and
+in the order of the text, resolves as a use does, against the
+definitions of `define` lines and of the binds before it: when it finds
+one it is a use of it, and else it defines its name in the nearest scope,
+in sight from the end of its node on, as a `define` line's would.
 
 Across files, an expression denotes what names tell: a use what it
 resolves to, a member what it names, an import its file, a node that
@@ -2172,6 +2183,216 @@ without one, is a label of the routine itself. A global has no
 definition; its names are its references, and a rename renames them
 all.
 
+### Assignment, colours and words
+
+In Counts an assignment binds its name: `n = 1` defines `n` unless an
+`n` is in sight, which it then assigns. A `def`'s name is a function and
+its parameters parameters, coloured so where they are defined
+(`declaration`) and wherever they are named; the `!` that ends a `force`
+node is a modifier, and the `loop` that starts a loop a keyword. `loop`
+is a keyword only where it starts a line, which the lang Lexer decides,
+so the grammar names it a completion word:
+
+```grammar counts.grammar
+@lang = "counts"
+
+@lexer
+
+tokens
+    ident, number, newline, kw_def, kw_loop, assign, plus, bang
+    lparen, rparen, lbrace, rbrace, comma
+    eof, err
+
+'\n'                        → newline
+"def"                       → kw_def
+'='                         → assign
+'+'                         → plus
+'!'                         → bang
+'('                         → lparen
+')'                         → rparen
+'{'                         → lbrace
+'}'                         → rbrace
+','                         → comma
+[0-9]+                      → number
+[a-z_]+                     → ident
+.                           → err
+
+@parser
+
+@schema
+    file        ...stmts
+    def         name:leaf params:params body:block
+    params      ...names:leaf
+    block       ...stmts
+    assign      target:leaf value
+    loop        body:block
+    name        id:leaf
+    num         value:leaf
+    add         left right
+    force       value
+    call        callee ...args
+
+@repair
+    holes       IDENT
+    terminator  NEWLINE
+
+@highlight
+    language            "Counts"
+    scope-name          source.counts
+    extensions          cnt
+    keyword             "def"
+    operator            "=" "+" "!"
+    punctuation         "(" ")" "{" "}" ","
+    constant.numeric    NUMBER
+    invalid             ERR
+
+@lsp
+    scope       file
+    scope       def block
+    define      def.name        function  outer
+    define      params.names    variable
+    bind        assign.target   variable
+    use         IDENT
+    color       def.name        function  declaration
+    color       params.names    variable.parameter  declaration
+    color       loop start      keyword
+    color       force end       storage.modifier
+    words       "loop"
+
+file!  = lines                                      → (file ...1)
+
+lines  = line                                       → (1)
+       | lines NEWLINE line                         → (...1 3)
+
+line   = KW_DEF IDENT "(" [L(IDENT)] ")" block      → (def 2 (params ...4) 6)
+       | IDENT "=" expr                             → (assign 1 3)
+       | KW_LOOP block                              → (loop 2)
+       | expr
+       |                                            → _
+
+block  = "{" lines "}"                              → (block ...2)
+
+expr   = expr "+" atom                              → (add 1 3)
+       | atom
+
+atom   = IDENT                                      → (name 1)
+       | NUMBER                                     → (num 1)
+       | atom "!"                                   → (force 1)
+       | atom "(" [L(expr)] ")"                     → (call 1 ...3)
+```
+
+```zig counts.zig
+const std = @import("std");
+const parser = @import("parser.zig");
+
+/// The generated lexer, but `loop` that starts a line is the keyword.
+pub const Lexer = struct {
+    base: parser.BaseLexer,
+    line_start: bool = true,
+
+    pub fn init(source: []const u8) Lexer {
+        return .{ .base = parser.BaseLexer.init(source) };
+    }
+
+    pub fn next(self: *Lexer) parser.Token {
+        var tok = self.base.next();
+        if (tok.cat == .ident and self.line_start and std.mem.eql(u8, self.base.text(tok), "loop")) tok.cat = .kw_loop;
+        self.line_start = tok.cat == .newline;
+        return tok;
+    }
+};
+```
+
+The first `n` is a definition, which the second assigns; the `n` of
+`grow` is its own, and so is the `n` of the loop's block, which line 6
+assigns before any `n` of the file is in sight. Completion at the start
+of a line offers `loop`, which the lang Lexer reads as the keyword there,
+and after `= ` names alone:
+
+```session
+initialize quiet
+open main.cnt
+| def grow(by) {
+|     n = by + 1
+|     n!
+| }
+| loop {
+|     n = 2
+| }
+| n = grow(1)
+| n = n + 1
+| total = n
+definition main.cnt 9:1
+definition main.cnt 6:5
+references main.cnt 8:1
+rename main.cnt 2:5 by
+completion main.cnt 10:1
+completion main.cnt 10:9
+tokens main.cnt
+```
+
+```out
+> initialize quiet
+> open main.cnt
+> definition main.cnt 9:1
+main.cnt 8:1-8:2
+> definition main.cnt 6:5
+main.cnt 6:5-6:6
+> references main.cnt 8:1
+  main.cnt 8:1-8:2
+  main.cnt 9:1-9:2
+  main.cnt 9:5-9:6
+  main.cnt 10:9-10:10
+> rename main.cnt 2:5 by
+error -32803 'by' is in sight on line 2, where the assignment would assign it, not define a name
+> completion main.cnt 10:1
+  {"kind":6,"label":"n"}
+  {"kind":3,"label":"grow"}
+  {"kind":14,"label":"def"}
+  {"kind":14,"label":"loop"}
+> completion main.cnt 10:9
+  {"kind":6,"label":"n"}
+  {"kind":3,"label":"grow"}
+> tokens main.cnt
+  1:1 3 keyword
+  1:5 4 function declaration
+  1:9 1 punctuation
+  1:10 2 variableParameter declaration
+  1:12 1 punctuation
+  1:14 1 punctuation
+  2:7 1 operator
+  2:9 2 variableParameter
+  2:12 1 operator
+  2:14 1 constantNumeric
+  3:6 1 storageModifier
+  4:1 1 punctuation
+  5:1 4 keyword
+  5:6 1 punctuation
+  6:7 1 operator
+  6:9 1 constantNumeric
+  7:1 1 punctuation
+  8:3 1 operator
+  8:5 4 function
+  8:9 1 punctuation
+  8:10 1 constantNumeric
+  8:11 1 punctuation
+  9:3 1 operator
+  9:7 1 operator
+  9:9 1 constantNumeric
+  10:7 1 operator
+```
+
+A use takes its definition's colour without `declaration` and
+`definition`, which mark the definition's own leaf; a member, a name of
+another file, takes its definition's too. A leaf's own `color` line
+comes before its definition's, and of a node's first or last token and a
+leaf there, the leaf's. A token no `color` line colours keeps its
+`@highlight` scope. A `words` word is offered where the parser takes it
+as other than what a name that is no word would be: the lexer reads the
+word from where the text before it leaves off, followed by the text after
+the cursor, or by a name, since a lang Lexer may make a keyword of a
+word only before a name.
+
 ### Checks
 
 Every mistake is an error at its word: `@lsp` without `@schema`; an
@@ -2196,9 +2417,19 @@ tag (`of:`) or a role that holds no token (`in:`), a role that is a
 member or qualified twice, both, or also defined or skipped by a line
 without `when`, and an `in:` role no `import` line names; a `nominal`
 token twice, of `@trivia`, a `use` token too, or with an option other
-than `ns:NAME` of letters, digits and `_`. The lines of binding,
-colours and completion words (`bind`, `color`, `words`) are a later
-step of `@lsp`: each is an error that says so.
+than `ns:NAME` of letters, digits and `_`; a `bind` line on a role that
+holds no token, without a symbol kind, with an option other than `when`,
+twice with the same conditions, on a role a `define` line takes
+wherever the bind's conditions hold, or one a `skip` without `when` also
+names; `when ROLE:KIND` with a text, or on a role that never holds a KIND
+node; a `color` line without a role or `start` or `end`, on a role that
+holds no token, on a `@wrapper` kind (which the grammar's tree never
+has), without a scope or with one `@highlight` does not have, with a
+modifier LSP does not have, one twice or one after its `when`s, or twice
+with the same conditions; a `words` line without words, or with a word
+that is not a string, is empty, repeated, not one token of the lexer,
+not made of `@highlight`'s word-chars, or one the grammar offers
+already.
 
 ```grammar steps_bad.grammar rejects
 @lexer

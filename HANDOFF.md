@@ -21,12 +21,15 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   [docs/LSP.md](docs/LSP.md)), `@messages` (syntax-error messages
   given by example, keyed on parser states, with `nexus check
   --messages` for coverage; the Zig grammar has 31), and `@lsp`'s
-  lexical lines and its lines of files and members (names, scopes,
-  imports and members in the grammar, which give the server the outline,
-  definition, references, highlights, checked rename, the names in scope
-  and after `.`, and hover, across files; the Zig grammar's agree with
-  AstGen on every name of the corpus, and with a resolution over
-  std.zig.Ast on every member and import); CHANGELOG.md, "Unreleased".
+  lexical lines, its lines of files and members, and its lines of
+  assignment, colours and words (names, scopes, imports, members, binding
+  by assignment, colours by meaning and completion words in the grammar,
+  which give the server the outline, definition, references, highlights,
+  checked rename, the names in scope and after `.`, hover and semantic
+  tokens by meaning, across files; the Zig grammar's agree with AstGen on
+  every name of the corpus, and with a resolution over std.zig.Ast on
+  every member and import); keyword completion tests each word against
+  one parse to the cursor; CHANGELOG.md, "Unreleased".
 - **The suite is green on macOS (arm64):** `./test/run` → 1070 passed, 0
   failed, 0 known; the generated code is byte for byte the same on Ubuntu
   26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
@@ -78,15 +81,28 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `test/vscode/run` of the LSP plan is to check it.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
-   - `@lsp` has its lexical lines and its lines of files and members
-     (steps 1 and 2 of the approved plan,
-     `.git/lsp/panel/lsp-approved.md`): definition, references, rename
+   - `@lsp` has every line of the approved plan
+     (`.git/lsp/panel/lsp-approved.md`): definition, references, rename
      and member completion across files, through imports (the client's
      `modules` setting, else `resolveImport`), members, qualified names
-     and names of namespaces. Next: step 3 (`bind`, `color`, `words`).
-     Then hooks in TypeScript or JavaScript over JSON lines; `rig lsp`
-     onto the generated server, then servers for em and nexis; a
-     formatter from the grammar.
+     and names of namespaces; binding by assignment (`bind`), semantic
+     tokens by meaning (`color`) and completion words (`words`). Next:
+     hooks in TypeScript or JavaScript over JSON lines; `rig lsp` onto
+     the generated server, then servers for em and nexis; a formatter
+     from the grammar.
+   - Step 3 reads `when ROLE:KIND` (a role holds a node of a kind)
+     beyond the approved syntax, for Zig's types (`const S = struct
+     {...}`), and `when` on `color`. `color`'s scopes are `@highlight`'s
+     19, which have none for a field, a property, a method or a plain
+     variable: Zig's struct fields and `var`s, and Rig's methods and
+     properties, keep their tokens' colours (or a `tokens` hook's).
+   - Keyword completion keeps the parse before the last token whose
+     lexer had not read past the cursor's word (`pauseAt`), and replays
+     from there; a lang Lexer that reads ahead (Zig's) costs a token or
+     two of replay. A word a lang Lexer makes a keyword of only by what
+     follows it is tested before the text after the cursor and before a
+     name: Rig's `called` and `inline`, keywords before `fun` or `sub`,
+     are offered only where `fun` or `sub` follows already.
    - Step 1 reads `when` beyond the approved syntax (repeated, `^KIND.ROLE`
      of the parent, a role's presence), `skip ... when`, `define` and
      `skip` on untyped roles, and bare `detail`: Zig needs each to agree

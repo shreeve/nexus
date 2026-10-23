@@ -86,8 +86,13 @@ never again. It prints `Wrote` for each file it writes and `Kept` for a
   name or its text, and the words completion can offer. Those are each
   literal terminal, each token whose one rule is a literal, and each
   `@keywords` terminal that is a word, where `@highlight`'s `word-chars`
-  says what a word is. With `@lsp`, it holds its lines too (`names`),
-  each slot as the parser's `ir.slot` of its kind and role.
+  says what a word is, and the words of `@lsp words`. With `@lsp`, it
+  holds its lines too (`names`), each slot as the parser's `ir.slot` of
+  its kind and role.
+- `parser.zig` is the parser `--spans` generates, followed by the
+  runtime's `complete` section, which only the server's parser has:
+  `pauseAt` and `takesAt`, with which completion tests words against the
+  parse table.
 - With `--lang`, the lang module is copied beside `parser.zig`, as the
   parser imports it, with every file it imports by a relative path. A
   file it imports from outside its own directory, a file that cannot be
@@ -150,7 +155,11 @@ given a standard `superType`, so a theme colours it either way:
 `constantNumeric` a number, `constant` and `constantSymbol` enum members,
 `stringEscape` a string, `functionBuiltin` a function,
 `variableParameter` a parameter and `variableSpecial` a variable;
-`punctuation` and `invalid` have none), and its settings:
+`punctuation` and `invalid` have none), and its settings. The server's
+token modifiers are LSP's ten (`declaration`, `definition`, `readonly`,
+`static`, `deprecated`, `abstract`, `async`, `modification`,
+`documentation`, `defaultLibrary`), which VS Code knows, so
+`package.json` declares none.
 
 | Setting | Meaning |
 |---|---|
@@ -217,7 +226,11 @@ With every function of `hooks.zig` a stub, the server gives:
   ([SEMANTICS.md, "Syntax errors"](SEMANTICS.md#syntax-errors)).
 - **Semantic tokens.** Each token takes the scope `@highlight` gives its
   text (a literal or a `@keywords` word), else its token name. The token
-  types are `@highlight`'s 19 scopes.
+  types are `@highlight`'s 19 scopes. With `@lsp`'s `color` lines, a
+  token they colour takes their scope and modifiers in place of it (or
+  beside it, a name with none): a role's leaf, a node's first or last
+  token, and each name, in the file or another, of a definition whose
+  leaf a line colours, without `declaration` and `definition`.
 - **Folding.** Each node of the tree whose solid tokens span lines, and
   each run of comment tokens on consecutive lines. A solid token is one
   with text other than blanks and line ends that is not a comment; a
@@ -240,7 +253,8 @@ With every function of `hooks.zig` a stub, the server gives:
     (`detail`, else `type:`) beside it;
   - go to definition of the name at the position, in its file or
     another (a member, a qualified name), and of an import's name, the
-    file; a name of a namespace (`nominal`) has none;
+    file; a name of a namespace (`nominal`) has none; an assignment that
+    `bind` takes defines its name, or names the definition in sight;
   - references of the name across the workspace, and its highlights in
     the file; of an import's name, the imports of its file (in the files
     that hold the file's name without its extension, or a module name
@@ -258,15 +272,24 @@ With every function of `hooks.zig` a stub, the server gives:
     again with the edits made, resolves every name as before, the
     renamed ones to the renamed definition: a rename that would capture
     another name, or that another name would capture, that defines the
-    new name twice in one scope, or that gives a namespace's name one it
-    has already, is refused;
+    new name twice in one scope, that would make an assignment that
+    defines a name assign one in sight, or that gives a namespace's name
+    one it has already, is refused;
   - with `undefined error` or `warning`, a diagnostic at each use that
     nothing defines and no `builtin` names, unless the language writes
     `analyze`, whose diagnostics are its own.
-- **Keyword completion.** The words of `language.zig` that the parser
-  takes at the cursor: each word that, put in place of the word the
-  cursor is in, the parse reads past. None when the text before that word
-  already has an error.
+- **Keyword completion.** The words of `language.zig` the language takes
+  at the cursor as keywords. The text before the word the cursor is in
+  is parsed once, through the lang module's `Parser` and `Lexer` when it
+  has them, up to the blanks before the word; then the lexer reads each
+  word from there, followed by the text after the word, and the word is
+  tested against a copy of the parse stack (`parser.pauseAt`,
+  `parser.takesAt`). A word is offered where the parser takes it as other
+  than what a name that is no word (the word with its last letter again)
+  would be, so a contextual keyword the parser takes there only as a name
+  is not; a word the lang Lexer makes a keyword of only before a name is
+  tested before one too. None when the text before that word already has
+  an error, or is inside a token (a comment, a string).
 
 ### Names across files
 
@@ -316,7 +339,8 @@ pub fn describe(a: *Analysis, arena: std.mem.Allocator, subject: lsp.Subject) !?
 The server asks at compile time which functions are written: a
 declaration of type `lsp.Todo` is not, and its features are neither
 advertised nor ever called. A function that reads the analysis without
-`analyze` written is a compile error.
+`analyze` written is a compile error, and so is a `tokens` that does not
+take the grammar's tokens.
 
 With `@lsp`, a function the language writes replaces the grammar's
 names for the features it turns on, one function at a time: `symbols`
@@ -331,7 +355,7 @@ import's module when the `modules` option does not.
 | Function | Turns on |
 |---|---|
 | `parseDiagnostics` | the language's own syntax errors, in place of the grammar's |
-| `tokens` | the language's semantic tokens, in place of each token's `@highlight` scope |
+| `tokens` | the language's semantic tokens, in place of the grammar's, which it gets to adjust |
 | `symbols` | the outline and breadcrumbs |
 | `folds` | the language's folding ranges, in place of the grammar's |
 | `format` | Format Document |
@@ -356,14 +380,17 @@ answered.
 
 ```zig fragment
 pub fn parseDiagnostics(arena: Allocator, path: []const u8, text: []const u8) ![]const lsp.Diagnostic
-pub fn tokens(arena: Allocator, path: []const u8, text: []const u8) ![]const lsp.Token
+pub fn tokens(arena: Allocator, path: []const u8, text: []const u8, grammar: []const lsp.Token) ![]const lsp.Token
 pub fn symbols(arena: Allocator, path: []const u8, text: []const u8) ![]const lsp.OutlineItem
 pub fn folds(arena: Allocator, path: []const u8, text: []const u8) ![]const lsp.Fold
 pub fn format(arena: Allocator, path: []const u8, text: []const u8) !?[]const u8
 ```
 
-Every offset is a byte offset into `text`. A `Token` is a start, a length
-and a `Scope`, one of `@highlight`'s scopes; an `OutlineItem` is a name, a
+Every offset is a byte offset into `text`. A `Token` is a start, a
+length, a `Scope`, one of `@highlight`'s scopes, and `Modifiers`, a set
+of LSP's token modifiers (`.{ .declaration = true, .readonly = true }`);
+`tokens` gets the grammar's tokens of the file (its scopes and `@lsp`'s
+colours, in order) to adjust or replace. An `OutlineItem` is a name, a
 `SymbolKind`, its whole range, the range of its name, a one-line detail
 and its children; a `Fold` is a range, of comments or not. `format`
 returns the whole file formatted, or null when it is formatted already.
