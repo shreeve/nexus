@@ -73,6 +73,9 @@
   the files are indexed (safe mode); the first that reads std.zig and
   mem.zig, 7 ms. Rote (`test/rote`) is the language of the sessions of
   `qualify` and `nominal`.
+- `nexus --describe` writes `@lsp` as read (`lsp`, null without it;
+  [GRAMMAR.md, "Describing a grammar"](docs/GRAMMAR.md#describing-a-grammar)).
+  `format` stays 1: a key is added.
 - Doc tests: a ` ```session ` block, then an ` ```out ` block, is a
   session the last grammar's language server must answer as shown;
   `test/lib/lsp` takes `initialize quiet`, which prints nothing of the

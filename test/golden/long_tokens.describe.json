@@ -51,5 +51,6 @@
     {"name": "str", "roles": [{"name": "value", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "num", "roles": [{"name": "value", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "ref", "roles": [{"name": "id", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": null
 }

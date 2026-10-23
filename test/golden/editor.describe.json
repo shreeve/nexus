@@ -89,5 +89,32 @@
     {"name": "+", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "-", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "*", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": {
+    "scopes": [
+      {"kind": "module", "unordered": true},
+      {"kind": "fn", "unordered": false},
+      {"kind": "block", "unordered": false}
+    ],
+    "defines": [
+      {"kind": "fn", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": true, "visibility": "both", "value": null, "type": null, "doc": "leading", "export": null, "detail": {"upto": "body"}},
+      {"kind": "params", "role": "names", "rest": true, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null},
+      {"kind": "let", "role": "name", "rest": false, "symbol": "variable", "when": [], "outer": false, "visibility": "both", "value": "value", "type": null, "doc": "leading", "export": null, "detail": null},
+      {"kind": "use", "role": "name", "rest": false, "symbol": "module", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null}
+    ],
+    "uses": ["ident"],
+    "skips": [],
+    "builtins": ["print"],
+    "builtin_tokens": [],
+    "doc": {"token": "comment", "strip": "#"},
+    "undefined": "warning",
+    "imports": [
+      {"kind": "use", "role": "name", "rest": false, "when": [], "file": "{}.tally"}
+    ],
+    "members": [
+      {"kind": "member", "role": "name", "rest": false, "of": "object"}
+    ],
+    "qualifies": [],
+    "nominals": []
+  }
 }

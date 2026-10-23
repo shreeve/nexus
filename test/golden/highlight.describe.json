@@ -138,5 +138,6 @@
       {"line": 119, "scope": "keyword", "literals": ["TODO"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": "BLOCK_COMMENT"}
     ]
   },
-  "schema": null
+  "schema": null,
+  "lsp": null
 }

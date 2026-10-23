@@ -2237,7 +2237,8 @@ steps_bad.grammar:21:17: error: define let.value: the role holds no token, and a
 
 `nexus --describe grammar [out]` writes the grammar as JSON for other
 tools (editor extensions, language servers, documentation): its tokens,
-lexer rules, keywords and `@highlight`, with or without `@highlight`. It
+lexer rules, keywords, `@highlight`, `@schema` and `@lsp`, with or
+without `@highlight`. It
 runs every check generation runs. Keys come in the order below and lists
 in the grammar's order, so a grammar gives the same bytes every run;
 `format` changes when a key goes or changes its meaning, not when one is
@@ -2257,6 +2258,7 @@ added.
 | `trivia` | the `@trivia` tokens |
 | `highlight` | null, or `language`, `scope_name`, `extensions`, `line_comment`, `block_comment`, `indent`, `dedent` (regexes), `word_chars` (the class as a regex, the default when not given), and `entries`: `line`, `scope`, `literals`, `tokens`, `groups`, `pattern` (as written, or null), `regex`, `captures` (the parts of a pattern with captures: `scope`, `captured`, `regex`), `line_start`, `line_end`, `contexts` (`kind`, `pattern`, `regex`) and `within` |
 | `schema` | null, or `kinds`: `name`, `roles` (`name`, `type` as written, `optional`, `rest`), `side`, `wrapper` |
+| `lsp` | null, or `@lsp` as read ([Names and scopes](#names-and-scopes)), roles as `kind`, `role` and `rest`, conditions as `when` (`parent`, the parent's kind or null; `role`; `text`, or null for the role's presence), tokens by their names in `tokens`: `scopes` (`kind`, `unordered`), `defines` (the role, `symbol`, `when`, `outer`, `visibility` `both`, `member` or `lexical`, `value` and `type` (a role or null), `doc` (null, `"leading"` or `{"role"}`), `export` (null, `{"role"}` or `{"parent"}`), `detail` (null, `"whole"` or `{"upto"}`)), `uses`, `skips` (the role, `when`), `builtins`, `builtin_tokens`, `doc` (null or `token`, `strip`), `undefined` (null, `"error"` or `"warning"`), `imports` (the role, `when`, `file`), `members` (the role, `of`), `qualifies` (the role, `in`) and `nominals` (`token`, `ns`) |
 
 `./test/run` pins the description of every grammar in the repository
 (`test/golden/*.describe.json`).

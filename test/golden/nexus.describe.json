@@ -219,5 +219,6 @@
     {"name": "node", "roles": [{"name": "head", "type": "leaf", "optional": false, "rest": false}, {"name": "items", "type": "named|pos|spread|symid|null|tag|node|list|keep", "optional": false, "rest": true}], "side": [], "wrapper": false},
     {"name": "list", "roles": [{"name": "items", "type": "named|pos|spread|symid|null|tag|node|list|keep", "optional": false, "rest": true}], "side": [], "wrapper": false},
     {"name": "keep", "roles": [{"name": "n", "type": "leaf", "optional": false, "rest": false}, {"name": "items", "type": "named|pos|spread|symid|null|tag|node|list|keep", "optional": false, "rest": true}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": null
 }

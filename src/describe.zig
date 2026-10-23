@@ -14,6 +14,7 @@ const render = @import("highlight/render.zig");
 const highlight = @import("highlight/highlight.zig");
 const emit = @import("highlight/emit.zig");
 const codegen = @import("codegen/codegen.zig");
+const names = @import("lsp/names.zig");
 
 pub const format = 1;
 
@@ -25,6 +26,7 @@ pub const Input = struct {
     /// The generated grammar; null for a grammar without parser rules.
     g: ?*const grammar.Grammar,
     highlight: ?*const highlight.Highlight,
+    lsp: ?*const names.Lsp = null,
 };
 
 pub const Error = Allocator.Error || Writer.Error;
@@ -78,7 +80,183 @@ const Describer = struct {
         if (self.in.highlight) |h| try self.highlightOf(h) else try w.writeAll("null");
         try w.writeAll(",\n  \"schema\": ");
         if (self.in.ir.schema) |s| try self.schema(s) else try w.writeAll("null");
+        try w.writeAll(",\n  \"lsp\": ");
+        if (self.in.lsp) |l| try self.lsp(l) else try w.writeAll("null");
         try w.writeAll("\n}\n");
+    }
+
+    /// `@lsp`, as read: each list one item a line.
+    fn lsp(self: *Describer, l: *const names.Lsp) Error!void {
+        const w = self.w;
+        try w.writeAll("{\n    \"scopes\": [");
+        for (l.scopes, 0..) |s, i| {
+            try self.lspItem(i);
+            try w.writeAll("{\"kind\": ");
+            try json.string(w, s.kind);
+            try w.print(", \"unordered\": {}}}", .{s.unordered});
+        }
+        try self.lspClose(l.scopes.len);
+        try w.writeAll("],\n    \"defines\": [");
+        for (l.defines, 0..) |d, i| {
+            try self.lspItem(i);
+            try self.roleRef(d.role);
+            try w.writeAll(", \"symbol\": ");
+            try json.string(w, d.symbol);
+            try self.whens(d.when);
+            try w.print(", \"outer\": {}, \"visibility\": ", .{d.outer});
+            try json.string(w, @tagName(d.visibility));
+            try w.writeAll(", \"value\": ");
+            try json.optString(w, d.value);
+            try w.writeAll(", \"type\": ");
+            try json.optString(w, d.type);
+            try w.writeAll(", \"doc\": ");
+            switch (d.doc) {
+                .none => try w.writeAll("null"),
+                .leading => try json.string(w, "leading"),
+                .role => |r| {
+                    try w.writeAll("{\"role\": ");
+                    try json.string(w, r.role);
+                    try w.writeAll("}");
+                },
+            }
+            try w.writeAll(", \"export\": ");
+            switch (d.@"export") {
+                .none => try w.writeAll("null"),
+                .role => |r| {
+                    try w.writeAll("{\"role\": ");
+                    try json.string(w, r);
+                    try w.writeAll("}");
+                },
+                .parent => |k| {
+                    try w.writeAll("{\"parent\": ");
+                    try json.string(w, k);
+                    try w.writeAll("}");
+                },
+            }
+            try w.writeAll(", \"detail\": ");
+            switch (d.detail) {
+                .none => try w.writeAll("null"),
+                .whole => try json.string(w, "whole"),
+                .upto => |r| {
+                    try w.writeAll("{\"upto\": ");
+                    try json.string(w, r);
+                    try w.writeAll("}");
+                },
+            }
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.defines.len);
+        try w.writeAll("],\n    \"uses\": ");
+        try self.stringList(l.uses);
+        try w.writeAll(",\n    \"skips\": [");
+        for (l.skips, 0..) |s, i| {
+            try self.lspItem(i);
+            try self.roleRef(s.role);
+            try self.whens(s.when);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.skips.len);
+        try w.writeAll("],\n    \"builtins\": ");
+        try self.stringList(l.builtins);
+        try w.writeAll(",\n    \"builtin_tokens\": ");
+        try self.stringList(l.builtinTokens);
+        try w.writeAll(",\n    \"doc\": ");
+        if (l.docToken) |t| {
+            try w.writeAll("{\"token\": ");
+            try json.string(w, t);
+            try w.writeAll(", \"strip\": ");
+            try json.string(w, l.docStrip);
+            try w.writeAll("}");
+        } else try w.writeAll("null");
+        try w.writeAll(",\n    \"undefined\": ");
+        try json.optString(w, if (l.undefined) |u| @tagName(u) else null);
+        try w.writeAll(",\n    \"imports\": [");
+        for (l.imports, 0..) |im, i| {
+            try self.lspItem(i);
+            try self.roleRef(im.role);
+            try self.whens(im.when);
+            try w.writeAll(", \"file\": ");
+            try json.optString(w, im.file);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.imports.len);
+        try w.writeAll("],\n    \"members\": [");
+        for (l.members, 0..) |m, i| {
+            try self.lspItem(i);
+            try self.roleRef(m.role);
+            try w.writeAll(", \"of\": ");
+            try json.string(w, m.of);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.members.len);
+        try w.writeAll("],\n    \"qualifies\": [");
+        for (l.qualifies, 0..) |q, i| {
+            try self.lspItem(i);
+            try self.roleRef(q.role);
+            try w.writeAll(", \"in\": ");
+            try json.string(w, q.in);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.qualifies.len);
+        try w.writeAll("],\n    \"nominals\": [");
+        for (l.nominals, 0..) |n, i| {
+            try self.lspItem(i);
+            try w.writeAll("{\"token\": ");
+            try json.string(w, n.token);
+            try w.writeAll(", \"ns\": ");
+            try json.string(w, n.ns);
+            try w.writeAll("}");
+        }
+        try self.lspClose(l.nominals.len);
+        try w.writeAll("]\n  }");
+    }
+
+    /// Before the `i`-th item of a list of `@lsp`, one item a line.
+    fn lspItem(self: *Describer, i: usize) Error!void {
+        try self.w.writeAll(if (i == 0) "\n      " else ",\n      ");
+    }
+
+    /// After a list of `@lsp` of `n` items.
+    fn lspClose(self: *Describer, n: usize) Error!void {
+        if (n > 0) try self.w.writeAll("\n    ");
+    }
+
+    /// `{"kind": K, "role": R, "rest": B` (the object left open).
+    fn roleRef(self: *Describer, r: names.RoleRef) Error!void {
+        const w = self.w;
+        try w.writeAll("{\"kind\": ");
+        try json.string(w, r.kind);
+        try w.writeAll(", \"role\": ");
+        try json.string(w, r.role);
+        try w.print(", \"rest\": {}", .{r.rest});
+    }
+
+    /// `, "when": [...]`: each condition's parent kind (or null), role and
+    /// text (or null for presence).
+    fn whens(self: *Describer, list: []const names.Define.When) Error!void {
+        const w = self.w;
+        try w.writeAll(", \"when\": [");
+        for (list, 0..) |c, i| {
+            if (i > 0) try w.writeAll(", ");
+            try w.writeAll("{\"parent\": ");
+            try json.optString(w, c.parent);
+            try w.writeAll(", \"role\": ");
+            try json.string(w, c.role);
+            try w.writeAll(", \"text\": ");
+            try json.optString(w, c.text);
+            try w.writeAll("}");
+        }
+        try w.writeAll("]");
+    }
+
+    fn stringList(self: *Describer, list: []const []const u8) Error!void {
+        const w = self.w;
+        try w.writeAll("[");
+        for (list, 0..) |s, i| {
+            if (i > 0) try w.writeAll(", ");
+            try json.string(w, s);
+        }
+        try w.writeAll("]");
     }
 
     /// Before the `i`-th item of a list written one item per line.

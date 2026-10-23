@@ -63,5 +63,29 @@
     {"name": "global", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "num", "roles": [{"name": "value", "type": "leaf", "optional": false, "rest": false}], "side": [], "wrapper": false},
     {"name": "add", "roles": [{"name": "left", "type": "any", "optional": false, "rest": false}, {"name": "right", "type": "any", "optional": false, "rest": false}], "side": [], "wrapper": false}
-  ]}
+  ]},
+  "lsp": {
+    "scopes": [
+      {"kind": "routine", "unordered": true}
+    ],
+    "defines": [
+      {"kind": "label", "role": "name", "rest": false, "symbol": "function", "when": [], "outer": false, "visibility": "both", "value": null, "type": null, "doc": null, "export": null, "detail": null}
+    ],
+    "uses": ["ident"],
+    "skips": [],
+    "builtins": [],
+    "builtin_tokens": [],
+    "doc": null,
+    "undefined": null,
+    "imports": [
+      {"kind": "do", "role": "routine", "rest": false, "when": [], "file": "{}.rote"}
+    ],
+    "members": [],
+    "qualifies": [
+      {"kind": "do", "role": "label", "rest": false, "in": "routine"}
+    ],
+    "nominals": [
+      {"token": "global", "ns": "globals"}
+    ]
+  }
 }

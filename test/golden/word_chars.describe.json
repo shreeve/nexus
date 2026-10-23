@@ -71,5 +71,6 @@
       {"line": 61, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
     ]
   },
-  "schema": null
+  "schema": null,
+  "lsp": null
 }
