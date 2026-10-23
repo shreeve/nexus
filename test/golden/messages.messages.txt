@@ -1,0 +1,7 @@
+after expr!: expr
+    # expected end of input after an expression
+after stmt stmt
+    # expected a statement or end of input after a statement
+after expr!: "(" expr
+    # expected ")" after an expression
+3 of 6 places have a message

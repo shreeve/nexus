@@ -1,0 +1,11 @@
+(program (set `x` `1`) (set `y` `2`) (print (lt `a` `b`)) (set `c` `3`))
+!tolerant 6 repairs (2 inserted, 4 deleted, 0 dropped)
+!first 1:7: expected ';' after the value, got a name
+x = 1 y = 2;
+      ^
+!next 2:13: comparison operators cannot be chained
+print a < b < c;
+            ^
+!next 3:8: expected a statement or end of input after a statement, got '?'
+z = 3; ?
+       ^

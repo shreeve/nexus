@@ -140,6 +140,22 @@ pub const LexerGenerator = struct {
         return error.LexerGenerationError;
     }
 
+    /// Whether the scanner gives token `cat` the text `text`, whole, in
+    /// some configuration of its state variables (after `generateDecls`);
+    /// null when no lexer rule makes `cat` (a lang Lexer does).
+    pub fn gives(self: *const LexerGenerator, cat: []const u8, text: []const u8) ?bool {
+        const rules = self.spec.rules.items;
+        for (self.consuming) |ri| {
+            if (std.mem.eql(u8, rules[ri].token, cat)) break;
+        } else return null;
+        for (self.startOfMask) |start| {
+            if (start == automaton.none) continue;
+            const m = self.dfa.longestMatchFrom(start, text) orelse continue;
+            if (m.len == text.len and self.ends[m.rule] == .whole and std.mem.eql(u8, rules[self.consuming[m.rule]].token, cat)) return true;
+        }
+        return false;
+    }
+
     /// The lexer's declarations (TokenCat, Token, BaseLexer) without the
     /// file header and imports, for composing into a generated parser module.
     pub fn generateDecls(self: *LexerGenerator) ![]const u8 {

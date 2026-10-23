@@ -1,0 +1,25 @@
+# `name!:` names a start symbol.
+# error: messages_not_start.grammar:20:8:
+# error: 'stmt' is not a start symbol
+@lexer
+
+tokens
+    ident, number, kw_if, eq, semi, eof, err
+
+'\n'                        → skip, skip
+'='                         → eq
+';'                         → semi
+"if"                        → kw_if
+[a-z]+                      → ident
+[0-9]+                      → number
+.                           → err
+
+@parser
+
+@messages
+    at stmt!: IDENT IDENT           → "x"
+
+prog! = stmt+                          → (prog ...1)
+stmt  = IDENT "=" expr ";"             → (set 1 3)
+      | KW_IF expr ";"                 → (if 2)
+expr! = IDENT | NUMBER

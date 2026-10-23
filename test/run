@@ -382,6 +382,15 @@ check_describe() { # check_describe <suite dir> <name>: --describe equals the go
     golden "$tmp" "test/golden/$name.describe.json"
 }
 
+check_coverage() { # check_coverage <suite dir> <name>: `check --messages` equals the golden
+    local dir=$1 name=$2 tmp="$WORK/out/coverage_$2.txt"
+    suite_conf "$dir"
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" check --messages "$(basename "$GRAMMAR")" >"$tmp") 2>>"$LOG"
+    local rc=$?
+    if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="check --messages failed (exit $rc)"; return 1; fi
+    golden "$tmp" "test/golden/$name.messages.txt"
+}
+
 # The golden of each editor file: test/golden/<name>.<suffix>.
 hl_suffix() {
     case $1 in
@@ -713,6 +722,8 @@ check_cli() {
     expect 2 "--spans has no effect on --editor" --editor --spans highlight.grammar ed || return 1
     expect 2 "--lang needs the lang module's file" --editor --lang || return 1
     expect 2 "--lang is an option of --editor" --lang pal.zig pal.grammar out.zig || return 1
+    expect 2 "--messages is an option of check" --messages no_lang.grammar out.zig || return 1
+    expect 0 "0 of 0 places have a message" check --messages lexer_only.grammar || return 1
     expect 1 "no_lang.grammar:1:1: error: the grammar has no @highlight, so it has no editor files" --editor no_lang.grammar ed || return 1
     expect 1 "lexer_only.grammar:1:1: error: the grammar has no parser rules, so it has no language server" --editor lexer_only.grammar ed || return 1
     expect 2 "the grammar has @lang = \"pal\": give its lang module with --lang <file>" --editor pal.grammar ed || return 1
@@ -875,6 +886,7 @@ worker() {
         sexp)        check_sexp "$a" "$b"; ok=$? ;;
         determinism) check_determinism "$a" "$b"; ok=$? ;;
         describe)    check_describe "$a" "$b"; ok=$? ;;
+        coverage)    check_coverage "$a" "$b"; ok=$? ;;
         hl-all)      check_highlight_all "$a" "$b"; ok=$? ;;
         hl)          check_highlight "$a" "$b"; ok=$? ;;
         editor-files)  check_editor_files "$a" "$b"; ok=$? ;;
@@ -1042,6 +1054,7 @@ for dir in grammars/*/ test/*/; do
     case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *)
         add "sexp/$name" sexp "$dir" "$name"
         add "describe/$name" describe "$dir" "$name"
+        grep -q '^@messages' "$GRAMMAR" && add "messages/$name" coverage "$dir" "$name"
         if grep -q '^@highlight' "$GRAMMAR"; then
             add "highlight/$name/files" hl-all "$dir" "$name"
             add "editor/$name/files" editor-files "$dir" "$name"

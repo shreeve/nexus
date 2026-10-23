@@ -1,0 +1,72 @@
+# @messages: example mistakes with messages of their own. messages.zig
+# tests the text of each syntax error, from the strict parse and the
+# tolerant one; the cases print tolerant parses' errors. Every kind of
+# entry is here: `at` and `after`, a choice, a guard on an error token
+# with an unguarded fallback, `name!:`, and {got} and {expected}.
+
+@lang = "messages"
+
+@lexer
+
+tokens
+    ident, number, kw_print, eq, semi, lt, gt, plus, lparen, rparen, eof, err
+
+'\n'                        → skip, skip
+'='                         → eq
+';'                         → semi
+'<'                         → lt
+'>'                         → gt
+'+'                         → plus
+'('                         → lparen
+')'                         → rparen
+"print"                     → kw_print
+[a-z]+                      → ident
+[0-9]+                      → number
+.                           → err
+
+@parser
+
+@display
+    IDENT: "a name", NUMBER: "a number", KW_PRINT: "'print'"
+
+@errors
+    stmt: "a statement", expr: "an expression"
+
+@repair
+    holes       IDENT
+    terminator  ";"
+
+@messages
+    # A missing `;`: what follows the value starts the next statement.
+    after  IDENT "=" expr (IDENT | KW_PRINT)
+                                    → "expected ';' after the value, got {got}"
+    after  KW_PRINT expr (IDENT | KW_PRINT)
+                                    → "expected ';' after the value, got {got}"
+    # `<` and `>` take two operands, never three.
+    at     IDENT "=" IDENT "<" IDENT ("<" | ">")
+                                    → "comparison operators cannot be chained"
+    at     IDENT "=" IDENT ">" IDENT ("<" | ">")
+                                    → "comparison operators cannot be chained"
+    # A stray character after the first statement: `?` has a message of
+    # its own, any other the fallback.
+    after  stmt ERR("?")            → "`?` is not an operator; write a comparison"
+    after  stmt ERR                 → "unexpected {got} after a statement"
+    # The expression start symbol.
+    at     expr!: "(" IDENT EOF     → "`(` is never closed: expected {expected}"
+
+program! = stmt+                    → (program ...1)
+expr!    = expr
+
+stmt     = IDENT "=" expr ";"       → (set 1 3)
+         | KW_PRINT expr ";"        → (print 2)
+
+expr     = sum
+         | sum "<" sum              → (lt 1 3)
+         | sum ">" sum              → (gt 1 3)
+
+sum      = term
+         | sum "+" term             → (add 1 3)
+
+term     = IDENT
+         | NUMBER
+         | "(" expr ")"             → 2

@@ -42,6 +42,9 @@ tokens
 @errors
     expr: "an expression"
 
+@messages
+    after  IDENT "(" expr IDENT         → "expected ',' between arguments, got {got}"
+
 @trivia COMMENT
 
 @repair

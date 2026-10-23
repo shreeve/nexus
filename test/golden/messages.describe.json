@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "nexus": "2.3.0",
+  "grammar": "messages.grammar",
+  "lang": "messages",
+  "tokens": [
+    {"name": "ident", "terminal": 9, "display": "a name"},
+    {"name": "number", "terminal": 16, "display": "a number"},
+    {"name": "kw_print", "terminal": 12, "display": "'print'"},
+    {"name": "eq", "terminal": 10, "display": "\"=\""},
+    {"name": "semi", "terminal": 11, "display": "\";\""},
+    {"name": "lt", "terminal": 13, "display": "\"<\""},
+    {"name": "gt", "terminal": 14, "display": "\">\""},
+    {"name": "plus", "terminal": 15, "display": "\"+\""},
+    {"name": "lparen", "terminal": 17, "display": "\"(\""},
+    {"name": "rparen", "terminal": 18, "display": "\")\""},
+    {"name": "eof", "terminal": 1, "display": "end of input"},
+    {"name": "err", "terminal": null, "display": null}
+  ],
+  "rules": [
+    {"line": 14, "token": null, "pattern": "'\\n'", "regex": "\\x0a", "literal": "\n", "trail": null, "guards": [], "skip": true, "hold": false, "rewind": null, "actions": []},
+    {"line": 15, "token": "eq", "pattern": "'='", "regex": "=", "literal": "=", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 16, "token": "semi", "pattern": "';'", "regex": ";", "literal": ";", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 17, "token": "lt", "pattern": "'<'", "regex": "<", "literal": "<", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 18, "token": "gt", "pattern": "'>'", "regex": ">", "literal": ">", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 19, "token": "plus", "pattern": "'+'", "regex": "\\+", "literal": "+", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 20, "token": "lparen", "pattern": "'('", "regex": "\\(", "literal": "(", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 21, "token": "rparen", "pattern": "')'", "regex": "\\)", "literal": ")", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 22, "token": "kw_print", "pattern": "\"print\"", "regex": "print", "literal": "print", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 23, "token": "ident", "pattern": "[a-z]+", "regex": "[a-z]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 24, "token": "number", "pattern": "[0-9]+", "regex": "[0-9]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 25, "token": "err", "pattern": ".", "regex": "[\\x00-\\xff]", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []}
+  ],
+  "states": [],
+  "after": [],
+  "keywords": {},
+  "trivia": [],
+  "highlight": null,
+  "schema": null
+}
