@@ -1,0 +1,13 @@
+> initialize quiet
+> open errors.zig
+diagnostics errors.zig
+  {"message":"expected ';' after declaration","range":"2:27-2:27","severity":1,"source":"zig"}
+  {"message":"expected ',' after argument","range":"6:9-6:10","severity":1,"source":"zig"}
+> change errors.zig
+diagnostics errors.zig
+  {"message":"unused local constant","range":"4:11-4:12","severity":1,"source":"zig"}
+  {"message":"local constant shadows declaration of 'std'","range":"8:11-8:14","relatedInformation":[{"location":"errors.zig 1:1-1:27","message":"declared here"}],"severity":1,"source":"zig"}
+  {"message":"local variable is never mutated","range":"13:9-13:14","relatedInformation":[{"location":"errors.zig 13:9-13:14","message":"consider using 'const'"}],"severity":1,"source":"zig"}
+  {"message":"use of undeclared identifier 'missing'","range":"18:12-18:19","severity":1,"source":"zig"}
+> change errors.zig
+diagnostics errors.zig none

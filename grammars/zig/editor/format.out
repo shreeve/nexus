@@ -1,0 +1,33 @@
+> initialize quiet
+> open format.zig
+> format format.zig
+  {"newText":"//! Format Document, and its guard (editor/format.session).\nconst Point = struct { x: i32, y: i32 };\n\npub fn sum(p: Point) i32 {\n    return p.x + p.y;\n}\n","range":"1:1-7:1"}
+> change format.zig
+> format format.zig
+null
+> change format.zig
+> format format.zig
+  {"newText":"const limit = 10;\n/// The limit, twice.\nconst twice = limit * 2;\n","range":"1:1-4:1"}
+> change format.zig
+diagnostics format.zig
+  {"message":"expected ',' after field","range":"1:31-1:32","severity":1,"source":"zig"}
+> format format.zig
+error -32803 format failed
+> change format.zig
+diagnostics format.zig
+  {"message":"unused block label","range":"1:13-1:14","severity":1,"source":"zig"}
+> format format.zig
+error -32803 format failed
+> change format.zig
+diagnostics format.zig none
+> format format.zig
+error -32803 format failed
+> change format.zig
+diagnostics format.zig
+  {"message":"unused while loop label","range":"1:20-1:21","severity":1,"source":"zig"}
+> format format.zig
+error -32803 format failed
+> change format.zig
+diagnostics format.zig none
+> format format.zig
+error -32803 format failed

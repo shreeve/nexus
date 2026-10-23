@@ -1,0 +1,31 @@
+# Zig's own errors as you type, from std.zig in process (hooks.zig,
+# parseDiagnostics). A missing `;` and a missing `,`: every error
+# Ast.parse reports, in its words, a `;` after the token before it. Fixed,
+# the file parses, and AstGen reports what `zig ast-check` reports: an
+# unused local, a local that shadows a declaration (with a note where that
+# is), a `var` never mutated (with its note) and an undeclared name. Fixed
+# again, none.
+initialize quiet
+open errors.zig
+change errors.zig
+| const std = @import("std");
+|
+| fn unused() void {
+|     const x = 1;
+| }
+|
+| fn shadow() void {
+|     const std = 2;
+|     _ = std;
+| }
+|
+| fn never() void {
+|     var count: u32 = 0;
+|     _ = count;
+| }
+|
+| fn undeclared() u32 {
+|     return missing;
+| }
+change errors.zig
+| pub fn main() void {}

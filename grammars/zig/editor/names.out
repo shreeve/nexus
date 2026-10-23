@@ -1,0 +1,16 @@
+> initialize folder quiet
+> open main.zig
+> definition main.zig 6:24
+util.zig 4:8-4:11
+> references main.zig 6:24
+  main.zig 6:24-6:27
+  util.zig 4:8-4:11
+> hover main.zig 6:24
+{"contents":{"kind":"markdown","value":"```zig\npub fn add(a: i32, b: i32) i32\n```\n\nThe sum of `a` and `b`."}}
+> hover main.zig 7:30
+{"contents":{"kind":"markdown","value":"```zig\npub fn eql(comptime T: type, a: []const T, b: []const T) bool\n```\n\nReturns true if and only if the slices have the same length and all elements\ncompare true using equality operator."}}
+> completion main.zig 6:24
+  {"detail":"pub fn add(a: i32, b: i32) i32","documentation":{"kind":"markdown","value":"The sum of `a` and `b`."},"kind":3,"label":"add"}
+  {"detail":"pub const Pair","kind":21,"label":"Pair"}
+> completion main.zig 9:16
+[]

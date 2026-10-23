@@ -29,11 +29,15 @@ use to Zig.
 | `compare-scopes` | the names `@lsp` resolves against AstGen's resolution ([Names and scopes](#names-and-scopes)) |
 | `compare-members` | the members and imports `@lsp` resolves against a resolution over std.zig.Ast ([Names and scopes](#names-and-scopes)) |
 | `members/` | files that import each other and std, for `compare-members` |
+| `editor/` | the language server's `hooks.zig`, its sessions, and the tools that time it ([The language server](#the-language-server)) |
+| `server/` | a session of the server with the stub `hooks.zig`: the colours of `@lsp` |
+| `project/` | the files the sessions of `editor/` and `server/` open |
 
 `./test/run zig` runs the cases, the three `_test.zig` files,
-`compare-scopes` on the cases and `compare-members` on the cases and
-`members/`; the `compare-*` scripts run the same
-comparisons over a corpus. Each script documents its options (`-h`).
+`compare-scopes` on the cases, `compare-members` on the cases and
+`members/`, and the sessions of `editor/` and `server/`; the
+`compare-*` scripts run the same comparisons over a corpus. Each script
+documents its options (`-h`).
 
 ## How the grammar is written
 
@@ -275,6 +279,159 @@ names. Over the same 2,898 files Ast.parse accepts:
 
 Over std alone (563 files) 57,564 members resolve, 48,271 of them
 through imports, and none is missed or wrong.
+
+## The language server
+
+`nexus --editor` turns the grammar into a VS Code extension and a
+language server ([docs/LSP.md](../../docs/LSP.md)). The grammar alone
+gives the server its colours, folds, selections, keywords and, from
+`@lsp`, the names above. `editor/hooks.zig` adds what only Zig knows, by
+running the standard library of the Zig that builds the server (0.17.0)
+in process:
+
+- **Zig's own errors as you type.** Every error `std.zig.Ast.parse`
+  reports, with its recovery, in Zig's words and at Zig's positions (a
+  missing `;` at the end of the token before it); in a file that
+  parses, `std.zig.AstGen`'s errors, as `zig ast-check` reports them:
+  unused and shadowing names, a `var` never mutated, an undeclared
+  identifier, each with its notes. `zig ast-check` prints the first
+  syntax error alone; the server shows every error Ast.parse's recovery
+  reports.
+- **Format Document** as `zig fmt` formats (`Ast.render`). It refuses a
+  file with syntax errors, as `zig fmt` does, and any edit after which
+  the grammar's parser rejects the text or builds another tree from it
+  (spans aside, and a name unquoted and the blanks at the end of a doc
+  comment dropped, as `zig fmt` writes them). That guard catches the four
+  helper bugs T5, T7, T8 and T9 above, each of which makes `zig fmt`
+  change the program. Over the 2,910 `.zig` files of Zig 0.17.0's
+  source, each with its leading blanks halved, a blank at the end of
+  every line and CRLF line ends, the 2,868 that parse are formatted but
+  14, each refused for a rewrite `zig fmt` makes on purpose:
+  `@intFromEnum` to `@backingInt`, `@enumFromInt(x)` to
+  `@fromBackingInt(@intCast(x))` and `callconv(.@"inline")` to
+  `inline` change the tree; `zig fmt` itself formats those.
+- **`std` is Zig's own.** `@import("std")` is the `std.zig` of the
+  `zig` on the server's `PATH`, in the `std_dir` that `zig env` prints
+  (asked once, when the server first meets the import), unless the
+  `nexus-zig.server.modules` setting names a file for it. Definition,
+  references, hover and completion go through it into the standard
+  library: hover on `std.mem.eql` shows its prototype and doc.
+
+What it does not do: anything that needs types. A value's members
+whose type needs inference (`list.` for an `std.ArrayList(u8)`, a
+call's result, `@This()`), a value's type on hover, type errors, and
+`@import` of a module a `build.zig` declares (unless `modules` names
+its file) answer nothing, rather than guess. It is a demonstration
+of what a grammar and a page of hooks give a large language, not a
+replacement for ZLS, and the extension is not published.
+
+`./test/run zig` builds this server and replays the sessions of
+`editor/` on the files of `project/`: Zig's errors as you type
+(`errors.session`), formatting and its guard on each of the four bugs
+(`format.session`), and names across files and into std, with
+completion after `list.` answering nothing (`names.session`).
+
+### Building and installing it
+
+Build Nexus (`zig build` at the repository root), then write the
+editor files outside this repository, put the Zig hooks in place of
+the stub, build the server into the extension and package it:
+
+```bash
+cd grammars/zig
+../../bin/nexus --editor --lang zig.zig zig.grammar ~/nexus-zig
+cp editor/hooks.zig ~/nexus-zig/server/src/hooks.zig
+cd ~/nexus-zig/server && zig build -Doptimize=ReleaseSafe --prefix ../vscode
+cd ../vscode && npm install
+npx @vscode/vsce package --skip-license --allow-missing-repository
+code --install-extension nexus-zig-0.1.0.vsix
+```
+
+`--editor` writes `hooks.zig` only when it is missing, so copy
+`editor/hooks.zig` again after it changes; every other file it writes
+again on each run. The extension is `nexus-local.nexus-zig`, "Zig
+(Nexus)", with settings under `nexus-zig.`: none of it is the official
+Zig extension's (`ziglang.vscode-zig`), so the two install side by side.
+
+- **Without the official extension**, the defaults serve: the extension
+  contributes the `zig` language, its colouring and the server.
+- **Beside it**, set `"mode": "companion"` in `vscode/identity.json`
+  before running `--editor` again: the official extension keeps the
+  language and its colouring, and this one adds its server. VS Code then
+  runs both servers on every Zig file, ZLS and this one, and shows both
+  servers' diagnostics; turn ZLS off in the official extension's
+  settings to see this one's alone.
+
+The server reads `zig` from the `PATH` it starts with; when VS Code
+starts without it (from the Dock on macOS), name std in the
+settings: `"nexus-zig.server.modules": {"std": "/path/to/lib/std/std.zig"}`.
+
+### Latency
+
+On Zig 0.17.0's `src/Sema.zig` (1.55 MB, 35,648 lines), with the
+server in safe mode (`-Doptimize=ReleaseSafe`) on an Apple M5, the
+1-minute load average below 6, best of five:
+
+| | ms |
+|---|---:|
+| `parseDiagnostics` (Ast.parse and AstGen) | 41 |
+| `format`, the file formatted already (Ast.parse, Ast.render) | 17 |
+| `format`, the whole file reformatted (and both parsed again for the guard) | 49 |
+| open the file, to its diagnostics published | 66 |
+| an edit, to its diagnostics published | 43 |
+| hover, definition, document highlight | 1 to 2 |
+| completion of the names in scope (735) | 2.3 |
+| outline | 13 |
+| folding ranges | 35 |
+| semantic tokens, the whole file | 82 |
+| Format Document, one blank removed | 52 |
+| references of `Value` across `src/` (285) | 266 |
+
+On `src/codegen/x86_64/CodeGen.zig`, 11.1 MB, `parseDiagnostics` takes
+170 ms and `format` 233 ms, or 511 ms reformatting the whole file.
+`editor/measure.zig` times the two hooks and counts what `format` does
+over a corpus (the counts above); `editor/latency` times the server's
+requests. With the editor files in `~/nexus-zig` as above, and `Z` a
+checkout of Zig at tag 0.17.0:
+
+```bash
+cp editor/measure.zig ~/nexus-zig/server/src/
+(cd ~/nexus-zig/server && zig build-exe -O ReleaseSafe src/measure.zig)
+~/nexus-zig/server/measure -n 5 $Z/src/Sema.zig $Z/src/codegen/x86_64/CodeGen.zig
+~/nexus-zig/server/measure -n 5 -r $Z/src/Sema.zig
+find $Z/lib $Z/src $Z/test $Z/doc -name '*.zig' -print0 |
+    xargs -0 -n 5000 ~/nexus-zig/server/measure -q -r -t -c
+editor/latency ~/nexus-zig/vscode/bin/zig-lsp $Z/src Sema.zig
+```
+
+### Type errors on save: not here
+
+The compiler is the only source of Zig's type errors, and Zig 0.17.0
+has two ways to ask it from an editor: `zig build` with its output
+read as text, which is fragile, and the build server protocol (`zig
+build --listen=-`, protocol version 1). The protocol works for a
+build asked for on each save: after the handshake and the build
+graph's configuration, a request for the `check` step answers with the
+step's error bundle, the compiler's errors with their notes (220 ms for
+a type error in a one-file project, 40 ms for the build after it is
+fixed). Three things keep it out of this
+server:
+
+- **A changed `build.zig` is not seen.** Without file watching the
+  build server builds with the configuration it started with, and a
+  client cannot ask it to configure again; only a restart does.
+- **Watching cannot take a second request.** With `watch` set, the
+  build server rebuilds by itself after a change, but a second request
+  for steps panics ("TODO file watching cannot be canceled without
+  blocking", lib/compiler/Maker.zig), so an editor cannot change what it
+  builds.
+- **A `build.zig` that does not compile ends the build server**
+  ("TODO stay running and wait for user to request rebuild even when
+  build.zig compilation fails"), and the client must start another.
+
+Beyond the protocol, `analyze` would run the build on every save in
+the background with no setting to turn it off, since the client's
+settings do not reach `hooks.zig`.
 
 ## Speed
 

@@ -1,0 +1,19 @@
+# Names across files from the grammar's @lsp, with `std` the standard
+# library of the `zig` on PATH (hooks.zig, resolveImport: `zig env`'s
+# std_dir), as no `modules` setting names it. Definition of `util.add`
+# is in util.zig; its references are in both files; hover on it is its
+# prototype and doc. Hover on `eql` of `std.mem.eql` is std's own, read
+# from lib/std/mem.zig through std.zig. Completion after `util.` is
+# util.zig's declarations.
+#
+# The deliberate miss: `list` is an `std.ArrayList(u8)`, a call's result,
+# whose members need the compiler's types; completion after `list.`
+# answers nothing rather than guess.
+initialize folder quiet
+open main.zig
+definition main.zig 6:24
+references main.zig 6:24
+hover main.zig 6:24
+hover main.zig 7:30
+completion main.zig 6:24
+completion main.zig 9:16
