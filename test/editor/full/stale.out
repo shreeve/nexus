@@ -1,0 +1,47 @@
+> initialize root main.tally
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"documentFormattingProvider":true,"documentHighlightProvider":true,"documentSymbolProvider":true,"foldingRangeProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","referencesProvider":true,"renameProvider":true,"selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"signatureHelpProvider":{"triggerCharacters":["(",","]},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open util.tally
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"13:1-13:16","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"14:6-14:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"15:1-15:8","severity":1,"source":"tally"}
+> open main.tally
+> edit util.tally 1:1-1:1 "# Moved down a line.\n"
+> hover util.tally 3:4
+{"contents":{"kind":"markdown","value":"```tally\nfn add(a, b)\n```\n\nAdds two numbers."}}
+> definition main.tally 4:18
+util.tally 3:4-3:7
+> references util.tally 3:4
+  main.tally 4:18-4:21
+  main.tally 13:6-13:9
+  util.tally 3:4-3:7
+  util.tally 9:12-9:15
+> edit main.tally 1:1-1:1 "\n"
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"14:1-14:16","relatedInformation":[{"location":"util.tally 3:4-3:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"15:6-15:13","severity":1,"source":"tally"}
+  {"message":"undefined name nothing","range":"16:1-16:8","severity":1,"source":"tally"}
+> edit main.tally 16:1-16:8 "zero"
+diagnostics main.tally
+  {"message":"add takes 2 arguments, not 1","range":"14:1-14:16","relatedInformation":[{"location":"util.tally 3:4-3:7","message":"declared here"}],"severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"15:6-15:13","severity":1,"source":"tally"}
+> hover main.tally 5:5
+{"contents":{"kind":"markdown","value":"```tally\nlet total\n```\n\nThe running total."}}
+> rename util.tally 3:4 plus
+error -32803 a file of the program changed since its analysis: save it first
+> edit util.tally 3:4-3:7 "plus"
+> hover util.tally 3:4
+null
+> definition main.tally 5:18
+null
+> save util.tally
+diagnostics util.tally
+  {"message":"undefined name add","range":"9:12-9:15","severity":1,"source":"tally"}
+diagnostics main.tally
+  {"message":"util has no add","range":"5:18-5:21","severity":1,"source":"tally"}
+  {"message":"util has no add","range":"14:6-14:9","severity":1,"source":"tally"}
+  {"message":"util has no missing","range":"15:6-15:13","severity":1,"source":"tally"}
+  {"message":"undefined name zero","range":"16:1-16:5","severity":1,"source":"tally"}
+> save main.tally
+> hover util.tally 3:4
+{"contents":{"kind":"markdown","value":"```tally\nfn plus(a, b)\n```\n\nAdds two numbers."}}

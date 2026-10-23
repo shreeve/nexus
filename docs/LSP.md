@@ -306,7 +306,13 @@ analysis, its diagnostics in every file, and the files it read.
 
 The server runs `analyze` when a file opens and when it is saved, never
 as you type, and holds the result in an arena of its own until the next
-analysis of the same root replaces it. It holds one analysis per root,
+analysis of the same root replaces it. It runs on a task of its own, one
+analysis at a time, over a copy of the open documents, while the server
+goes on answering from the analyses it holds; one asked for while
+another runs waits, once per root, and the file whose opening or saving
+asked for it is published when it lands. So `analyze` runs on another
+thread than the other functions, and shares no mutable state with them.
+Where the platform cannot run tasks concurrently, it runs when asked. It holds one analysis per root,
 so separate programs open side by side keep theirs, up to eight; a ninth
 drops the one a request or an analysis used least recently, and the
 diagnostics it gave. Requests on a file read the analysis of its program:
@@ -321,16 +327,20 @@ unsaved `untitled:` one, is parsed and coloured but never analyzed, so
 those requests answer nothing in it.
 
 Diagnostics are published to every file they name, opened or not. An
-open file shows its syntax errors and, while its text is the text the
-analysis of its program read, that analysis's diagnostics; an edit hides
-those until the next save. A file no held analysis names any more is
+open file shows its syntax errors and the diagnostics of the analysis
+of its program that read it, which move with the edits made since: one
+whose text an edit replaced is dropped, until the next save. A file no held analysis names any more is
 cleared. A file's diagnostics are sent only when they differ from the
 ones last sent to it, and an empty list only to clear some. A diagnostic's `notes` are its related locations.
 
 The functions that read the analysis take a position, a `Pos`: a path and
-a byte offset in that file's text. In a file edited since the analysis,
-the offset is in the edited text, so until the next save an answer there
-can be missing or misplaced.
+a byte offset in that file's text, the text the analysis read. The client
+sends each change as a range and its new text, and the server keeps the
+edits since each analysis: it moves a request's position back into the
+text the analysis read, and each span the functions return forward into
+the text now. A position in text written since has no answer, a span
+whose text an edit replaced is left out, and a rename is refused until
+every file of the program the analysis read is saved.
 
 ```zig fragment
 pub fn symbolAt(a: *Analysis, arena: Allocator, at: lsp.Pos) !?lsp.Symbol
@@ -383,6 +393,9 @@ Whatever the language writes, the server:
   (-32601), a request on a document that is not open with
   `InvalidParams` (-32602), and a rename it refuses with `RequestFailed`
   (-32803) and the reason;
+- answers `nexus/idle`, a request of its own, once every analysis asked
+  for has landed and published: a client that needs to know, such as
+  the test driver, asks it after a notification;
 - exits 0 on `exit` after `shutdown`, else 1.
 
 ## Tests

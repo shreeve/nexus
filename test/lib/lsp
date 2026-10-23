@@ -14,6 +14,8 @@ a line (`#` starts a comment):
                                      with `untitled:` is an unsaved document
   change FILE                      didChange; the new text is the lines
   | text                             after it that start with `| `
+  edit FILE L:C-L:C "text"         didChange of that range to the JSON
+                                     string's text
   save FILE                        didSave
   close FILE                       didClose
   tokens FILE                      semanticTokens/full
@@ -173,6 +175,10 @@ class Session:
     def doc(self, path):
         return {"textDocument": {"uri": self.uri(path)}}
 
+    def lc(self, lc):
+        line, _, col = lc.partition(":")
+        return {"line": int(line) - 1, "character": int(col) - 1}
+
     def at(self, path, lc):
         line, _, col = lc.partition(":")
         p = self.doc(path)
@@ -203,6 +209,14 @@ class Session:
             p["textDocument"]["version"] = self.versions[args[0]]
             p["contentChanges"] = [{"text": body}]
             self.notify("textDocument/didChange", p)
+        elif cmd == "edit":
+            start, _, end = args[1].partition("-")
+            text = json.loads(" ".join(args[2:]))
+            self.versions[args[0]] += 1
+            p = self.doc(args[0])
+            p["textDocument"]["version"] = self.versions[args[0]]
+            p["contentChanges"] = [{"range": {"start": self.lc(start), "end": self.lc(end)}, "text": text}]
+            self.notify("textDocument/didChange", p)
         elif cmd == "save":
             self.notify("textDocument/didSave", self.doc(args[0]))
         elif cmd == "close":
@@ -232,14 +246,14 @@ class Session:
             print("exited %d" % code)
         else:
             raise Failure("unknown command " + cmd)
-        if cmd in ("open", "change", "save", "close"):
+        if cmd in ("open", "change", "edit", "save", "close"):
             self.sync()
 
     def sync(self):
-        """Wait for what a notification sent: the server answers in order,
-        so it answered the notification before this request (of a method
-        it does not have)."""
-        self.request("$/sync", {})
+        """Wait for what a notification sent: `nexus/idle` is answered once
+        every analysis asked for has finished and published, and the
+        server answers in order, so it handled the notification first."""
+        self.request("nexus/idle", {})
 
     def show(self, msg, tokens=False):
         if "error" in msg:

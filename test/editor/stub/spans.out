@@ -1,5 +1,5 @@
 > initialize
-{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":1,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":[],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
 > open spans.tally
 > folds spans.tally
   {"endLine":3,"startLine":0}
