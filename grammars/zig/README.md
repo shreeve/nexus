@@ -26,10 +26,11 @@ use to Zig.
 | `messages_test.zig` | the wording of syntax errors |
 | `trees.zig` | the canonical form both trees are printed in, and the rules that map one onto the other |
 | `compare-tokens`, `compare-accept`, `compare-trees` | the three comparisons, over any set of files (`tools/`) |
+| `compare-scopes` | the names `@lsp` resolves against AstGen's resolution ([Names and scopes](#names-and-scopes)) |
 
-`./test/run zig` runs the cases and the three `_test.zig` files; the
-`compare-*` scripts run the same comparisons over a corpus. Each script
-documents its options (`-h`).
+`./test/run zig` runs the cases, the three `_test.zig` files and
+`compare-scopes` on the cases; the `compare-*` scripts run the same
+comparisons over a corpus. Each script documents its options (`-h`).
 
 ## How the grammar is written
 
@@ -199,6 +200,45 @@ short of Ast's in ways the grammar cannot change:
   (`tolerant_errors`: three separate mistakes, three errors, though
   `g(a b c d)` deletes three tokens).
 
+## Names and scopes
+
+The grammar's `@lsp` ([GRAMMAR.md, "Names and
+scopes"](../../docs/GRAMMAR.md#names-and-scopes)) declares Zig's
+lexical names: a file and a container are unordered scopes, a function,
+a test, a block and the nodes that hold captures are ordered ones; a
+function's name belongs to the scope around it, its parameters to the
+function; fields, enum and error names are members, never names in
+scope; a name after `.`, a builtin's name, an enum literal, a field
+initializer's name, an asm operand's name and a label after
+`break`/`continue` are not looked up. The language server `nexus
+--editor` writes gives the outline, definition, references, highlights,
+rename, the names in scope and hover from it, with no code of its own.
+A member (`std.mem`, `self.x`) is a later step of `@lsp` and answers
+nothing yet.
+
+`compare-scopes` checks every name the index resolves against the
+compiler's own resolution, `std.zig.AstGen` (the Zig that runs it, which
+must be 0.17.0). For each input AstGen accepts, it renames every
+definition the index makes in a scope chain, and every use the index
+resolves to it, to a name of its own (`_cs7`), and runs AstGen on the
+renamed file: a use the index resolves elsewhere than the compiler does
+makes AstGen report an undeclared or unused name there. A use the index
+leaves unresolved must be a primitive (`std.zig.primitives`) or `_`.
+Over the corpus (2,400 files AstGen accepts; the other 220 are
+compile-error tests):
+
+| | count |
+|---|---:|
+| definitions in scope chains | 281,456 |
+| member definitions (fields, enum and error names) | 106,441 |
+| uses resolved, each to the definition AstGen resolves it to | 938,569 |
+| uses that are builtins (the `builtin` names, `_`) | 449,241 |
+| other primitives (`u7`, `i33`, ...), unresolved by design | 19,846 |
+| names not looked up (members, labels, enum literals, field names) | 1,612,961 |
+| disagreements | 0 |
+
+The index of all 71.4 MB took 1.2 s in safe mode, single thread.
+
 ## Speed
 
 Measured with `compare-tokens --bench 5` and `compare-accept --bench 5
@@ -252,6 +292,7 @@ grammars/zig/compare-trees --fuzz 70000 --seed 31 $P
 grammars/zig/compare-trees --fuzz 70000 --seed 32 $S
 grammars/zig/compare-trees --fuzz 70000 --seed 33 $Z/lib/std/zig $Z/src/Sema.zig $Z/lib/std/mem.zig
 
+grammars/zig/compare-scopes $Z                        # names: every use @lsp resolves, against AstGen
 grammars/zig/compare-accept --messages $Z $P          # both syntax errors of every input both reject
 grammars/zig/compare-tokens --bench 5 $Z              # lexer speed
 grammars/zig/compare-accept --bench 5 $Z              # parse speed

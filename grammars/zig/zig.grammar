@@ -464,6 +464,49 @@ tokens
     enum_tag, bad_doc_comment, minus_prefix, minus_percent_prefix, ampersand_prefix               token:leaf
     asterisk_prefix, pipe_payload, bad_operator                                                   token:leaf
 
+# Names and scopes, for the language server (docs/GRAMMAR.md, "Names and
+# scopes"). A file and a container are unordered scopes, as Zig's
+# declarations are; a function, a test, a block and the nodes that hold
+# captures (if, while, for, a switch prong, catch) are ordered ones. A
+# function's name belongs to the scope around the function (`outer`), and
+# an extern function's (a proto without a body) to the scope it is in; a
+# function's parameters are the function's, and those of an extern
+# function or a function type (a proto without a name) are no names at all. Fields and error names are members, never
+# names in scope; a field of an enum or a union written as a bare name is
+# its type role in Ast (`enum { a, b }`), which AstGen reads as its name. A name after `.` (a member of a value or a namespace),
+# a builtin's name, an enum literal, a field initializer's name, an asm
+# operand's name and a label after `break`/`continue` are not looked up.
+# Primitives resolve to nothing (`builtin`), and so does `_`, a discard,
+# which no definition names.
+# grammars/zig/compare-scopes checks every name it resolves against
+# std.zig.AstGen's resolution.
+@lsp
+    scope       root container_decl unordered
+    scope       fn_decl test_decl block if while for switch_case catch
+    define      var_decl.name           constant  when mut "const"  value:init  type:type  doc:doc  export:visib  detail:..init
+    define      var_decl.name           variable  when mut "var"  type:type  doc:doc  export:visib
+    define      fn_proto.name           function  outer  doc:doc  export:visib  detail  when ^fn_decl.body
+    define      fn_proto.name           function  doc:doc  export:visib  detail
+    define      param.name              variable  type:type  when ^fn_proto.name
+    define      capture.name            variable
+    define      catch.payload           variable
+    define      if.else_capture         variable
+    define      while.else_capture      variable
+    define      switch_case.index       variable
+    define      container_field.name    field  member  type:type  doc:doc
+    define      container_field.type    enum_member  member  doc:doc  when ^container_decl.kind "enum"
+    define      container_field.type    field  member  doc:doc  when name ""  when ^container_decl.kind "union"
+    define      error_name.name         enum_member  member  doc:doc
+    use         IDENTIFIER
+    skip        builtin_call.name enum_literal.name field_init.name asm_output.name asm_input.name
+    skip        field_access.name error_value.name break.label continue.label param.name
+    skip        param.name  when ^fn_proto.modifier "extern"
+    builtin     "u8" "u16" "u32" "u64" "usize" "isize" "bool" "void" "type" "anytype" "true" "false" "null" "undefined"
+                "i8" "i16" "i32" "i64" "i128" "u1" "u128" "f16" "f32" "f64" "f80" "f128" "anyerror" "anyframe" "anyopaque"
+                "noreturn" "comptime_int" "comptime_float" "c_char" "c_short" "c_ushort" "c_int" "c_uint" "c_long"
+                "c_ulong" "c_longlong" "c_ulonglong" "c_longdouble" "_"
+    doc         DOC_COMMENT strip "///"
+
 # Every conflict below resolves as Parse.zig decides.
 #
 # return, break and continue: a bare `return`, `break`, `break :blk`,
