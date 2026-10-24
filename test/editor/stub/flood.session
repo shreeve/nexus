@@ -1,0 +1,4 @@
+# A check whose output passes 4 MiB is stopped there, with every process
+# it started, and the lines read so far are its diagnostics.
+initialize check ["./checker", "flood"]
+open main.tally

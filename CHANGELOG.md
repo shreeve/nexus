@@ -263,6 +263,34 @@
   `[A-Za-z0-9_]`. A literal that starts or ends with one does not match
   next to another, in every editor file; `--describe` gives it as
   `highlight.word_chars` (`"format"` stays 1: the key is new).
+- The check on save ([LSP.md, "The check"](docs/LSP.md#the-check)): the
+  client's `check` option, a command as its words with `${file}` and
+  `${root}` in place (`["zig", "build", "check"]`, `["rig", "check",
+  "${file}"]`), which the language server runs when a file opens and
+  when it is saved, after the analyses, one check at a time and once per
+  command; each `PATH:LINE:COL: error|warning: MESSAGE` line of its
+  output is a diagnostic, and a `note:` line related information of the
+  one before it, published to every file they name and moved with the
+  edits since the save. A check is stopped, with its process group,
+  after `checkTimeout` milliseconds (60000 by default), past 4 MiB of
+  output, and when the server exits; a failure is logged once and shows
+  nothing in the file. The extension's settings
+  `PREFIX.server.check`, user-level only and run only in a trusted
+  workspace, and `PREFIX.server.checkTimeout` give them.
+- The features setting ([LSP.md, "Features"](docs/LSP.md#features)):
+  the client's `features` option names what the server serves
+  (`diagnostics`, `semanticTokens`, `folding`, `selection`, `symbols`,
+  `hover`, `definition`, `references`, `rename`, `completion`,
+  `signature`, `formatting`, `check`), all by default; the server
+  advertises those it has and is asked for, and logs a name that is no
+  feature's. The extension's setting `PREFIX.features` gives it, and a
+  change to it restarts the server. Beside another server (a
+  `companion` extension), the recommended set is the features the
+  other lacks. Migration: none; downstream repositories regenerate
+  `editors/` with `nexus --editor` for the new `package.json`,
+  `extension.js` and `README.md`, and Rig sets `PREFIX.server.check`
+  to `["rig", "check", "${file}"]` in its own user settings to have
+  `rig check` on save.
 
 ### Changed
 

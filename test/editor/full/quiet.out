@@ -1,0 +1,11 @@
+> initialize root main.tally features semanticTokens,check check ["../stub/checker", "report", "${file}"]
+{"capabilities":{"positionEncoding":"utf-16","semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","definition","readonly","static","deprecated","abstract","async","modification","documentation","defaultLibrary"],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid","namespace","class","enum","interface","struct","typeParameter","variable","property","enumMember","event","method","macro","regexp","decorator"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"total is too big","range":"4:5-4:10","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"add is declared here"}],"severity":1,"source":"checker"}
+  {"message":"scale takes a number","range":"12:7-12:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"7:13-7:19","severity":2,"source":"checker"}
+diagnostics util.tally
+  {"message":"greeting is unused","range":"11:5-11:13","relatedInformation":[{"location":"util.tally 11:5-11:13","message":"greeting is declared here"}],"severity":2,"source":"checker"}
+> change main.tally
+diagnostics main.tally none

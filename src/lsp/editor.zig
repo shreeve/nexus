@@ -35,6 +35,14 @@ pub const scopes_template = @embedFile("scopes_template.zig");
 const client_version = "9.0.1";
 const vscode_engine = "^1.82.0";
 
+/// The features the server can serve, as its `Feature` names them: the
+/// values of the `features` setting, and its default.
+const features = [_][]const u8{ "diagnostics", "semanticTokens", "folding", "selection", "symbols", "hover", "definition", "references", "rename", "completion", "signature", "formatting", "check" };
+
+/// The default of the `server.checkTimeout` setting, the server's own
+/// (`default_check_timeout`).
+const check_timeout = 60_000;
+
 /// The scopes the semantic token types are named after; LSP's own types
 /// are not declared again.
 const standard_types = [_][]const u8{ "keyword", "string", "comment", "operator", "type", "function", "label" };
@@ -607,8 +615,10 @@ pub fn packageJson(allocator: Allocator, in: Input) Error![]const u8 {
     }
     try w.print(",\n  \"engines\": {{\"vscode\": \"{s}\"}},\n  \"categories\": [\"Programming Languages\"],\n  \"main\": \"./extension.js\",\n  \"activationEvents\": [", .{vscode_engine});
     try json.string(w, try std.mem.concat(allocator, u8, &.{ "onLanguage:", h.id }));
-    try w.writeAll("],\n  \"capabilities\": {\n    \"untrustedWorkspaces\": {\n      \"supported\": \"limited\",\n      \"description\": \"The language server is the one the user's own settings name, never a workspace's.\",\n      \"restrictedConfigurations\": [");
+    try w.writeAll("],\n  \"capabilities\": {\n    \"untrustedWorkspaces\": {\n      \"supported\": \"limited\",\n      \"description\": \"The language server and its check are the ones the user's own settings name, never a workspace's; the check runs only in a trusted workspace.\",\n      \"restrictedConfigurations\": [");
     try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.path" }));
+    try w.writeAll(", ");
+    try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.check" }));
     try w.print("]\n    }}\n  }},\n  \"dependencies\": {{\"vscode-languageclient\": \"{s}\"}},\n  \"contributes\": {{\n", .{client_version});
     if (id.mode == .standalone) {
         try w.writeAll("    \"languages\": [{\n      \"id\": ");
@@ -642,6 +652,23 @@ pub fn packageJson(allocator: Allocator, in: Input) Error![]const u8 {
         try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.modules" }));
         try w.writeAll(": {\n          \"type\": \"object\",\n          \"default\": {},\n          \"additionalProperties\": {\"type\": \"string\"},\n          \"markdownDescription\": \"The file of each module name an import names, by name; a relative path is relative to the first workspace folder. An import of another name names a file relative to the importing file.\"\n        }");
     }
+    try w.writeAll(",\n        ");
+    try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.check" }));
+    try w.writeAll(": {\n          \"type\": \"array\",\n          \"items\": {\"type\": \"string\"},\n          \"default\": [],\n          \"scope\": \"machine\",\n          \"markdownDescription\": \"A command that checks the program when a file opens or is saved, as its words, from user settings only and run only in a trusted workspace: `${file}` is the file's path and `${root}` the program's root. Each line of its output `PATH:LINE:COL: error: MESSAGE` (or `warning:`) is a diagnostic, and each `note:` line a note of the one before it. Empty: no check.\"\n        },\n        ");
+    try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.checkTimeout" }));
+    try w.print(": {{\n          \"type\": \"integer\",\n          \"default\": {d},\n          \"minimum\": 1,\n          \"markdownDescription\": \"The milliseconds a check may run before it is stopped.\"\n        }},\n        ", .{check_timeout});
+    try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".features" }));
+    try w.writeAll(": {\n          \"type\": \"array\",\n          \"items\": {\"type\": \"string\", \"enum\": [");
+    for (features, 0..) |f, i| {
+        if (i > 0) try w.writeAll(", ");
+        try json.string(w, f);
+    }
+    try w.writeAll("]},\n          \"uniqueItems\": true,\n          \"default\": [");
+    for (features, 0..) |f, i| {
+        if (i > 0) try w.writeAll(", ");
+        try json.string(w, f);
+    }
+    try w.writeAll("],\n          \"markdownDescription\": \"The features the language server serves, of those it has. Beside another language server for the language, the features the other lacks, such as `[\\\"semanticTokens\\\", \\\"folding\\\", \\\"selection\\\", \\\"check\\\"]`.\"\n        }");
     try w.writeAll("\n      }\n    },\n    \"semanticTokenTypes\": [");
     var n: usize = 0;
     for (std.enums.values(Scope)) |scope| {
@@ -728,7 +755,10 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
         \\|---|---|
         \\| `{s}.server.path` | the language server: a path, or a name on `PATH`, read from user settings only; empty means the extension's `bin/{s}-lsp`, else `{s}-lsp` on `PATH` |
         \\| `{s}.server.root` | the file the program starts from, which the server analyzes, relative to the first workspace folder; empty means each file's own program |
-        \\{s}
+        \\{s}| `{s}.server.check` | a command that checks the program when a file opens or is saved, as its words (`${{file}}` the file, `${{root}}` the root), read from user settings only and run only in a trusted workspace; its `PATH:LINE:COL: error: MESSAGE` lines, and `warning:` and `note:` lines, are diagnostics |
+        \\| `{s}.server.checkTimeout` | the milliseconds a check may run before it is stopped; 60000 by default |
+        \\| `{s}.features` | the features the server serves, of those it has; all by default{s} |
+        \\
         \\## Building and packaging
         \\
         \\The language server is a Zig project beside this directory:
@@ -751,6 +781,10 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
         h.id,
         id.settings,
         if (hasImports(in)) try allocator.print("| `{s}.server.modules` | the file of each module name an import names (`{{\"std\": \"/path/to/std.zig\"}}`), relative to the first workspace folder; an import of another name names a file relative to the importing file |\n", .{id.settings}) else "",
+        id.settings,
+        id.settings,
+        id.settings,
+        if (id.mode == .companion) "; beside another language server, the features it lacks, such as `[\"semanticTokens\", \"folding\", \"selection\", \"check\"]`" else "",
         h.id,
         if (id.repository.len == 0) " --allow-missing-repository" else "",
         if (id.repository.len == 0) "; `--allow-missing-repository`, without a\n`repository` in `identity.json`" else "",
@@ -825,17 +859,35 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\  );
         \\  return "";
         \\}}
+        \\
+        \\/** The check command. It comes from the user's own settings, never
+        \\ * from a workspace's, and runs only in a trusted workspace: it may
+        \\ * run the workspace's own code. */
+        \\function serverCheck() {{
+        \\  const set = vscode.workspace.getConfiguration(prefix).inspect("server.check");
+        \\  const check = set && set.globalValue;
+        \\  if (!Array.isArray(check) || check.length === 0 || !check.every((w) => typeof w === "string")) return [];
+        \\  if (vscode.workspace.isTrusted) return check;
+        \\  output.appendLine(`${{prefix}}.server.check runs only in a trusted workspace.`);
+        \\  return [];
+        \\}}
         \\{s}
         \\/** @param {{vscode.ExtensionContext}} context */
         \\async function start(context) {{
         \\  const command = serverCommand(context);
+        \\  const config = vscode.workspace.getConfiguration(prefix);
         \\  const server = {{ command, args: [] }};
         \\  const started = new LanguageClient(prefix, name, {{ run: server, debug: server }}, {{
         \\    documentSelector: [
         \\      {{ scheme: "file", language: id }},
         \\      {{ scheme: "untitled", language: id }},
         \\    ],
-        \\    initializationOptions: {{ root: serverRoot(){s} }},
+        \\    initializationOptions: {{
+        \\      root: serverRoot(),{s}
+        \\      check: serverCheck(),
+        \\      checkTimeout: config.get("server.checkTimeout"),
+        \\      features: config.get("features"),
+        \\    }},
         \\    outputChannel: output,
         \\  }});
         \\  try {{
@@ -885,8 +937,10 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\  context.subscriptions.push(
         \\    output,
         \\    vscode.workspace.onDidChangeConfiguration((e) => {{
-        \\      if (e.affectsConfiguration(prefix + ".server")) restart(context);
+        \\      if (e.affectsConfiguration(prefix + ".server") || e.affectsConfiguration(prefix + ".features")) restart(context);
         \\    }}),
+        \\    // Trust lets the check run.
+        \\    vscode.workspace.onDidGrantWorkspaceTrust(() => restart(context)),
         \\  );
         \\  await restart(context);
         \\}}
@@ -897,7 +951,7 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\
         \\module.exports = {{ activate, deactivate }};
         \\
-    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2], if (hasImports(in)) modules_js else "", if (hasImports(in)) ", modules: serverModules()" else "" });
+    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2], if (hasImports(in)) modules_js else "", if (hasImports(in)) "\n      modules: serverModules()," else "" });
     return out.written();
 }
 

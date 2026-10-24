@@ -1,0 +1,10 @@
+> initialize root main.tally features hover,definition,completion,folds
+{"capabilities":{"completionProvider":{"triggerCharacters":["."]},"definitionProvider":true,"hoverProvider":true,"positionEncoding":"utf-16","textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}},"typeDefinitionProvider":true},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"features: folds is no feature of the server","type":2}}
+> hover main.tally 4:5
+{"contents":{"kind":"markdown","value":"```tally\nlet total\n```\n\nThe running total."}}
+> tokens main.tally
+error -32601 textDocument/semanticTokens/full
+> format main.tally
+error -32601 textDocument/formatting

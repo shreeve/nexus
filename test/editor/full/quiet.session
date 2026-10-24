@@ -1,0 +1,7 @@
+# Without `diagnostics`, the server publishes neither syntax errors nor
+# the analysis's; with `check`, it publishes the check's alone, which
+# an edit of their text drops.
+initialize root main.tally features semanticTokens,check check ["../stub/checker", "report", "${file}"]
+open main.tally
+change main.tally
+| let total = (

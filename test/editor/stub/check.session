@@ -1,0 +1,36 @@
+# The check command runs on open and on save, with ${file} in place. Its
+# errors and warnings are diagnostics, in the file and in a file not open,
+# from standard error and standard output alike; a note is related
+# information of the diagnostic before it; the lines around them are not
+# diagnostics. They move with the edits made since the save, and one whose
+# text an edit replaced is dropped until the next check.
+initialize check ["./checker", "report", "${file}"]
+open main.tally
+# A line above the diagnostics, not saved: they move down a line.
+edit main.tally 1:1-1:1 "\n"
+# Its own text replaced: the error at `total` goes, the others stay.
+edit main.tally 5:5-5:10 "sum"
+# Saved, the check runs again, and the text it reads is the text now.
+change main.tally
+| use util
+|
+| # The running total.
+| let total = util.add(1, 2)
+| let name = util.greeting + " world"
+|
+| fn scale(x, factor) {
+|     let y = x * factor
+|     return util.double(y)
+| }
+|
+| scale(total, 3)
+| util.add(total)
+| util.missing(1)
+| nothing + 1
+save main.tally
+# util.tally opens after the check: the check's diagnostics in it stay,
+# and its own check runs.
+open util.tally
+edit util.tally 1:1-1:1 "\n"
+# COL counts bytes; the position is in UTF-16 units.
+open text.tally

@@ -14,10 +14,15 @@
 //! the grammar's answers (`parseDiagnostics`, `tokens`, `symbols`, `folds`,
 //! and with `@lsp` `symbolAt`, `describe`, `visible` and `members`).
 //!
+//! The client may name the features it wants (`features`), and a command
+//! that checks the program on open and save (`check`), whose
+//! `PATH:LINE:COL: error: MESSAGE` lines are diagnostics too.
+//!
 //! Messages are JSON-RPC, each after a `Content-Length` header. Positions
 //! count UTF-16 code units, or bytes when the client offers `utf-8`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Value = std.json.Value;
 const parser = @import("parser.zig");
@@ -516,11 +521,11 @@ const Code = enum(i32) {
 /// `shutdown` then `exit`, else 1; a leak in a safety-checked build is
 /// reported on stderr and makes it 1.
 ///
-/// One task reads the messages and the worker runs `analyze`; both hand
-/// what they have to the main loop through one queue, and the main loop
-/// alone keeps the server's state and writes. Where tasks cannot run
-/// concurrently, the main loop reads, and analyses run as they are asked
-/// for.
+/// One task reads the messages, the worker runs `analyze` and the checker
+/// runs the check command; each hands what it has to the main loop through
+/// one queue, and the main loop alone keeps the server's state and writes.
+/// Where tasks cannot run concurrently, the main loop reads, and analyses
+/// and checks run as they are asked for.
 pub fn run(io: std.Io) u8 {
     var sa: std.heap.SafeAllocator = .init(std.heap.page_allocator, .{});
     var status: u8 = 1;
@@ -553,9 +558,9 @@ pub fn run(io: std.Io) u8 {
 }
 
 /// What the main loop waits for: a message's body, in the server's
-/// allocator (null at the end of input or a message it cannot frame), or
-/// an analysis the worker finished.
-const Event = union(enum) { message: ?[]u8, analyzed: *Job };
+/// allocator (null at the end of input or a message it cannot frame), an
+/// analysis the worker finished, or a check the checker finished.
+const Event = union(enum) { message: ?[]u8, analyzed: *Job, checked: *Check };
 
 /// Read messages into the queue until the end of input.
 fn readAll(io: std.Io, gpa: Allocator, in: *std.Io.Reader, queue: *std.Io.Queue(Event)) void {
@@ -591,6 +596,207 @@ const Job = struct {
     }
 };
 
+/// The most output of a check the server reads, its standard output and
+/// standard error together; past it, the command is stopped.
+const max_check_output = 4 << 20;
+
+/// How long a check may run, in milliseconds, unless the client says
+/// (`checkTimeout`).
+const default_check_timeout = 60_000;
+
+/// A check for the checker: the command (`key`, its words joined by NUL
+/// bytes), the root of the program it checks, the directory it runs in, the
+/// version of the saved text of each open document, and what came of it;
+/// all in its own arena.
+const Check = struct {
+    arena: std.heap.ArenaAllocator,
+    io: std.Io,
+    key: []const u8,
+    root: []const u8,
+    cwd: []const u8,
+    timeout: u32,
+    read: []const Held.Read,
+    result: Outcome = .{ .failed = "" },
+
+    /// The diagnostics the output names, or why there are none: the
+    /// command did not start, ran out of time, or failed and named nothing.
+    const Outcome = union(enum) { diagnostics: []const Diagnostic, failed: []const u8 };
+
+    /// Run the command, then hand the check to the main loop; a check
+    /// canceled (the server exits) is not handed back.
+    fn run(c: *Check, queue: *std.Io.Queue(Event)) void {
+        c.result = c.runCommand() catch |err| switch (err) {
+            error.Canceled => return,
+            error.OutOfMemory => .{ .failed = "the check ran out of memory" },
+        };
+        queue.putOneUncancelable(c.io, .{ .checked = c }) catch {};
+    }
+
+    fn runCommand(c: *Check) error{ Canceled, OutOfMemory }!Outcome {
+        const a = c.arena.allocator();
+        const io = c.io;
+        var words: std.ArrayList([]const u8) = .empty;
+        var it = std.mem.splitScalar(u8, c.key, 0);
+        while (it.next()) |w| try words.append(a, w);
+        const argv = words.items;
+        // In a process group of its own, so that stopping it stops what it
+        // started too.
+        var child = std.process.spawn(io, .{
+            .argv = argv,
+            .cwd = .{ .path = c.cwd },
+            .stdin = .ignore,
+            .stdout = .pipe,
+            .stderr = .pipe,
+            .pgid = if (builtin.os.tag == .windows) null else 0,
+        }) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            else => return .{ .failed = try a.print("the check of {s} could not run {s}: {s}", .{ c.root, std.fs.path.basename(argv[0]), @errorName(err) }) },
+        };
+        var waited = false;
+        defer if (!waited) stop(&child, io);
+        var streams: std.Io.File.MultiReader.Buffer(2) = undefined;
+        var mr: std.Io.File.MultiReader = undefined;
+        mr.init(a, io, streams.toStreams(), &.{ child.stdout.?, child.stderr.? });
+        defer mr.deinit();
+        const deadline = (std.Io.Timeout{ .duration = .{ .raw = .fromMilliseconds(c.timeout), .clock = .awake } }).toDeadline(io);
+        var ended = false;
+        while (true) {
+            mr.fill(4096, deadline) catch |err| switch (err) {
+                error.EndOfStream => {
+                    ended = true;
+                    break;
+                },
+                error.Timeout => return .{ .failed = try a.print("the check of {s} took longer than {d} ms", .{ c.root, c.timeout }) },
+                error.Canceled => return error.Canceled,
+                error.ConcurrencyUnavailable => return .{ .failed = try a.print("the check of {s} could not read its output", .{c.root}) },
+            };
+            if (mr.reader(0).bufferedLen() + mr.reader(1).bufferedLen() > max_check_output) break;
+        }
+        const out = try mr.toOwnedSlice(0);
+        const err_out = try mr.toOwnedSlice(1);
+        var term: ?std.process.Child.Term = null;
+        if (ended) {
+            term = child.wait(io) catch |err| switch (err) {
+                error.Canceled => return error.Canceled,
+                else => null,
+            };
+            waited = term != null;
+        }
+        var found: Found = .{ .a = a, .io = io, .cwd = c.cwd };
+        try found.scan(err_out);
+        try found.scan(out);
+        const diagnostics = found.finish();
+        if (diagnostics.len == 0) if (term) |t| if (!t.success()) {
+            const line = firstLine(err_out) orelse firstLine(out) orelse "";
+            return .{ .failed = try a.print("the check of {s} {f}{s}{s}", .{ c.root, t, if (line.len > 0) ": " else "", line }) };
+        };
+        return .{ .diagnostics = diagnostics };
+    }
+
+    /// Stop a command that has not ended: everything in its process group,
+    /// then the command itself, which it waits for.
+    fn stop(child: *std.process.Child, io: std.Io) void {
+        if (builtin.os.tag != .windows) if (child.id) |pid| std.posix.kill(-pid, .KILL) catch {};
+        child.kill(io);
+    }
+
+    /// The first line of `text` that is not blank, at most 200 bytes of it.
+    fn firstLine(text: []const u8) ?[]const u8 {
+        var lines = std.mem.splitScalar(u8, text, '\n');
+        while (lines.next()) |raw| {
+            const line = std.mem.trim(u8, raw, " \t\r");
+            if (line.len > 0) return line[0..@min(line.len, 200)];
+        }
+        return null;
+    }
+};
+
+/// The diagnostics of a check's output: each line `PATH:LINE:COL: error:
+/// MESSAGE`, or `warning:`, is one, and each `note:` line a note of the one
+/// before it in the same output. PATH is relative to the directory the
+/// check ran in; LINE and COL count from 1, COL in bytes. A line of a file
+/// that cannot be read is left out.
+const Found = struct {
+    a: Allocator,
+    io: std.Io,
+    cwd: []const u8,
+    list: std.ArrayList(Diagnostic) = .empty,
+    notes: std.ArrayList(std.ArrayList(Note)) = .empty,
+    files: std.array_hash_map.String(?Lines) = .empty,
+
+    const Kind = enum { @"error", warning, note };
+
+    fn scan(f: *Found, output: []const u8) error{OutOfMemory}!void {
+        var last: ?usize = null;
+        var lines = std.mem.splitScalar(u8, output, '\n');
+        while (lines.next()) |raw| {
+            const got = parseLine(std.mem.trimEnd(u8, raw, "\r")) orelse continue;
+            const span = try f.place(got.path, got.line, got.col) orelse continue;
+            const message = try f.a.dupe(u8, got.message);
+            if (got.kind == .note) {
+                const i = last orelse continue;
+                try f.notes.items[i].append(f.a, .{ .span = span, .message = message });
+                continue;
+            }
+            last = f.list.items.len;
+            try f.list.append(f.a, .{ .span = span, .severity = if (got.kind == .warning) .warning else .@"error", .message = message });
+            try f.notes.append(f.a, .empty);
+        }
+    }
+
+    fn finish(f: *Found) []const Diagnostic {
+        for (f.list.items, f.notes.items) |*d, n| d.notes = n.items;
+        return f.list.items;
+    }
+
+    /// The span at LINE:COL of the file `path` as it is on disk, to the end
+    /// of the word there (`@highlight`'s word-chars), else of no width;
+    /// null when the file cannot be read.
+    fn place(f: *Found, path: []const u8, line: u32, col: u32) error{OutOfMemory}!?Span {
+        const full = try std.fs.path.resolveAlloc(f.a, &.{ f.cwd, path });
+        const entry = try f.files.getOrPut(f.a, full);
+        if (!entry.found_existing) {
+            const text: ?[]const u8 = std.Io.Dir.cwd().readFileAlloc(f.io, full, f.a, .limited(max_message_bytes)) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => null,
+            };
+            entry.value_ptr.* = if (text) |t| try Lines.init(f.a, t, .utf8) else null;
+        }
+        const lines = entry.value_ptr.* orelse return null;
+        if (line - 1 >= lines.starts.len) return .{ .path = entry.key_ptr.*, .start = @intCast(lines.text.len), .end = @intCast(lines.text.len) };
+        const stop = lines.lineEnd(line - 1);
+        const at = @min(lines.starts[line - 1] +| (col - 1), stop);
+        var end = at;
+        while (end < stop and language.isWord(lines.text[end])) end += 1;
+        return .{ .path = entry.key_ptr.*, .start = at, .end = end };
+    }
+
+    const Line = struct { path: []const u8, line: u32, col: u32, kind: Kind, message: []const u8 };
+
+    /// `PATH:LINE:COL: KIND: MESSAGE`, LINE and COL at least 1; PATH may
+    /// hold colons (a drive letter), and MESSAGE may be empty.
+    fn parseLine(line: []const u8) ?Line {
+        var from: usize = 0;
+        while (std.mem.findPos(u8, line, from, ": ")) |sep| : (from = sep + 1) {
+            const rest = line[sep + 2 ..];
+            const kind: Kind = for (std.enums.values(Kind)) |k| {
+                const word = @tagName(k);
+                if (std.mem.startsWith(u8, rest, word) and std.mem.startsWith(u8, rest[word.len..], ":")) break k;
+            } else continue;
+            const head = line[0..sep];
+            const c2 = std.mem.findScalarLast(u8, head, ':') orelse continue;
+            const c1 = std.mem.findScalarLast(u8, head[0..c2], ':') orelse continue;
+            if (c1 == 0) continue;
+            const ln = std.fmt.parseInt(u32, head[c1 + 1 .. c2], 10) catch continue;
+            const col = std.fmt.parseInt(u32, head[c2 + 1 ..], 10) catch continue;
+            if (ln == 0 or col == 0) continue;
+            const message = rest[@tagName(kind).len + 1 ..];
+            return .{ .path = head[0..c1], .line = ln, .col = col, .kind = kind, .message = std.mem.trim(u8, message, " \t") };
+        }
+        return null;
+    }
+};
+
 /// A change to a document's text: `len` bytes at `start` became `new_len`
 /// bytes, making version `version`.
 const Edit = struct { version: u64, start: u32, len: u32, new_len: u32 };
@@ -600,14 +806,17 @@ const Edit = struct { version: u64, start: u32, len: u32, new_len: u32 };
 const max_edits = 4096;
 
 /// An open document. `version` is a tick of the server's clock, new with
-/// each change; `log` holds the edits that made each version after
-/// `log_from`; `failed`: the error of the failed analysis its opening or
-/// saving asked for, until an analysis succeeds.
+/// each change; `opened`, the version it opened with; `saved`, the version
+/// opened or saved last, the text on disk; `log` holds the edits that made
+/// each version after `log_from`; `failed`: the error of the failed
+/// analysis its opening or saving asked for, until an analysis succeeds.
 const Doc = struct {
     uri: []u8,
     path: []u8,
     text: []u8,
     version: u64,
+    opened: u64,
+    saved: u64,
     log: std.ArrayList(Edit) = .empty,
     log_from: u64,
     failed: ?[]const u8 = null,
@@ -741,6 +950,48 @@ const Held = struct {
     }
 };
 
+/// The most checks whose diagnostics the server holds, one per command;
+/// holding one more drops the one made first.
+const max_checked = 64;
+
+/// The diagnostics of the last check of one command, in an arena of its
+/// own: the command (`Check.key`), the name its diagnostics give as their
+/// source (the command's first word, without its directory), the version
+/// of the saved text of each open document, and the tick it was made at.
+const Checked = struct {
+    arena: std.heap.ArenaAllocator,
+    key: []const u8,
+    source: []const u8,
+    diagnostics: []const Diagnostic,
+    read: []const Held.Read,
+    made: u64,
+
+    fn versionOf(c: *const Checked, path: []const u8) ?u64 {
+        for (c.read) |r| if (std.mem.eql(u8, r.path, path)) return r.version;
+        return null;
+    }
+};
+
+/// The features a client may ask for, by their names in
+/// `initializationOptions.features`; without that option, all of them.
+/// `definition` is go to definition and to type definition; `references`
+/// the references and the highlights; `check` the check command.
+const Feature = enum {
+    diagnostics,
+    semanticTokens,
+    folding,
+    selection,
+    symbols,
+    hover,
+    definition,
+    references,
+    rename,
+    completion,
+    signature,
+    formatting,
+    check,
+};
+
 const Server = struct {
     gpa: Allocator,
     io: std.Io,
@@ -781,8 +1032,29 @@ const Server = struct {
     cached: std.array_hash_map.String(*Cached) = .empty,
     /// Counts the requests, for the cache's eviction.
     requests: u64 = 0,
+    /// The features the client asks for (`initializationOptions.features`).
+    features: std.EnumSet(Feature) = .full,
+    /// The check command (`initializationOptions.check`), its words as the
+    /// client gives them, `${file}` and `${root}` not yet replaced; empty
+    /// without one.
+    check: std.ArrayList([]u8) = .empty,
+    /// How long a check may run (`initializationOptions.checkTimeout`), in
+    /// milliseconds.
+    check_timeout: u32 = default_check_timeout,
+    /// The check the checker runs, and the checker.
+    checking: ?*Check = null,
+    checker: ?std.Io.Future(void) = null,
+    /// The checks asked for and not yet begun: one per command (its key),
+    /// with the root of the document that asked last.
+    check_pending: std.ArrayList(CheckPending) = .empty,
+    /// The last diagnostics of each command checked.
+    checked: std.ArrayList(Checked) = .empty,
+    /// Whether the last check failed: a failure is logged when the check
+    /// before it did not fail.
+    check_failed: bool = false,
 
     const Pending = struct { root: []u8, uri: []u8 };
+    const CheckPending = struct { key: []u8, root: []u8 };
 
     fn deinit(s: *Server) void {
         for (s.docs.items) |*d| d.deinit(s.gpa);
@@ -811,6 +1083,15 @@ const Server = struct {
             c.destroy(s.gpa);
         }
         s.cached.deinit(s.gpa);
+        for (s.check.items) |w| s.gpa.free(w);
+        s.check.deinit(s.gpa);
+        for (s.check_pending.items) |p| {
+            s.gpa.free(p.key);
+            s.gpa.free(p.root);
+        }
+        s.check_pending.deinit(s.gpa);
+        for (s.checked.items) |*c| c.arena.deinit();
+        s.checked.deinit(s.gpa);
     }
 
     fn tick(s: *Server) u64 {
@@ -818,24 +1099,48 @@ const Server = struct {
         return s.clock;
     }
 
-    /// Wait for the analysis the worker runs, and drop it.
+    /// Wait for the analysis the worker runs, stop the check the checker
+    /// runs (and the command with it), and drop both.
     fn stopWorker(s: *Server) void {
         if (s.worker) |*w| w.await(s.io);
         s.worker = null;
+        if (s.checker) |*w| w.cancel(s.io);
+        s.checker = null;
+        // What finished but was never handled.
+        var events: [1]Event = undefined;
+        while ((s.queue.get(s.io, &events, 0) catch 0) == 1) switch (events[0]) {
+            .message => |body| if (body) |b| s.gpa.free(b),
+            .analyzed => |job| {
+                if (s.running == job) s.running = null;
+                job.arena.deinit();
+                s.gpa.destroy(job);
+            },
+            .checked => |c| {
+                if (s.checking == c) s.checking = null;
+                c.arena.deinit();
+                s.gpa.destroy(c);
+            },
+        };
         if (s.running) |job| {
             job.arena.deinit();
             s.gpa.destroy(job);
         }
         s.running = null;
-        // Analyses that finished but were never handled.
-        var events: [1]Event = undefined;
-        while ((s.queue.get(s.io, &events, 0) catch 0) == 1) switch (events[0]) {
-            .message => |body| if (body) |b| s.gpa.free(b),
-            .analyzed => |job| {
-                job.arena.deinit();
-                s.gpa.destroy(job);
-            },
-        };
+        if (s.checking) |c| {
+            c.arena.deinit();
+            s.gpa.destroy(c);
+        }
+        s.checking = null;
+    }
+
+    /// Whether an analysis or a check asked for has not yet landed.
+    fn busy(s: *const Server) bool {
+        return s.running != null or s.checking != null;
+    }
+
+    /// Whether the client asks for `f`.
+    fn on(s: *const Server, f: Feature) bool {
+        return s.features.contains(f);
     }
 
     /// Handle what the queue brings until `exit` or the end of input.
@@ -853,12 +1158,13 @@ const Server = struct {
                     if (s.dispatch(a, b) catch return 1) |status| return status;
                 },
                 .analyzed => |job| s.finish(a, job) catch return 1,
+                .checked => |c| s.finishCheck(a, c) catch return 1,
             }
         }
     }
 
     /// Read and handle messages until `exit` or the end of input, and
-    /// handle each analysis as it finishes.
+    /// handle each analysis and check as it finishes.
     fn serveInline(s: *Server, in: *std.Io.Reader) u8 {
         var arena: std.heap.ArenaAllocator = .init(s.gpa);
         defer arena.deinit();
@@ -871,6 +1177,7 @@ const Server = struct {
             while ((s.queue.get(s.io, &events, 0) catch 0) == 1) switch (events[0]) {
                 .message => unreachable,
                 .analyzed => |job| s.finish(a, job) catch return 1,
+                .checked => |c| s.finishCheck(a, c) catch return 1,
             };
         }
     }
@@ -894,7 +1201,10 @@ const Server = struct {
         const eql = std.mem.eql;
         if (eql(u8, method, "initialize")) {
             s.initialized = true;
-            return s.respond(a, id orelse return, try s.initializeResult(a, params));
+            var unknown: std.ArrayList([]const u8) = .empty;
+            try s.respond(a, id orelse return, try s.initializeResult(a, params, &unknown));
+            for (unknown.items) |name| try s.notify(a, "window/logMessage", .{ .type = 2, .message = try a.print("features: {s} is no feature of the server", .{name}) });
+            return;
         }
         if (!s.initialized) {
             if (id) |i| try s.respondError(a, i, .server_not_initialized, "initialize first");
@@ -906,7 +1216,7 @@ const Server = struct {
         }
         if (eql(u8, method, "nexus/idle")) {
             const i = id orelse return;
-            if (s.running == null) return s.respond(a, i, null);
+            if (!s.busy()) return s.respond(a, i, null);
             return s.idle.append(s.gpa, try std.json.Stringify.valueAlloc(s.gpa, i, .{}));
         }
         if (eql(u8, method, "textDocument/didOpen")) return s.didOpen(a, params);
@@ -916,31 +1226,31 @@ const Server = struct {
         const i = id orelse return; // other notifications
         s.requests += 1;
         const doc = s.docOf(params) orelse return s.respondError(a, i, .invalid_params, "no open document");
-        const result: Result = if (eql(u8, method, "textDocument/semanticTokens/full"))
+        const result: Result = if (s.on(.semanticTokens) and eql(u8, method, "textDocument/semanticTokens/full"))
             try s.semanticTokens(a, doc)
-        else if (eql(u8, method, "textDocument/foldingRange"))
+        else if (s.on(.folding) and eql(u8, method, "textDocument/foldingRange"))
             try s.foldingRanges(a, doc)
-        else if ((comptime has("symbols") or byNames("symbols")) and eql(u8, method, "textDocument/documentSymbol"))
+        else if ((comptime has("symbols") or byNames("symbols")) and s.on(.symbols) and eql(u8, method, "textDocument/documentSymbol"))
             try s.documentSymbols(a, doc)
-        else if ((comptime parser.nodeStore) and eql(u8, method, "textDocument/selectionRange"))
+        else if ((comptime parser.nodeStore) and s.on(.selection) and eql(u8, method, "textDocument/selectionRange"))
             try s.selectionRanges(a, doc, params)
-        else if (eql(u8, method, "textDocument/completion"))
+        else if (s.on(.completion) and eql(u8, method, "textDocument/completion"))
             try s.completion(a, doc, params)
-        else if ((comptime canHover() or byNames("describe")) and eql(u8, method, "textDocument/hover"))
+        else if ((comptime canHover() or byNames("describe")) and s.on(.hover) and eql(u8, method, "textDocument/hover"))
             try s.hover(a, doc, params)
-        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/definition"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and s.on(.definition) and eql(u8, method, "textDocument/definition"))
             try s.definition(a, doc, params)
-        else if ((comptime has("typeAt") and has("describe")) and eql(u8, method, "textDocument/typeDefinition"))
+        else if ((comptime has("typeAt") and has("describe")) and s.on(.definition) and eql(u8, method, "textDocument/typeDefinition"))
             try s.typeDefinition(a, doc, params)
-        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/references"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and s.on(.references) and eql(u8, method, "textDocument/references"))
             try s.references(a, doc, params, false)
-        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/documentHighlight"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and s.on(.references) and eql(u8, method, "textDocument/documentHighlight"))
             try s.references(a, doc, params, true)
-        else if ((comptime has("symbolAt") or byNames("symbolAt")) and eql(u8, method, "textDocument/rename"))
+        else if ((comptime has("symbolAt") or byNames("symbolAt")) and s.on(.rename) and eql(u8, method, "textDocument/rename"))
             try s.rename(a, doc, params)
-        else if ((comptime has("signatures")) and eql(u8, method, "textDocument/signatureHelp"))
+        else if ((comptime has("signatures")) and s.on(.signature) and eql(u8, method, "textDocument/signatureHelp"))
             try s.signatureHelp(a, doc, params)
-        else if ((comptime has("format")) and eql(u8, method, "textDocument/formatting"))
+        else if ((comptime has("format")) and s.on(.formatting) and eql(u8, method, "textDocument/formatting"))
             try s.formatting(a, doc)
         else
             return s.respondError(a, i, .method_not_found, method);
@@ -957,7 +1267,30 @@ const Server = struct {
         return has("describe") and (has("symbolAt") or has("typeAt"));
     }
 
-    fn initializeResult(s: *Server, a: Allocator, params: Value) error{OutOfMemory}![]const u8 {
+    /// Take the client's options, and answer with the capabilities; each
+    /// name of `features` that is no feature goes in `unknown`.
+    fn initializeResult(s: *Server, a: Allocator, params: Value, unknown: *std.ArrayList([]const u8)) error{OutOfMemory}![]const u8 {
+        if (field(params, &.{ "initializationOptions", "features" })) |fs| if (fs == .array) {
+            s.features = .empty;
+            for (fs.array.items) |f| {
+                const name = str(f) orelse {
+                    try unknown.append(a, try std.json.Stringify.valueAlloc(a, f, .{}));
+                    continue;
+                };
+                if (std.meta.stringToEnum(Feature, name)) |feature| s.features.insert(feature) else try unknown.append(a, name);
+            }
+        };
+        if (field(params, &.{ "initializationOptions", "check" })) |c| if (c == .array) {
+            for (c.array.items) |w| if (str(w)) |word| try s.check.append(s.gpa, try s.gpa.dupe(u8, word));
+            // A command with a word that is not a string, or no command, is none.
+            if (s.check.items.len != c.array.items.len or (s.check.items.len > 0 and s.check.items[0].len == 0)) {
+                for (s.check.items) |w| s.gpa.free(w);
+                s.check.clearRetainingCapacity();
+            }
+        };
+        if (int(field(params, &.{ "initializationOptions", "checkTimeout" }))) |ms| if (ms > 0) {
+            s.check_timeout = ms;
+        };
         if (field(params, &.{ "capabilities", "general", "positionEncodings" })) |encs| if (encs == .array) {
             for (encs.array.items) |e| if (str(e)) |name| if (std.mem.eql(u8, name, "utf-8")) {
                 s.encoding = .utf8;
@@ -981,57 +1314,73 @@ const Server = struct {
         var out: std.Io.Writer.Allocating = .init(a);
         var j: std.json.Stringify = .{ .writer = &out.writer };
         j.beginObject() catch return error.OutOfMemory;
-        writeCapabilities(&j, s.encoding) catch return error.OutOfMemory;
+        s.writeCapabilities(&j) catch return error.OutOfMemory;
         j.objectField("serverInfo") catch return error.OutOfMemory;
         j.write(.{ .name = language.id ++ "-lsp" }) catch return error.OutOfMemory;
         j.endObject() catch return error.OutOfMemory;
         return out.written();
     }
 
-    fn writeCapabilities(j: *std.json.Stringify, encoding: Encoding) std.Io.Writer.Error!void {
+    /// The capabilities of the features the server can give and the client
+    /// asks for.
+    fn writeCapabilities(s: *const Server, j: *std.json.Stringify) std.Io.Writer.Error!void {
         try j.objectField("capabilities");
         try j.beginObject();
         try j.objectField("positionEncoding");
-        try j.write(if (encoding == .utf8) "utf-8" else "utf-16");
+        try j.write(if (s.encoding == .utf8) "utf-8" else "utf-16");
         try j.objectField("textDocumentSync");
         try j.write(.{ .openClose = true, .change = 2, .save = .{ .includeText = false } });
-        try j.objectField("semanticTokensProvider");
-        try j.write(.{ .legend = .{ .tokenTypes = legend, .tokenModifiers = modifier_legend }, .full = true });
+        if (s.on(.semanticTokens)) {
+            try j.objectField("semanticTokensProvider");
+            try j.write(.{ .legend = .{ .tokenTypes = legend, .tokenModifiers = modifier_legend }, .full = true });
+        }
         // Without node spans or a folds function, the editor's own
         // indentation folding serves better than comment runs alone.
-        if (parser.nodeStore or has("folds")) {
+        if ((parser.nodeStore or has("folds")) and s.on(.folding)) {
             try j.objectField("foldingRangeProvider");
             try j.write(true);
         }
-        if (parser.nodeStore) {
+        if (parser.nodeStore and s.on(.selection)) {
             try j.objectField("selectionRangeProvider");
             try j.write(true);
         }
-        if (has("symbols") or byNames("symbols")) {
+        if ((has("symbols") or byNames("symbols")) and s.on(.symbols)) {
             try j.objectField("documentSymbolProvider");
             try j.write(true);
         }
-        try j.objectField("completionProvider");
-        try j.write(.{ .triggerCharacters = triggers });
-        if (canHover() or byNames("describe")) {
+        if (s.on(.completion)) {
+            try j.objectField("completionProvider");
+            try j.write(.{ .triggerCharacters = triggers });
+        }
+        if ((canHover() or byNames("describe")) and s.on(.hover)) {
             try j.objectField("hoverProvider");
             try j.write(true);
         }
         if (has("symbolAt") or byNames("symbolAt")) {
-            inline for (.{ "definitionProvider", "referencesProvider", "documentHighlightProvider", "renameProvider" }) |name| {
-                try j.objectField(name);
+            if (s.on(.definition)) {
+                try j.objectField("definitionProvider");
+                try j.write(true);
+            }
+            if (s.on(.references)) {
+                try j.objectField("referencesProvider");
+                try j.write(true);
+                try j.objectField("documentHighlightProvider");
+                try j.write(true);
+            }
+            if (s.on(.rename)) {
+                try j.objectField("renameProvider");
                 try j.write(true);
             }
         }
-        if (has("typeAt") and has("describe")) {
+        if (has("typeAt") and has("describe") and s.on(.definition)) {
             try j.objectField("typeDefinitionProvider");
             try j.write(true);
         }
-        if (has("signatures")) {
+        if (has("signatures") and s.on(.signature)) {
             try j.objectField("signatureHelpProvider");
             try j.write(.{ .triggerCharacters = [_][]const u8{ "(", "," } });
         }
-        if (has("format")) {
+        if (has("format") and s.on(.formatting)) {
             try j.objectField("documentFormattingProvider");
             try j.write(true);
         }
@@ -1053,6 +1402,8 @@ const Server = struct {
             s.gpa.free(d.text);
             d.text = try s.gpa.dupe(u8, text);
             d.version = s.tick();
+            d.opened = d.version;
+            d.saved = d.version;
             d.dropNames(s.gpa);
             d.log.clearRetainingCapacity();
             d.log_from = d.version;
@@ -1064,11 +1415,21 @@ const Server = struct {
                 .path = try s.gpa.dupe(u8, path orelse ""),
                 .text = try s.gpa.dupe(u8, text),
                 .version = version,
+                .opened = version,
+                .saved = version,
                 .log_from = version,
             });
         }
-        // An analysis it asks for publishes when it lands.
-        if (!try s.askAnalysis(s.docOf(params).?)) try s.publishAll(a);
+        try s.analyzeAndCheck(a, s.docOf(params).?);
+    }
+
+    /// Ask for the analysis and the check of `d`'s program, which `d`'s
+    /// opening or saving asks for; an analysis publishes when it lands, so
+    /// without one, publish now.
+    fn analyzeAndCheck(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
+        const analyzing = try s.askAnalysis(d);
+        try s.askCheck(d);
+        if (!analyzing) try s.publishAll(a);
     }
 
     /// Apply each change in turn: a range and its new text, or the whole
@@ -1101,7 +1462,8 @@ const Server = struct {
 
     fn didSave(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
         const d = s.docOf(params) orelse return;
-        if (!try s.askAnalysis(d)) try s.publishAll(a);
+        d.saved = d.version;
+        try s.analyzeAndCheck(a, d);
     }
 
     fn didClose(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
@@ -1235,15 +1597,155 @@ const Server = struct {
             defer s.gpa.free(next.uri);
             try s.startJob(next.root, next.uri);
         }
+        try s.startNextCheck();
         s.pruneLogs();
         try s.publishAll(a);
-        if (s.running == null) {
-            for (s.idle.items) |i| {
-                try writeMessage(s.out, try std.fmt.allocPrint(a, "{{\"jsonrpc\":\"2.0\",\"id\":{s},\"result\":null}}", .{i}));
-                s.gpa.free(i);
-            }
-            s.idle.clearRetainingCapacity();
+        try s.answerIdle(a);
+    }
+
+    /// Answer the `nexus/idle` requests waiting, once nothing asked for is
+    /// under way.
+    fn answerIdle(s: *Server, a: Allocator) error{ OutOfMemory, WriteFailed }!void {
+        if (s.busy()) return;
+        for (s.idle.items) |i| {
+            try writeMessage(s.out, try std.fmt.allocPrint(a, "{{\"jsonrpc\":\"2.0\",\"id\":{s},\"result\":null}}", .{i}));
+            s.gpa.free(i);
         }
+        s.idle.clearRetainingCapacity();
+    }
+
+    // --- Checks ------------------------------------------------------------
+
+    /// Ask for a check of `d`'s program, when the client gives a check
+    /// command and asks for `check`: the command with `${file}` and
+    /// `${root}` in place; after the analyses and the check under way, once
+    /// per command. None for a document without a path.
+    fn askCheck(s: *Server, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
+        if (s.check.items.len == 0 or !s.on(.check) or d.path.len == 0) return;
+        const root = s.rootOf(d);
+        var key: std.ArrayList(u8) = .empty;
+        defer key.deinit(s.gpa);
+        for (s.check.items, 0..) |word, n| {
+            if (n > 0) try key.append(s.gpa, 0);
+            var rest = word;
+            while (rest.len > 0) {
+                if (std.mem.startsWith(u8, rest, "${file}")) {
+                    try key.appendSlice(s.gpa, d.path);
+                    rest = rest["${file}".len..];
+                } else if (std.mem.startsWith(u8, rest, "${root}")) {
+                    try key.appendSlice(s.gpa, root);
+                    rest = rest["${root}".len..];
+                } else {
+                    try key.append(s.gpa, rest[0]);
+                    rest = rest[1..];
+                }
+            }
+        }
+        for (s.check_pending.items) |*p| if (std.mem.eql(u8, p.key, key.items)) {
+            const owned = try s.gpa.dupe(u8, root);
+            s.gpa.free(p.root);
+            p.root = owned;
+            return s.startNextCheck();
+        };
+        const owned_key = try s.gpa.dupe(u8, key.items);
+        errdefer s.gpa.free(owned_key);
+        try s.check_pending.append(s.gpa, .{ .key = owned_key, .root = try s.gpa.dupe(u8, root) });
+        try s.startNextCheck();
+    }
+
+    /// Start the check asked for first, when the checker is free and no
+    /// analysis runs: a check follows the analyses asked for with it, so
+    /// the two never compete, and each publishes in turn.
+    fn startNextCheck(s: *Server) error{ OutOfMemory, WriteFailed }!void {
+        if (s.checking != null or s.running != null or s.check_pending.items.len == 0) return;
+        const next = s.check_pending.orderedRemove(0);
+        defer s.gpa.free(next.key);
+        defer s.gpa.free(next.root);
+        try s.startCheck(next.key, next.root);
+    }
+
+    /// Hand the checker the command `key` of the program of `root`, run in
+    /// the first workspace folder, else the root's directory; where tasks
+    /// cannot run concurrently, run it here.
+    fn startCheck(s: *Server, key: []const u8, root: []const u8) error{ OutOfMemory, WriteFailed }!void {
+        const c = try s.gpa.create(Check);
+        c.* = .{ .arena = .init(s.gpa), .io = s.io, .key = undefined, .root = undefined, .cwd = undefined, .timeout = s.check_timeout, .read = undefined };
+        errdefer {
+            c.arena.deinit();
+            s.gpa.destroy(c);
+        }
+        const ca = c.arena.allocator();
+        c.key = try ca.dupe(u8, key);
+        c.root = try ca.dupe(u8, root);
+        c.cwd = try ca.dupe(u8, if (s.folders.items.len > 0) s.folders.items[0] else std.fs.path.dirname(root) orelse "/");
+        var read: std.ArrayList(Held.Read) = .empty;
+        for (s.docs.items) |o| if (o.path.len > 0) {
+            try read.append(ca, .{ .path = try ca.dupe(u8, o.path), .version = o.saved });
+        };
+        c.read = read.items;
+        s.checking = c;
+        if (!s.inline_jobs) {
+            if (s.io.concurrent(Check.run, .{ c, s.queue })) |w| {
+                s.checker = w;
+                return;
+            } else |_| s.inline_jobs = true;
+        }
+        c.run(s.queue);
+    }
+
+    /// Hold what the checker found, in place of the last diagnostics of
+    /// the same command, then start the next check and publish what
+    /// changed. A check that failed drops them, and is logged unless the
+    /// check before it failed too.
+    fn finishCheck(s: *Server, a: Allocator, c: *Check) error{ OutOfMemory, WriteFailed }!void {
+        if (s.checker) |*w| w.await(s.io);
+        s.checker = null;
+        s.checking = null;
+        for (s.checked.items, 0..) |*h, i| if (std.mem.eql(u8, h.key, c.key)) {
+            h.arena.deinit();
+            _ = s.checked.orderedRemove(i);
+            break;
+        };
+        switch (c.result) {
+            .diagnostics => |list| {
+                s.check_failed = false;
+                if (s.checked.items.len == max_checked) {
+                    s.checked.items[0].arena.deinit();
+                    _ = s.checked.orderedRemove(0);
+                }
+                const first = c.key[0 .. std.mem.findScalar(u8, c.key, 0) orelse c.key.len];
+                try s.checked.append(s.gpa, .{
+                    .arena = c.arena,
+                    .key = c.key,
+                    .source = std.fs.path.basename(first),
+                    .diagnostics = list,
+                    .read = c.read,
+                    .made = s.tick(),
+                });
+                s.gpa.destroy(c);
+            },
+            .failed => |why| {
+                const message = try a.dupe(u8, why);
+                c.arena.deinit();
+                s.gpa.destroy(c);
+                if (!s.check_failed) try s.notify(a, "window/logMessage", .{ .type = 1, .message = message });
+                s.check_failed = true;
+            },
+        }
+        try s.startNextCheck();
+        s.pruneLogs();
+        try s.publishAll(a);
+        try s.answerIdle(a);
+    }
+
+    /// `span`, in the text on disk when the check `c` began, in the text
+    /// now: through the edits since the saved version `c` read of an open
+    /// document, else (it opened since) since the version opened or saved
+    /// last.
+    fn checkNow(s: *Server, c: *const Checked, span: Span) ?Span {
+        const d = s.docAt(span.path) orelse return span;
+        const read = c.versionOf(span.path) orelse d.saved;
+        return moved(d, if (read >= d.opened) read else d.saved, span);
     }
 
     /// Hold a finished job's analysis, last in `analyses`, in place of the
@@ -1292,6 +1794,16 @@ const Server = struct {
             if (s.running) |job| for (job.read) |r| if (std.mem.eql(u8, r.path, d.path)) {
                 oldest = @min(oldest, r.version);
             };
+            // A check's diagnostics move from the saved text it read.
+            if (s.check.items.len > 0) {
+                oldest = @min(oldest, d.saved);
+                for (s.checked.items) |*c| if (c.versionOf(d.path)) |v| if (v >= d.opened) {
+                    oldest = @min(oldest, v);
+                };
+                if (s.checking) |c| for (c.read) |r| if (std.mem.eql(u8, r.path, d.path)) {
+                    oldest = @min(oldest, r.version);
+                };
+            }
             d.prune(oldest);
         }
     }
@@ -1308,7 +1820,12 @@ const Server = struct {
     /// where an edit since replaced text in it.
     fn toNow(s: *Server, h: *const Held, span: Span) ?Span {
         const d = s.docAt(span.path) orelse return span;
-        const from = h.versionOf(span.path) orelse return span;
+        return moved(d, h.versionOf(span.path) orelse return span, span);
+    }
+
+    /// `span` of the text of `d`'s version `from`, in its text now; null
+    /// where an edit since replaced text in it.
+    fn moved(d: *const Doc, from: u64, span: Span) ?Span {
         if (from == d.version) return span;
         const last = d.forward(from, span.end, true) orelse return null;
         const first = if (span.start == span.end) last else d.forward(from, span.start, false) orelse return null;
@@ -1334,7 +1851,11 @@ const Server = struct {
     fn publishAll(s: *Server, a: Allocator) error{ OutOfMemory, WriteFailed }!void {
         for (s.docs.items) |*d| try s.publish(a, d);
         var named: std.ArrayList([]const u8) = .empty;
-        for (s.analyses.items) |h| for (h.diagnostics) |diag| {
+        if (s.on(.diagnostics)) for (s.analyses.items) |h| for (h.diagnostics) |diag| {
+            if (s.isOpen(diag.span.path) or containsPath(named.items, diag.span.path)) continue;
+            try named.append(a, diag.span.path);
+        };
+        for (s.checked.items) |c| for (c.diagnostics) |diag| {
             if (s.isOpen(diag.span.path) or containsPath(named.items, diag.span.path)) continue;
             try named.append(a, diag.span.path);
         };
@@ -1364,34 +1885,56 @@ const Server = struct {
     /// Publish an open document's diagnostics: its parse errors, its uses
     /// of names nothing defines (with `@lsp`'s `undefined`, when the
     /// language has no `analyze`), then its program's analysis's while it
-    /// read this text.
+    /// read this text; then the checks'.
     fn publish(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
-        var parsed = try parseDiagnostics(a, d.path, d.text);
-        if (comptime has_names and !has("analyze") and language.names.undefined != null) {
-            const ix = try s.nameIndex(d);
-            parsed = try std.mem.concat(a, Diagnostic, &.{ parsed, try ix.undefinedNames(a, d.path) });
+        var parsed: []const Diagnostic = &.{};
+        if (s.on(.diagnostics)) {
+            parsed = try parseDiagnostics(a, d.path, d.text);
+            if (comptime has_names and !has("analyze") and language.names.undefined != null) {
+                const ix = try s.nameIndex(d);
+                parsed = try std.mem.concat(a, Diagnostic, &.{ parsed, try ix.undefinedNames(a, d.path) });
+            }
         }
         try s.sendFileDiagnostics(a, d.path, .{ .text = d.text, .parsed = parsed, .version = d.version, .failed = d.failed, .uri = d.uri });
     }
 
     const Open = struct { text: []const u8, parsed: []const Diagnostic, version: u64, failed: ?[]const u8, uri: []const u8 };
 
+    /// A diagnostic to publish, and the name of what gave it.
+    const Shown = struct { d: Diagnostic, source: []const u8 = language.id };
+
     fn sendFileDiagnostics(s: *Server, a: Allocator, path: []const u8, open: ?Open) error{ OutOfMemory, WriteFailed }!void {
-        var list: std.ArrayList(Diagnostic) = .empty;
-        if (open) |o| try list.appendSlice(a, o.parsed);
-        if (open) |o| if (o.failed) |err| try list.append(a, .{
-            .span = .{ .path = path, .start = 0, .end = 0 },
-            .message = try std.fmt.allocPrint(a, "the analysis failed: {s}", .{err}),
-        });
-        // The analysis's, moved with the edits since it read the file;
-        // none in an open file it did not read.
-        if (s.ownerOf(path)) |h| if (open == null or h.versionOf(path) != null) {
-            for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) {
-                const span = s.toNow(h, d.span) orelse continue;
-                var notes: std.ArrayList(Note) = .empty;
-                for (d.notes) |n| try notes.append(a, .{ .span = s.toNow(h, n.span) orelse continue, .message = n.message });
-                try list.append(a, .{ .span = span, .severity = d.severity, .message = d.message, .notes = notes.items });
+        var list: std.ArrayList(Shown) = .empty;
+        if (open) |o| for (o.parsed) |d| try list.append(a, .{ .d = d });
+        if (s.on(.diagnostics)) {
+            if (open) |o| if (o.failed) |err| try list.append(a, .{ .d = .{
+                .span = .{ .path = path, .start = 0, .end = 0 },
+                .message = try std.fmt.allocPrint(a, "the analysis failed: {s}", .{err}),
+            } });
+            // The analysis's, moved with the edits since it read the file;
+            // none in an open file it did not read.
+            if (s.ownerOf(path)) |h| if (open == null or h.versionOf(path) != null) {
+                for (h.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) {
+                    const span = s.toNow(h, d.span) orelse continue;
+                    var notes: std.ArrayList(Note) = .empty;
+                    for (d.notes) |n| try notes.append(a, .{ .span = s.toNow(h, n.span) orelse continue, .message = n.message });
+                    try list.append(a, .{ .d = .{ .span = span, .severity = d.severity, .message = d.message, .notes = notes.items } });
+                };
             };
+        }
+        // Each check's, moved with the edits since the saved text it read;
+        // one that another check gave too, once.
+        const own = list.items.len;
+        for (s.checked.items) |*c| for (c.diagnostics) |d| if (std.mem.eql(u8, d.span.path, path)) {
+            const span = s.checkNow(c, d.span) orelse continue;
+            const seen = for (list.items[own..]) |o| {
+                if (o.d.span.start == span.start and o.d.span.end == span.end and o.d.severity == d.severity and
+                    std.mem.eql(u8, o.d.message, d.message) and std.mem.eql(u8, o.source, c.source)) break true;
+            } else false;
+            if (seen) continue;
+            var notes: std.ArrayList(Note) = .empty;
+            for (d.notes) |n| try notes.append(a, .{ .span = s.checkNow(c, n.span) orelse continue, .message = n.message });
+            try list.append(a, .{ .d = .{ .span = span, .severity = d.severity, .message = d.message, .notes = notes.items }, .source = c.source });
         };
         const text = if (open) |o| o.text else try s.fileText(a, path);
         const lines = try Lines.init(a, text, s.encoding);
@@ -1401,16 +1944,17 @@ const Server = struct {
         try s.sendDiagnostics(a, if (open) |o| o.uri else try pathToUri(a, path), out.written());
     }
 
-    fn writeDiagnostics(s: *Server, a: Allocator, j: *std.json.Stringify, lines: Lines, list: []const Diagnostic) !void {
+    fn writeDiagnostics(s: *Server, a: Allocator, j: *std.json.Stringify, lines: Lines, list: []const Shown) !void {
         try j.beginArray();
-        for (list) |d| {
+        for (list) |shown| {
+            const d = shown.d;
             try j.beginObject();
             try j.objectField("range");
             try j.write(lines.range(d.span.start, d.span.end));
             try j.objectField("severity");
             try j.write(@backingInt(d.severity));
             try j.objectField("source");
-            try j.write(language.id);
+            try j.write(shown.source);
             try j.objectField("message");
             try j.write(d.message);
             if (d.notes.len > 0) {

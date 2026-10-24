@@ -1,0 +1,7 @@
+# The check runs beside the analysis, with ${root} in place: the file
+# shows its syntax errors, the analysis's diagnostics and the check's,
+# each check's diagnostic once.
+initialize root main.tally check ["../stub/checker", "report", "${root}"]
+open main.tally
+open util.tally
+save util.tally

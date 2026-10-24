@@ -1,0 +1,6 @@
+# A check command that exits with a failure and names no file is logged
+# once, with the first line of its output, and shows nothing wrong in the
+# file.
+initialize check ["./checker", "fail"]
+open main.tally
+save main.tally

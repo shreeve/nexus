@@ -1,0 +1,6 @@
+> initialize check ["./no-such-checker", "${file}"]
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","definition","readonly","static","deprecated","abstract","async","modification","documentation","defaultLibrary"],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid","namespace","class","enum","interface","struct","typeParameter","variable","property","enumMember","event","method","macro","regexp","decorator"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the check of main.tally could not run no-such-checker: FileNotFound","type":1}}
+> save main.tally
+> open util.tally
