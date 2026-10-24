@@ -373,7 +373,10 @@ native stack.
 itself, so the frontend is always the product of the current generator.
 The `bootstrap` test regenerates it and requires the checked-in file to be
 a fixed point. After any change to `nexus.grammar` or to generated code
-(`src/codegen/`, `src/lexgen/`):
+(`src/codegen/`, `src/lexgen/`), in a worktree (each `zig build` here
+replaces `bin/nexus` with a debug build, which the checkout Rig, em and
+nexis build with must not have; [AGENTS.md,
+"Downstream"](../AGENTS.md#downstream)):
 
 ```bash
 zig build

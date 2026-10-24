@@ -24,7 +24,7 @@
 #   -O MODE         optimize mode of the tool (default fast)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-accept/ from this
-# checkout's bin/nexus (run `zig build` first). It prints one line per
+# checkout's bin/nexus (in a worktree, `zig build` first). It prints one line per
 # input on which the parsers disagree, with the first error of the side
 # that rejects (line:col and the token or Ast error tag), and a summary;
 # it exits 1 when any input differs.
