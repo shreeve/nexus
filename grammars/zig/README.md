@@ -324,9 +324,10 @@ in process:
 
 What it does not do: anything that needs types. A value's members
 whose type needs inference (`list.` for an `std.ArrayList(u8)`, a
-call's result, `@This()`), a value's type on hover, type errors, and
+call's result, `@This()`), a value's type on hover, and
 `@import` of a module a `build.zig` declares (unless `modules` names
-its file) answer nothing, rather than guess. It is a demonstration
+its file) answer nothing, rather than guess; type errors come from the
+check ([Type errors on save](#type-errors-on-save)). It is a demonstration
 of what a grammar and a page of hooks give a large language, not a
 replacement for ZLS, and the extension is not published.
 
@@ -446,34 +447,31 @@ find $Z/lib $Z/src $Z/test $Z/doc -name '*.zig' -print0 |
 editor/latency ~/nexus-zig/vscode/bin/zig-lsp $Z/src Sema.zig
 ```
 
-### Type errors on save: not here
+### Type errors on save
 
-The compiler is the only source of Zig's type errors, and Zig 0.17.0
-has two ways to ask it from an editor: `zig build` with its output
-read as text, which is fragile, and the build server protocol (`zig
-build --listen=-`, protocol version 1). The protocol works for a
-build asked for on each save: after the handshake and the build
-graph's configuration, a request for the `check` step answers with the
-step's error bundle, the compiler's errors with their notes (220 ms for
-a type error in a one-file project, 40 ms for the build after it is
-fixed). Three things keep it out of this
-server:
+The compiler is the only source of Zig's type errors. The server asks it
+through the check of the generated server ([docs/LSP.md, "The
+check"](../../docs/LSP.md#the-check)): a command, set in user settings,
+that it runs when a file opens or is saved, reading the compiler's
+`file:line:col: error:` lines and their notes into diagnostics that
+move with unsaved edits.
 
-- **A changed `build.zig` is not seen.** Without file watching the
-  build server builds with the configuration it started with, and a
-  client cannot ask it to configure again; only a restart does.
-- **Watching cannot take a second request.** With `watch` set, the
-  build server rebuilds by itself after a change, but a second request
-  for steps panics ("TODO file watching cannot be canceled without
-  blocking", lib/compiler/Maker.zig), so an editor cannot change what it
-  builds.
-- **A `build.zig` that does not compile ends the build server**
-  ("TODO stay running and wait for user to request rebuild even when
-  build.zig compilation fails"), and the client must start another.
+- A program built by `build.zig`: give it a `check` step, a compile step
+  that emits no binary, and set
+  `"nexus-zig.server.check": ["zig", "build", "check"]`.
+- A file on its own:
+  `"nexus-zig.server.check": ["zig", "build-obj", "-fno-emit-bin", "${file}"]`.
 
-Beyond the protocol, `analyze` would run the build on every save in
-the background with no setting to turn it off, since the client's
-settings do not reach `hooks.zig`.
+The check runs in the first workspace folder, only in a trusted
+workspace (`zig build` runs the workspace's `build.zig`), and is stopped
+after `nexus-zig.server.checkTimeout` milliseconds. The compiler analyzes
+only what the program reaches, so a function nothing calls has no type
+errors to report.
+
+Zig 0.17.0's build server (`zig build --listen=-`) would answer faster,
+but it builds with the `build.zig` it started with, panics on a second
+request while it watches files, and ends when `build.zig` does not
+compile; a command run on each save has none of these limits.
 
 ## Speed
 
