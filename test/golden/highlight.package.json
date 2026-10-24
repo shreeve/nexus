@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "engines": {"vscode": "^1.82.0"},
   "categories": ["Programming Languages"],
-  "main": "./extension.js",
+  "main": "./dist/extension.js",
   "activationEvents": ["onLanguage:lamp"],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -16,7 +16,8 @@
       "restrictedConfigurations": ["nexus-lamp.server.path", "nexus-lamp.server.check"]
     }
   },
-  "dependencies": {"vscode-languageclient": "9.0.1"},
+  "scripts": {"vscode:prepublish": "esbuild extension.js --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js"},
+  "devDependencies": {"esbuild": "0.28.2", "vscode-languageclient": "9.0.1"},
   "contributes": {
     "languages": [{
       "id": "lamp",

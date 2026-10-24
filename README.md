@@ -250,6 +250,11 @@ zig build -Doptimize=safe            # bin/nexus
 ./test/run                            # the whole suite
 ```
 
+`./test/run` builds `bin/nexus` again, in debug mode, first. In a
+checkout whose `bin/nexus` other projects build with (Rig, em and nexis
+use the one in `../nexus`), run the suite in a worktree of it instead
+([AGENTS.md, "Downstream"](AGENTS.md#downstream)).
+
 ```bash
 nexus calc.grammar src/parser.zig     # generate (`-` writes to standard output)
 nexus check calc.grammar              # every check, nothing written

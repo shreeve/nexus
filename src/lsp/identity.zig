@@ -30,11 +30,15 @@ pub const Identity = struct {
     /// The prefix of the settings: `<settings>.server.path`.
     settings: []const u8,
     mode: Mode,
+    /// In `companion` mode, the id of the extension that contributes the
+    /// language (`publisher.name`), which the extension names when no
+    /// extension contributes it; empty for none.
+    provider: []const u8,
 };
 
 /// The keys of identity.json, in the order the file and package.json
 /// give them.
-pub const keys = [_][]const u8{ "name", "displayName", "description", "publisher", "version", "license", "repository", "settings", "mode" };
+pub const keys = [_][]const u8{ "name", "displayName", "description", "publisher", "version", "license", "repository", "settings", "mode", "provider" };
 
 const key_list = list: {
     var s: []const u8 = "";
@@ -56,6 +60,7 @@ pub fn defaults(allocator: Allocator, h: *const Highlight) Allocator.Error!Ident
         .repository = "",
         .settings = prefixed,
         .mode = .standalone,
+        .provider = "",
     };
 }
 
@@ -85,6 +90,8 @@ pub fn parse(allocator: Allocator, path: []const u8, text: []const u8, base: Ide
     const source = try diag.Source.init(allocator, path, text);
     var id = base;
     var seen: [keys.len]bool = @splat(false);
+    // Where `provider` is given: only `companion` mode takes one.
+    var provider_at: ?usize = null;
     var scanner: std.json.Scanner = .initCompleteInput(allocator, text);
     var at = startOfNext(text, 0);
     const first = scanner.next() catch |err| return syntax(source, &scanner, err);
@@ -111,6 +118,7 @@ pub fn parse(allocator: Allocator, path: []const u8, text: []const u8, base: Ide
         }
         seen[index] = true;
         at = startOfNext(text, scanner.cursor);
+        if (std.mem.eql(u8, key, "provider")) provider_at = at;
         const value = switch (scanner.nextAlloc(allocator, .alloc_if_needed) catch |err| return syntax(source, &scanner, err)) {
             .string, .allocated_string => |s| s,
             else => {
@@ -129,6 +137,10 @@ pub fn parse(allocator: Allocator, path: []const u8, text: []const u8, base: Ide
         };
     }
     _ = scanner.next() catch |err| return syntax(source, &scanner, err);
+    if (provider_at) |p| if (id.provider.len > 0 and id.mode != .companion) {
+        diag.errAt(source, p, "\"provider\" is for companion mode, and the mode is standalone", .{});
+        return error.Reported;
+    };
     return id;
 }
 
@@ -147,6 +159,8 @@ fn rule(key: []const u8, value: []const u8) ?[]const u8 {
         if (!isPrefix(value)) return "must be names of letters, digits, '_' and '-', joined by dots";
     } else if (eql(u8, key, "mode")) {
         if (std.meta.stringToEnum(Mode, value) == null) return "must be standalone or companion";
+    } else if (eql(u8, key, "provider")) {
+        if (value.len > 0 and !isExtensionId(value)) return "must be an extension's id, its publisher and name joined by a dot, such as ziglang.vscode-zig";
     }
     return null;
 }
@@ -159,6 +173,13 @@ fn isName(s: []const u8, upper: bool) bool {
         else => return false,
     };
     return true;
+}
+
+/// `publisher.name`: a publisher and a name, each of letters, digits and
+/// `-`, starting with a letter or digit.
+fn isExtensionId(s: []const u8) bool {
+    const dot = std.mem.findScalar(u8, s, '.') orelse return false;
+    return isName(s[0..dot], true) and isName(s[dot + 1 ..], true);
 }
 
 fn isVersion(s: []const u8) bool {

@@ -592,7 +592,8 @@ check_editor_session() {
 # check_editor_client <suite dir> <scenario>: the extension `--editor`
 # writes (with <scenario>.identity.json as its identity.json, if there is
 # one, and then package.json, README.md and .vscodeignore equal to
-# <scenario>.package.json, .readme.txt and .vscodeignore), run under Node
+# <scenario>.package.json, .readme.txt and .vscodeignore, each that is
+# there), run under Node
 # with stubs of VS Code (test/lib/vscode), prints <scenario>.out.
 check_editor_client() {
     local dir=$1 scenario=$2 base out rc
@@ -606,9 +607,9 @@ check_editor_client() {
     (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --editor ${LANG_ARGS[@]+"${LANG_ARGS[@]}"} "$(basename "$GRAMMAR")" "$out") >>"$LOG" 2>&1 ||
         { REASON="--editor failed"; return 1; }
     if [[ -f $base.identity.json ]]; then
-        golden "$out/vscode/package.json" "$base.package.json" || return 1
-        golden "$out/vscode/README.md" "$base.readme.txt" || return 1
-        golden "$out/vscode/.vscodeignore" "$base.vscodeignore" || return 1
+        if [[ -f $base.package.json ]]; then golden "$out/vscode/package.json" "$base.package.json" || return 1; fi
+        if [[ -f $base.readme.txt ]]; then golden "$out/vscode/README.md" "$base.readme.txt" || return 1; fi
+        if [[ -f $base.vscodeignore ]]; then golden "$out/vscode/.vscodeignore" "$base.vscodeignore" || return 1; fi
     fi
     with_timeout "$TIMEOUT" node "$LIB/vscode" client "$out/vscode" "$scenario" >"$out.out" 2>>"$LOG"
     rc=$?
@@ -625,13 +626,16 @@ check_editor_client() {
 # place, and builds the server in safe mode into the extension with the
 # `zig env` of the Zig that built it beside it; with no `zig` on its PATH,
 # that server answers editor/names.session as names.out says, std
-# included. With NEXUS_TEST_PACKAGE set, each run also packages the
-# extension (npm install and vsce, from the network on a first run), and
-# the .vsix holds the server and its `zig env`. Without bin/nexus, or
+# included, and without its `zig env` too, editor/nozig.replay as
+# nozig.out says: std names no file, logged once. With NEXUS_TEST_PACKAGE
+# set, each run also packages the extension (npm install and vsce, from
+# the network on a first run) without a warning from vsce, and the .vsix
+# holds the server, its `zig env` and the client bundled into
+# dist/extension.js, and no node_modules. Without bin/nexus, or
 # with a `zig` that is not 0.17.0, it stops with a message and writes
 # nothing. VS Code is never run.
 check_install() {
-    local dir=$1 out stop=--no-package mode langs py path got
+    local dir=$1 out stop=--no-package mode langs py path got rc
     out="$WORK/out/install_$(basename "$dir")"
     command -v node >/dev/null || { REASON="node not found"; return 1; }
     # What it needs and does not have: it says so, and writes nothing.
@@ -657,9 +661,25 @@ check_install() {
         cmp -s "$dir/editor/hooks.zig" "$out/server/src/hooks.zig" || { REASON="install --$mode did not put editor/hooks.zig in place"; return 1; }
         [[ -x $out/vscode/bin/zig-lsp ]] || { REASON="install --$mode did not build vscode/bin/zig-lsp"; return 1; }
         grep -qF ".std_dir = " "$out/vscode/bin/zig-env.zon" || { REASON="install --$mode did not save zig env as vscode/bin/zig-env.zon"; return 1; }
-        if [[ -n ${NEXUS_TEST_PACKAGE:-} ]] && ! grep -qxF extension/bin/zig-env.zon <<<"$(unzip -Z1 "$out"/vscode/*.vsix)"; then
-            REASON="install --$mode packaged no .vsix with bin/zig-env.zon"
-            return 1
+        if [[ -n ${NEXUS_TEST_PACKAGE:-} ]]; then
+            local files
+            files=$(unzip -Z1 "$out"/vscode/*.vsix) || { REASON="install --$mode packaged no .vsix"; return 1; }
+            grep -qxF extension/bin/zig-env.zon <<<"$files" || { REASON="install --$mode packaged no bin/zig-env.zon"; return 1; }
+            grep -qxF extension/dist/extension.js <<<"$files" || { REASON="install --$mode packaged no dist/extension.js"; return 1; }
+            ! grep -q '^extension/node_modules/' <<<"$files" || { REASON="install --$mode packaged node_modules"; return 1; }
+            ! grep -q 'WARNING' "$out/install.log" || { REASON="vsce warned: $(grep -m1 WARNING "$out/install.log")"; return 1; }
+            # The bundle loads with only `vscode` outside it, away from
+            # node_modules.
+            cp "$out/vscode/dist/extension.js" "$out/bundle.js"
+            node -e '
+const Module = require("module");
+const load = Module._load;
+const vscode = new Proxy({}, { get: (t, k) => (t[k] ??= class {}) });
+Module._load = function (r, p, m) { return r === "vscode" ? vscode : load.call(this, r, p, m); };
+const e = require(process.argv[1]);
+process.exit(typeof e.activate === "function" && typeof e.deactivate === "function" ? 0 : 1);
+' "$out/bundle.js" >>"$LOG" 2>&1 || { REASON="install --$mode: dist/extension.js does not load"; return 1; }
+            echo "install --$mode: the .vsix holds $(wc -l <<<"$files" | tr -d ' ') files" >>"$LOG"
         fi
         echo "// changed" >>"$out/server/src/hooks.zig"
     done
@@ -672,7 +692,13 @@ check_install() {
         return 1
     fi
     diff -u "$dir/editor/names.out" "$out/names.out" >>"$LOG" || { REASON="with no zig on PATH, names.session differs from names.out"; return 1; }
-    return 0
+    # Nor its `zig env`: std names no file, and the server says why.
+    mv "$out/vscode/bin/zig-env.zon" "$out/zig-env.zon"
+    PATH=${path%:} with_timeout "$TIMEOUT" "$py" "$LIB/lsp" "$out/vscode/bin/zig-lsp" "$dir/project" "$dir/editor/nozig.replay" >"$out/nozig.out" 2>>"$LOG" </dev/null
+    rc=$?
+    mv "$out/zig-env.zon" "$out/vscode/bin/zig-env.zon"
+    [[ $rc -eq 0 ]] || { REASON="nozig.replay failed: $(grep -m1 '^!! ' "$out/nozig.out" || tail -1 "$out/nozig.out")"; return 1; }
+    golden "$out/nozig.out" "$dir/editor/nozig.out"
 }
 
 # check_highlight <suite dir> <sample>: the editor files colour the sample
@@ -866,7 +892,7 @@ check_cli() {
         expect 1 "id/vscode/identity.json:$2" --editor highlight.grammar id || return 1
         [[ $(cd "$dir/id" && find . -type f) == ./vscode/identity.json ]] || { REASON="a refused identity.json left files: $1"; return 1; }
     }
-    identity '{"name": "x", "bogus": "y"}' '1:15: error: unknown key "bogus"; the keys are name, displayName, description, publisher, version, license, repository, settings, mode' || return 1
+    identity '{"name": "x", "bogus": "y"}' '1:15: error: unknown key "bogus"; the keys are name, displayName, description, publisher, version, license, repository, settings, mode, provider' || return 1
     identity '["name"]' '1:1: error: the identity is not a JSON object of strings' || return 1
     identity '{"name": "x",' '2:1: error: the identity is not valid JSON' || return 1
     identity '{"name": "x"} {}' '1:15: error: the identity is not valid JSON' || return 1
@@ -880,6 +906,8 @@ check_cli() {
     identity '{"version": "1.0"}' '1:13: error: "version": "1.0" is not valid: it must be three numbers joined by dots, such as 0.1.0' || return 1
     identity '{"settings": "lamp..x"}' "1:14: error: \"settings\": \"lamp..x\" is not valid: it must be names of letters, digits, '_' and '-', joined by dots" || return 1
     identity '{"mode": "solo"}' '1:10: error: "mode": "solo" is not valid: it must be standalone or companion' || return 1
+    identity '{"mode": "companion", "provider": "vscode-zig"}' '1:35: error: "provider": "vscode-zig" is not valid: it must be an extension'"'"'s id, its publisher and name joined by a dot, such as ziglang.vscode-zig' || return 1
+    identity '{"provider": "ziglang.vscode-zig"}' '1:14: error: "provider" is for companion mode, and the mode is standalone' || return 1
     rm -rf "$dir/id" && mkdir -p "$dir/id/vscode/identity.json"
     expect 1 "error: cannot read id/vscode/identity.json" --editor highlight.grammar id || return 1
     rm -rf "$dir/id"

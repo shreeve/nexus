@@ -22,7 +22,7 @@
 #   -O MODE         optimize mode of the tool (default fast)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-tokens/ from this
-# checkout's bin/nexus (run `zig build` first). Compare prints one line per
+# checkout's bin/nexus (in a worktree, `zig build` first). Compare prints one line per
 # input whose streams differ, with the first difference, and a summary with
 # the longest token; it exits 1 when any file differs.
 

@@ -24,10 +24,14 @@ The language server is a Zig project beside this directory:
 in the extension. Then, in this directory:
 
 ```bash
-npm install
+npm install --ignore-scripts
 npx @vscode/vsce package --skip-license --allow-missing-repository
 ```
 
+`npm install` installs the client's library and esbuild, which needs
+none of its install scripts; `vsce package` first bundles the client
+into `dist/extension.js` (`npm run vscode:prepublish`), the one file
+of JavaScript the package holds.
 `--skip-license` packages the extension without a `LICENSE` file in
 this directory; `--allow-missing-repository`, without a
 `repository` in `identity.json`.

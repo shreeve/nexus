@@ -277,6 +277,11 @@ pub const OutlineItem = struct {
 /// A folding range: the lines from the line of `start` to that of `end`.
 pub const Fold = struct { start: u32, end: u32, comment: bool = false };
 
+/// What the server logs of an import whose name names no file
+/// (`unresolvedImport`): its line, its line and a sentence after it, or
+/// nothing, for a name that needs no file.
+pub const Unresolved = union(enum) { plain, hint: []const u8, quiet };
+
 // =============================================================================
 // Which functions the language has written
 // =============================================================================
@@ -1027,6 +1032,8 @@ const Server = struct {
     folders: std.ArrayList([]u8) = .empty,
     /// The files of module names (`initializationOptions.modules`).
     modules: std.array_hash_map.String([]u8) = .empty,
+    /// The import names logged as naming no file: each is logged once.
+    unresolved: std.array_hash_map.String(void) = .empty,
     /// The indexes of files read from disk (`@lsp`), by path, each kept
     /// while its text on disk is the one it read.
     cached: std.array_hash_map.String(*Cached) = .empty,
@@ -1078,6 +1085,8 @@ const Server = struct {
             s.gpa.free(v);
         }
         s.modules.deinit(s.gpa);
+        for (s.unresolved.keys()) |k| s.gpa.free(k);
+        s.unresolved.deinit(s.gpa);
         for (s.cached.keys(), s.cached.values()) |k, c| {
             s.gpa.free(k);
             c.destroy(s.gpa);
@@ -1420,6 +1429,7 @@ const Server = struct {
                 .log_from = version,
             });
         }
+        try s.logUnresolved(a, s.docOf(params).?);
         try s.analyzeAndCheck(a, s.docOf(params).?);
     }
 
@@ -1463,6 +1473,7 @@ const Server = struct {
     fn didSave(s: *Server, a: Allocator, params: Value) error{ OutOfMemory, WriteFailed }!void {
         const d = s.docOf(params) orelse return;
         d.saved = d.version;
+        try s.logUnresolved(a, d);
         try s.analyzeAndCheck(a, d);
     }
 
@@ -2449,6 +2460,48 @@ const Server = struct {
         };
         d.names = n;
         return &n.index;
+    }
+
+    /// Log each import of `d` whose name names no file (`window/logMessage`):
+    /// no module's (the `modules` option, `resolveImport`), and no file at
+    /// the path it makes beside `d`; with the setting to set, and the
+    /// language's `unresolvedImport`. Each name once in the server's life;
+    /// a document without a path, which imports modules alone, never.
+    fn logUnresolved(s: *Server, a: Allocator, d: *Doc) error{ OutOfMemory, WriteFailed }!void {
+        if (comptime !has_names or language.names.imports.len == 0) return;
+        if (d.path.len == 0) return;
+        const w = try a.create(Workspace);
+        w.* = .{ .s = s, .a = a, .doc = d };
+        var r: scopes.Resolver = .init(a, w.world());
+        const f: scopes.File = .{ .path = d.path, .ix = try s.nameIndex(d) };
+        for (f.ix.imports, 0..) |im, i| {
+            if (im.name.len == 0 or s.unresolved.contains(im.name)) continue;
+            if (try r.importPath(f, @intCast(i))) |path| {
+                if (s.docAt(path) != null) continue;
+                if (std.Io.Dir.cwd().access(s.io, path, .{})) |_| continue else |_| {}
+            }
+            try s.unresolved.put(s.gpa, try s.gpa.dupe(u8, im.name), {});
+            const said: Unresolved = if (comptime has("unresolvedImport")) hooks.unresolvedImport(a, im.name) catch .plain else .plain;
+            if (said == .quiet) continue;
+            // The file a module of the name would be, as an example.
+            const made = if (language.names.imports[im.line].file) |pattern|
+                try std.mem.replaceOwned(u8, a, pattern, "{}", im.name)
+            else if (std.fs.path.extension(im.name).len > 0 or language.names.extensions.len == 0)
+                im.name
+            else
+                try a.print("{s}.{s}", .{ im.name, language.names.extensions[0] });
+            const example = try a.print("/path/to/{s}", .{std.fs.path.basename(made)});
+            const message = try a.print("the import \"{s}\" in {s} names no file. For a module, set {s}.server.modules (the modules option) to its file, as {{{f}: {f}}}.{s}{s}", .{
+                im.name,
+                d.path,
+                language.settings,
+                std.json.fmt(im.name, .{}),
+                std.json.fmt(example, .{}),
+                if (said == .hint) " " else "",
+                if (said == .hint) said.hint else "",
+            });
+            try s.notify(a, "window/logMessage", .{ .type = 2, .message = message });
+        }
     }
 
     /// The index of `text`, the text of the file at `path` on disk: the

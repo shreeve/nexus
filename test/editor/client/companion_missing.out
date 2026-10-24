@@ -1,0 +1,10 @@
+package Example.tally-lsp-client "Tally Server" 1.2.3; contributes configuration, semanticTokenTypes, semanticTokenScopes
+activate
+createOutputChannel Tally Server
+warning: Tally Server: no installed extension contributes the language "tally". This extension serves it beside Example.tally-lang: install it, or rebuild this extension in standalone mode ("mode": "standalone" in its identity.json).
+activated
+open a typescript document
+user setting tally.server.path = "/opt/tally-lsp"
+deactivate
+dispose channel Tally Server
+deactivated

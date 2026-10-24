@@ -18,7 +18,7 @@
 #   -O MODE         optimize mode of the tool (default safe)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-members/ beside the
-# server this checkout's bin/nexus writes (run `zig build` first). Inputs
+# server this checkout's bin/nexus writes (in a worktree, `zig build` first). Inputs
 # Ast.parse rejects are not compared. It prints one line per wrong answer
 # and a summary of the counts; it exits 1 when there is any.
 

@@ -1,0 +1,24 @@
+package Example.tally-lsp-client "Tally Server" 1.2.3; contributes configuration, semanticTokenTypes, semanticTokenScopes
+activate
+createOutputChannel Tally Server
+activated
+user setting tally.server.path = "/opt/tally-lsp"
+open a plaintext document
+open a tally document
+client 1: new tally Tally Server
+  server {"run":{"command":"/opt/tally-lsp","args":[]},"debug":{"command":"/opt/tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally Server>"}
+client 1: start
+client 1: running
+open a tally document
+user setting tally.features = ["semanticTokens"]
+client 1: stop
+client 2: new tally Tally Server
+  server {"run":{"command":"/opt/tally-lsp","args":[]},"debug":{"command":"/opt/tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":60000,"features":["semanticTokens"]},"outputChannel":"<channel Tally Server>"}
+client 2: start
+client 2: running
+deactivate
+client 2: stop
+dispose channel Tally Server
+deactivated

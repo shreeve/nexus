@@ -1,5 +1,4 @@
 **
-!extension.js
+!dist/extension.js
 !bin/**
-!node_modules/**
 !LICENSE*

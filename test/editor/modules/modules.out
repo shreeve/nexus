@@ -1,5 +1,8 @@
 > initialize module core=util.tally module std_lib=app.tally quiet
 > open main.tally
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the import \"std_none\" in main.tally names no file. For a module, set nexus-tally.server.modules (the modules option) to its file, as {\"std_none\": \"/path/to/std_none.tally\"}. std_none is none.tally beside the importing file.","type":2}}
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the import \"nowhere\" in main.tally names no file. For a module, set nexus-tally.server.modules (the modules option) to its file, as {\"nowhere\": \"/path/to/nowhere.tally\"}.","type":2}}
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the import \"broken\" in main.tally names no file. For a module, set nexus-tally.server.modules (the modules option) to its file, as {\"broken\": \"/path/to/broken.tally\"}.","type":2}}
 > definition main.tally 6:14
 util.tally 2:4-2:7
 > definition main.tally 7:18
@@ -13,3 +16,5 @@ null
 > completion main.tally 8:17
   {"kind":9,"label":"lib"}
   {"kind":6,"label":"n"}
+> save main.tally
+> open app.tally

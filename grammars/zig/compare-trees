@@ -21,7 +21,7 @@
 #   -O MODE         optimize mode of the tool (default safe)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-trees/ from this
-# checkout's bin/nexus (run `zig build` first). Inputs that either parser
+# checkout's bin/nexus (in a worktree, `zig build` first). Inputs that either parser
 # rejects are not compared (compare-accept compares those). It prints one
 # line per input whose trees differ, with the first differing line of
 # each side, and a summary; it exits 1 when any input differs.

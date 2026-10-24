@@ -7,6 +7,9 @@ const parser = @import("parser.zig");
 
 pub const name = "Rote";
 pub const id = "rote";
+/// The prefix of the extension's settings, whose `server.modules` the server
+/// names for an import that names no file.
+pub const settings = "nexus-rote";
 
 /// The scope of a token by its category: the token entries of `@highlight`.
 pub fn tokenScope(cat: parser.TokenCat) ?lsp.Scope {

@@ -6,5 +6,6 @@
   "license": "MIT",
   "repository": "https://example.com/tally.git",
   "settings": "tally",
-  "mode": "companion"
+  "mode": "companion",
+  "provider": "Example.tally-lang"
 }

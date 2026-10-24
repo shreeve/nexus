@@ -24,7 +24,8 @@
 #   -O MODE       optimize mode for both parsers (default: safe)
 #
 # OLD_NEXUS / NEW_NEXUS are paths to nexus binaries, or `current` for this
-# checkout's bin/nexus (rebuilt first).
+# checkout's bin/nexus (rebuilt first, in debug mode: use it in a worktree,
+# never in the checkout Rig, em and nexis build with).
 #
 # Examples:
 #   test/diff OLD/bin/nexus current grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar \

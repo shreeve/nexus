@@ -1,0 +1,9 @@
+# A session of test/lib/lsp, which check_install replays (not a
+# `.session`, which every run replays with `zig` on PATH): the server
+# editor/install builds, with no zig-env.zon beside it and no `zig` on
+# its PATH, as VS Code started from the Dock runs it. `@import("std")`
+# then names no file, and the server logs it once, with the setting to
+# set and hooks.zig's `unresolvedImport`; `util.zig` is beside the file.
+initialize folder quiet
+open main.zig
+save main.zig
