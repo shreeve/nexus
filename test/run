@@ -619,6 +619,62 @@ check_editor_client() {
     golden "$out.out" "$base.out"
 }
 
+# check_install <suite dir>: the suite's editor/install, run twice into a
+# directory of its own (--companion, then --standalone), each time sets
+# the mode in identity.json before generating, puts editor/hooks.zig in
+# place, and builds the server in safe mode into the extension with the
+# `zig env` of the Zig that built it beside it; with no `zig` on its PATH,
+# that server answers editor/names.session as names.out says, std
+# included. With NEXUS_TEST_PACKAGE set, each run also packages the
+# extension (npm install and vsce, from the network on a first run), and
+# the .vsix holds the server and its `zig env`. Without bin/nexus, or
+# with a `zig` that is not 0.17.0, it stops with a message and writes
+# nothing. VS Code is never run.
+check_install() {
+    local dir=$1 out stop=--no-package mode langs py path got
+    out="$WORK/out/install_$(basename "$dir")"
+    command -v node >/dev/null || { REASON="node not found"; return 1; }
+    # What it needs and does not have: it says so, and writes nothing.
+    got=$("$dir/editor/install" --no-package --nexus "$out.missing" "$out" 2>&1)
+    [[ $? -eq 1 && $got == "install: $out.missing is missing: build Nexus first"* && ! -e $out ]] ||
+        { REASON="install without bin/nexus did not stop with its message: $got"; return 1; }
+    mkdir -p "$out.zig"
+    printf '#!/bin/sh\necho 0.16.0\n' >"$out.zig/zig"
+    chmod +x "$out.zig/zig"
+    got=$(PATH="$out.zig:$PATH" "$dir/editor/install" --no-package --nexus "$NEXUS" "$out" 2>&1)
+    [[ $? -eq 1 && $got == "install: zig on PATH is 0.16.0 ($out.zig/zig); the server needs Zig 0.17.0" && ! -e $out ]] ||
+        { REASON="install with Zig 0.16.0 did not stop with its message: $got"; return 1; }
+    [[ -n ${NEXUS_TEST_PACKAGE:-} ]] && stop=--no-install
+    for mode in companion standalone; do
+        if ! ZIG_LOCAL_CACHE_DIR="$OUTROOT/zig" with_timeout 600 "$dir/editor/install" "--$mode" "$stop" --nexus "$NEXUS" "$out" >>"$LOG" 2>&1 </dev/null; then
+            REASON="install --$mode failed: $(grep -m1 '^install: ' "$LOG")"
+            return 1
+        fi
+        grep -qF "\"mode\": \"$mode\"" "$out/vscode/identity.json" || { REASON="install --$mode did not set the mode in identity.json"; return 1; }
+        langs=standalone
+        grep -qF '"languages"' "$out/vscode/package.json" || langs=companion
+        [[ $langs == "$mode" ]] || { REASON="install --$mode generated a $langs extension"; return 1; }
+        cmp -s "$dir/editor/hooks.zig" "$out/server/src/hooks.zig" || { REASON="install --$mode did not put editor/hooks.zig in place"; return 1; }
+        [[ -x $out/vscode/bin/zig-lsp ]] || { REASON="install --$mode did not build vscode/bin/zig-lsp"; return 1; }
+        grep -qF ".std_dir = " "$out/vscode/bin/zig-env.zon" || { REASON="install --$mode did not save zig env as vscode/bin/zig-env.zon"; return 1; }
+        if [[ -n ${NEXUS_TEST_PACKAGE:-} ]] && ! grep -qxF extension/bin/zig-env.zon <<<"$(unzip -Z1 "$out"/vscode/*.vsix)"; then
+            REASON="install --$mode packaged no .vsix with bin/zig-env.zon"
+            return 1
+        fi
+        echo "// changed" >>"$out/server/src/hooks.zig"
+    done
+    cp "$dir/editor/hooks.zig" "$out/server/src/hooks.zig"
+    # The server alone finds std: PATH without the directories holding a zig.
+    py=$(command -v python3)
+    path=$(tr ':' '\n' <<<"$PATH" | while IFS= read -r d; do [[ -x $d/zig ]] || printf '%s:' "$d"; done)
+    if ! PATH=${path%:} with_timeout "$TIMEOUT" "$py" "$LIB/lsp" "$out/vscode/bin/zig-lsp" "$dir/project" "$dir/editor/names.session" >"$out/names.out" 2>>"$LOG" </dev/null; then
+        REASON="names.session failed with no zig on PATH: $(grep -m1 '^!! ' "$out/names.out" || tail -1 "$out/names.out")"
+        return 1
+    fi
+    diff -u "$dir/editor/names.out" "$out/names.out" >>"$LOG" || { REASON="with no zig on PATH, names.session differs from names.out"; return 1; }
+    return 0
+}
+
 # check_highlight <suite dir> <sample>: the editor files colour the sample
 # as <sample>.hl says (test/lib/highlight).
 check_highlight() {
@@ -958,6 +1014,7 @@ worker() {
         editor-server) check_editor_server "$a" "$b"; ok=$? ;;
         session)     check_editor_session "$a" "$b"; ok=$? ;;
         client)      check_editor_client "$a" "$b"; ok=$? ;;
+        install)     check_install "$a"; ok=$? ;;
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         wasm32)      check_wasm32 "$a"; ok=$? ;;
@@ -1085,7 +1142,7 @@ add() { # add <id> <kind> [args...]
     selected "$1" || return 1
     local IFS=$'\x1f' to=$EARLY
     case $2 in
-        unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server|scopes|members) to=$LONG ;;
+        unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server|scopes|members|install) to=$LONG ;;
         case|bug|hl|session) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
@@ -1154,6 +1211,7 @@ for dir in grammars/*/ test/*/; do
     add "determinism/$name" determinism "$dir" "$name"
     [[ -x $dir/compare-scopes ]] && add "$name/scopes" scopes "$dir"
     [[ -x $dir/compare-members ]] && add "$name/members" members "$dir"
+    [[ -x $dir/editor/install ]] && add "$name/install" install "$dir"
     add "wasm32/$name" wasm32 "$dir" && need_build "$dir"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"

@@ -3,7 +3,7 @@
 //! server"). It builds in the server's `src/`, beside `hooks.zig`:
 //!
 //!     cp grammars/zig/editor/measure.zig ~/nexus-zig/server/src/
-//!     cd ~/nexus-zig/server && zig build-exe -O ReleaseSafe src/measure.zig
+//!     cd ~/nexus-zig/server && zig build-exe -O safe src/measure.zig
 //!     ./measure [-n ROUNDS] [-q] [-r] [-t] [-c] FILE...
 //!
 //! `-n` takes the best of ROUNDS runs of each; `-q` prints only the files

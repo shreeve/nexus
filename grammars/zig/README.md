@@ -29,13 +29,14 @@ use to Zig.
 | `compare-scopes` | the names `@lsp` resolves against AstGen's resolution ([Names and scopes](#names-and-scopes)) |
 | `compare-members` | the members and imports `@lsp` resolves against a resolution over std.zig.Ast ([Names and scopes](#names-and-scopes)) |
 | `members/` | files that import each other and std, for `compare-members` |
-| `editor/` | the language server's `hooks.zig`, its sessions, and the tools that time it ([The language server](#the-language-server)) |
+| `editor/` | the language server's `hooks.zig`, `install` (the VS Code extension in one command), its sessions, and the tools that time it ([The language server](#the-language-server)) |
 | `server/` | a session of the server with the stub `hooks.zig`: the colours of `@lsp` |
 | `project/` | the files the sessions of `editor/` and `server/` open |
 
 `./test/run zig` runs the cases, the three `_test.zig` files,
 `compare-scopes` on the cases, `compare-members` on the cases and
-`members/`, and the sessions of `editor/` and `server/`; the
+`members/`, the sessions of `editor/` and `server/`, and
+`editor/install` up to the package ([Installing it](#installing-it)); the
 `compare-*` scripts run the same comparisons over a corpus. Each script
 documents its options (`-h`).
 
@@ -310,12 +311,16 @@ in process:
   `@intFromEnum` to `@backingInt`, `@enumFromInt(x)` to
   `@fromBackingInt(@intCast(x))` and `callconv(.@"inline")` to
   `inline` change the tree; `zig fmt` itself formats those.
-- **`std` is Zig's own.** `@import("std")` is the `std.zig` of the
-  `zig` on the server's `PATH`, in the `std_dir` that `zig env` prints
-  (asked once, when the server first meets the import), unless the
-  `nexus-zig.server.modules` setting names a file for it. Definition,
-  references, hover and completion go through it into the standard
-  library: hover on `std.mem.eql` shows its prototype and doc.
+- **`std` is Zig's own.** `@import("std")` is the `std.zig` of the Zig
+  that built the server, in the `std_dir` of the `zig env` output that
+  `editor/install` saves beside the server (`bin/zig-env.zon`), so it
+  resolves when VS Code starts without `zig` on its `PATH` (from the
+  Dock on macOS). Without that file, or when the Zig it names is gone,
+  it is the `std_dir` of the `zig` on the server's `PATH`; the
+  `nexus-zig.server.modules` setting overrides both. The server asks
+  once, when it first meets the import. Definition, references, hover
+  and completion go through it into the standard library: hover on
+  `std.mem.eql` shows its prototype and doc.
 
 What it does not do: anything that needs types. A value's members
 whose type needs inference (`list.` for an `std.ArrayList(u8)`, a
@@ -329,47 +334,84 @@ replacement for ZLS, and the extension is not published.
 `editor/` on the files of `project/`: Zig's errors as you type
 (`errors.session`), formatting and its guard on each of the four bugs
 (`format.session`), and names across files and into std, with
-completion after `list.` answering nothing (`names.session`).
+completion after `list.` answering nothing (`names.session`). It runs
+`editor/install --no-package` too (`zig/install`), into a directory of
+its own, once in each mode: the server it builds, with no `zig` on its
+`PATH`, answers `names.session` as above, std included; and without
+`bin/nexus`, or with a `zig` that is not 0.17.0, it stops and writes
+nothing. With
+`NEXUS_TEST_PACKAGE=1` set, that check packages the extension too
+(`npm install` and `vsce`, which fetch from the network the first time).
 
-### Building and installing it
+### Installing it
 
-Build Nexus (`zig build` at the repository root), then write the
-editor files outside this repository, put the Zig hooks in place of
-the stub, build the server into the extension and package it:
+```bash
+grammars/zig/editor/install          # into ~/nexus-zig; `install DIR` names another directory
+```
+
+It needs Zig 0.17.0, Node.js (`node`, `npm`, `npx`) and VS Code's
+`code` command on `PATH` (in VS Code, "Shell Command: Install 'code'
+command in PATH"), and this checkout's `bin/nexus` (`zig build
+-Doptimize=safe` at the repository root), which it never builds
+itself. It says which one is missing, and stops, before it writes
+anything. Then it prints a line for each step, writes each step's
+output to `install.log` in the directory, and stops at the first that
+fails, with the end of that log:
+
+1. **mode**: `companion` when `code --list-extensions` lists the
+   official Zig extension, `ziglang.vscode-zig`, else `standalone`
+   (`--companion` and `--standalone` choose), written into
+   `vscode/identity.json`;
+2. **generate**: `bin/nexus --editor --lang zig.zig zig.grammar` into
+   the directory;
+3. **hooks**: `editor/hooks.zig` in place of the stub;
+4. **build**: the server, `zig build -Doptimize=safe --prefix
+   ../vscode`, into `vscode/bin/zig-lsp`, and that Zig's `zig env`
+   beside it, `vscode/bin/zig-env.zon`, where the server finds std;
+5. **npm** and **package**: `npm install` and `vsce package`, into
+   `vscode/nexus-zig-0.1.0.vsix` (`--no-package` stops before them);
+6. **install**: `code --install-extension ... --force`
+   (`--no-install` stops before it, and VS Code is not touched).
+
+Each run does every step again, so after a `git pull` the same command
+brings the installed extension up to date; then run "Developer: Reload
+Window" in each VS Code window.
+
+The extension is `nexus-local.nexus-zig`, "Zig (Nexus)", with settings
+under `nexus-zig.`: none of it is the official extension's, so the two
+install side by side. The recommended setup is beside it: install
+`ziglang.vscode-zig` first, and `install` chooses `companion` mode,
+in which the official extension keeps the language, its colouring,
+its commands and ZLS, and this one adds its server. VS Code then runs
+both servers on every Zig file and shows both servers' diagnostics;
+`"zig.zls.enabled": "off"` in VS Code's settings shows this one's
+alone. Without the official extension, in `standalone` mode, this one
+contributes the `zig` language, its colouring and the server.
+
+By hand, the same steps are these (`companion` mode: `"mode":
+"companion"` in `~/nexus-zig/vscode/identity.json` before `--editor`):
 
 ```bash
 cd grammars/zig
 ../../bin/nexus --editor --lang zig.zig zig.grammar ~/nexus-zig
 cp editor/hooks.zig ~/nexus-zig/server/src/hooks.zig
-cd ~/nexus-zig/server && zig build -Doptimize=ReleaseSafe --prefix ../vscode
+cd ~/nexus-zig/server && zig build -Doptimize=safe --prefix ../vscode
+zig env >../vscode/bin/zig-env.zon
 cd ../vscode && npm install
 npx @vscode/vsce package --skip-license --allow-missing-repository
-code --install-extension nexus-zig-0.1.0.vsix
+code --install-extension nexus-zig-0.1.0.vsix --force
 ```
 
-`--editor` writes `hooks.zig` only when it is missing, so copy
-`editor/hooks.zig` again after it changes; every other file it writes
-again on each run. The extension is `nexus-local.nexus-zig`, "Zig
-(Nexus)", with settings under `nexus-zig.`: none of it is the official
-Zig extension's (`ziglang.vscode-zig`), so the two install side by side.
-
-- **Without the official extension**, the defaults serve: the extension
-  contributes the `zig` language, its colouring and the server.
-- **Beside it**, set `"mode": "companion"` in `vscode/identity.json`
-  before running `--editor` again: the official extension keeps the
-  language and its colouring, and this one adds its server. VS Code then
-  runs both servers on every Zig file, ZLS and this one, and shows both
-  servers' diagnostics; turn ZLS off in the official extension's
-  settings to see this one's alone.
-
-The server reads `zig` from the `PATH` it starts with; when VS Code
-starts without it (from the Dock on macOS), name std in the
-settings: `"nexus-zig.server.modules": {"std": "/path/to/lib/std/std.zig"}`.
+`--editor` writes `hooks.zig` and `identity.json` only when they are
+missing, and every other file on each run, so `editor/hooks.zig` is
+copied again whenever it changes. Without `zig-env.zon`, the server
+takes std from the `zig` on its `PATH`, or from the setting
+`"nexus-zig.server.modules": {"std": "/path/to/lib/std/std.zig"}`.
 
 ### Latency
 
 On Zig 0.17.0's `src/Sema.zig` (1.55 MB, 35,648 lines), with the
-server in safe mode (`-Doptimize=ReleaseSafe`) on an Apple M5, the
+server in safe mode (`-Doptimize=safe`) on an Apple M5, the
 1-minute load average below 6, best of five:
 
 | | ms |
@@ -396,7 +438,7 @@ checkout of Zig at tag 0.17.0:
 
 ```bash
 cp editor/measure.zig ~/nexus-zig/server/src/
-(cd ~/nexus-zig/server && zig build-exe -O ReleaseSafe src/measure.zig)
+(cd ~/nexus-zig/server && zig build-exe -O safe src/measure.zig)
 ~/nexus-zig/server/measure -n 5 $Z/src/Sema.zig $Z/src/codegen/x86_64/CodeGen.zig
 ~/nexus-zig/server/measure -n 5 -r $Z/src/Sema.zig
 find $Z/lib $Z/src $Z/test $Z/doc -name '*.zig' -print0 |
