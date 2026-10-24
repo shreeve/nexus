@@ -1,0 +1,169 @@
+#!/bin/sh
+# install: build the Zig (Nexus) extension for VS Code and install it.
+#
+# Usage: grammars/zig/editor/install [options] [DIR]
+#
+#   DIR            where the editor files go (default: ~/nexus-zig)
+#   --companion    beside the official Zig extension (ziglang.vscode-zig),
+#                  which keeps the language and its colouring; this one
+#                  adds its server
+#   --standalone   the extension contributes the language, its colouring
+#                  and its server
+#                  (default: companion when `code --list-extensions` lists
+#                  ziglang.vscode-zig, else standalone)
+#   --no-package   stop after building the server
+#   --no-install   stop after packaging the .vsix; VS Code is not touched
+#   --nexus FILE   the nexus that generates the files (default: bin/nexus
+#                  of this checkout, which this script never builds)
+#
+# Every run writes the editor files again with `nexus --editor`, puts
+# editor/hooks.zig in place, builds the server in safe mode with the `zig`
+# on PATH (0.17.0) into the extension, saves that Zig's `zig env` beside
+# the server (vscode/bin/zig-env.zon, where hooks.zig finds std without
+# `zig` on PATH), packages the extension with vsce and installs it with
+# `code --install-extension --force`, so a rerun after `git pull` brings
+# the installed extension up to date. Each step's output goes to
+# DIR/install.log.
+
+set -eu
+
+usage() { # usage STATUS: the options, then exit
+    if [ "$1" = 0 ]; then sed -n '3,17s/^# \{0,1\}//p' "$0"; else sed -n '3,17s/^# \{0,1\}//p' "$0" >&2; fi
+    exit "$1"
+}
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+ZIGDIR=$(dirname "$HERE")
+NEXUS=$(dirname "$(dirname "$ZIGDIR")")/bin/nexus
+DIR="" MODE="" PACKAGE=1 INSTALL=1
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        --companion) MODE=companion ;;
+        --standalone) MODE=standalone ;;
+        --no-package) PACKAGE="" INSTALL="" ;;
+        --no-install) INSTALL="" ;;
+        --nexus) [ $# -gt 1 ] || usage 2; NEXUS=$2; shift ;;
+        -h | --help) usage 0 ;;
+        -*) echo "install: unknown option $1" >&2; usage 2 ;;
+        *) [ -z "$DIR" ] || usage 2; DIR=$1 ;;
+    esac
+    shift
+done
+DIR=${DIR:-$HOME/nexus-zig}
+case $DIR in /*) ;; *) DIR=$(pwd)/$DIR ;; esac
+case $NEXUS in /*) ;; *) NEXUS=$(pwd)/$NEXUS ;; esac
+
+fail() {
+    echo "install: $*" >&2
+    exit 1
+}
+
+# What the steps need, before any of them runs.
+[ -x "$NEXUS" ] || fail "$NEXUS is missing: build Nexus first (zig build -Doptimize=safe at its root), or name one with --nexus"
+command -v zig >/dev/null || fail "zig is not on PATH: install Zig 0.17.0"
+ZIG_VERSION=$(zig version)
+[ "$ZIG_VERSION" = 0.17.0 ] || fail "zig on PATH is $ZIG_VERSION ($(command -v zig)); the server needs Zig 0.17.0"
+command -v node >/dev/null || fail "node is not on PATH: install Node.js"
+if [ -n "$PACKAGE" ]; then
+    command -v npm >/dev/null || fail "npm is not on PATH: install Node.js with npm"
+    command -v npx >/dev/null || fail "npx is not on PATH: install Node.js with npx"
+fi
+CODE=""
+for c in "$(command -v code || true)" \
+    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+    "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"; do
+    if [ -n "$c" ] && [ -x "$c" ]; then CODE=$c; break; fi
+done
+[ -n "$CODE" ] || [ -z "$INSTALL" ] || fail "code is not on PATH: in VS Code, run \"Shell Command: Install 'code' command in PATH\""
+
+mkdir -p "$DIR"
+LOG=$DIR/install.log
+: >"$LOG"
+
+# run COMMAND...: the command, its output to the log; on failure, the
+# end of the log, and stop.
+run() {
+    if ! "$@" >>"$LOG" 2>&1; then
+        echo "install: failed: $*" >&2
+        echo "the end of $LOG:" >&2
+        tail -n 20 "$LOG" | sed 's/^/  /' >&2
+        exit 1
+    fi
+}
+in_dir() { # in_dir DIR COMMAND...
+    cd "$1" && shift && "$@"
+}
+step() { # step NAME DETAIL
+    printf '%-9s %s\n' "$1" "$2"
+}
+
+# The mode: the flag's, else companion beside the official extension.
+if [ -z "$MODE" ]; then
+    MODE=standalone why="ziglang.vscode-zig is not installed"
+    if [ -n "$CODE" ] && "$CODE" --list-extensions 2>>"$LOG" | grep -qix 'ziglang\.vscode-zig'; then
+        MODE=companion why="ziglang.vscode-zig is installed"
+    fi
+else
+    why="as asked"
+fi
+step mode "$MODE ($why)"
+# identity.json is the extension's, which `--editor` writes only when it
+# is missing; its mode is set here before every run of `--editor`.
+run node -e '
+const fs = require("fs");
+const [file, mode] = process.argv.slice(1);
+if (!fs.existsSync(file)) {
+    if (mode === "standalone") process.exit(0); // the default `--editor` writes
+    fs.mkdirSync(require("path").dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ mode }, null, 2) + "\n");
+    process.exit(0);
+}
+const id = JSON.parse(fs.readFileSync(file, "utf8"));
+if (id.mode === mode || (id.mode === undefined && mode === "standalone")) process.exit(0);
+id.mode = mode;
+fs.writeFileSync(file, JSON.stringify(id, null, 2) + "\n");
+' "$DIR/vscode/identity.json" "$MODE"
+
+step generate "$DIR ($NEXUS --editor)"
+run in_dir "$ZIGDIR" "$NEXUS" --editor --lang zig.zig zig.grammar "$DIR"
+
+step hooks "$DIR/server/src/hooks.zig"
+run cp "$HERE/hooks.zig" "$DIR/server/src/hooks.zig"
+
+step build "$DIR/vscode/bin/zig-lsp (zig $ZIG_VERSION, -Doptimize=safe)"
+run in_dir "$DIR/server" zig build -Doptimize=safe --prefix ../vscode
+run in_dir "$DIR/vscode" sh -c 'zig env >bin/zig-env.zon'
+STD_DIR=$(sed -n 's/^ *\.std_dir = "\(.*\)",$/\1/p' "$DIR/vscode/bin/zig-env.zon")
+step std "$STD_DIR (vscode/bin/zig-env.zon)"
+
+if [ -z "$PACKAGE" ]; then
+    echo "Built the server in $DIR; not packaged (--no-package)."
+    exit 0
+fi
+
+step npm "$DIR/vscode/node_modules"
+run in_dir "$DIR/vscode" npm install --no-audit --no-fund
+ID=$(node -p 'const p = require(process.argv[1]); p.publisher + "." + p.name' "$DIR/vscode/package.json")
+VSIX=$DIR/vscode/$(node -p 'const p = require(process.argv[1]); p.name + "-" + p.version' "$DIR/vscode/package.json").vsix
+step package "$VSIX"
+run in_dir "$DIR/vscode" npx --yes @vscode/vsce package --skip-license --allow-missing-repository --out "$VSIX" </dev/null
+SIZE=$(wc -c <"$VSIX" | tr -d ' ')
+
+if [ -z "$INSTALL" ]; then
+    echo "Packaged $VSIX ($SIZE bytes); not installed (--no-install)."
+    echo "Install it with: code --install-extension $VSIX --force"
+    exit 0
+fi
+
+step install "$ID ($CODE)"
+run "$CODE" --install-extension "$VSIX" --force
+
+echo
+echo "Installed $ID, in $MODE mode, from $VSIX."
+echo "Next: in each open VS Code window, run \"Developer: Reload Window\"; then open a .zig file."
+if [ "$MODE" = companion ]; then
+    echo "The official extension keeps the language and runs ZLS beside this server; set"
+    echo "\"zig.zls.enabled\": \"off\" in VS Code's settings to see this server's answers alone."
+fi
+echo "After a git pull, run $0 again."

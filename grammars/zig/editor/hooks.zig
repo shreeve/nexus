@@ -16,8 +16,10 @@
 //!   grammar's parser builds another tree (spans aside): the guard that
 //!   keeps the four `std.zig.Ast` helper bugs grammars/zig/README.md
 //!   names (T5, T7, T8, T9) from changing the program.
-//! - `resolveImport`: `@import("std")` is the std.zig of the `zig` on the
-//!   server's PATH, as `zig env` names its `std_dir`, unless the client's
+//! - `resolveImport`: `@import("std")` is the std.zig of the Zig that
+//!   built the server, as the `zig env` output saved beside the server
+//!   (`zig-env.zon`, which `editor/install` writes) names its `std_dir`,
+//!   else of the `zig` on the server's PATH, unless the client's
 //!   `modules` setting names the file.
 //!
 //! What a value's type is, the members of a value whose type needs
@@ -157,8 +159,8 @@ pub fn canonicalTree(arena: Allocator, text: []const u8) ![]const u8 {
     return out.written();
 }
 
-/// `std` is the standard library of the `zig` on PATH; every other module
-/// name is a path beside the importing file.
+/// `std` is the standard library `stdDir` names; every other module name
+/// is a path beside the importing file.
 pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]const u8 {
     _ = from;
     if (!std.mem.eql(u8, name, "std")) return null;
@@ -166,8 +168,10 @@ pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]c
     return try std.fs.path.join(arena, &.{ dir, "std.zig" });
 }
 
-/// The `std_dir` `zig env` prints, asked once; null when `zig` cannot be
-/// run or names none.
+/// The `std_dir` of the Zig that built the server, from the `zig env`
+/// output saved beside the server's executable as `zig-env.zon`, when its
+/// std.zig exists; else the `std_dir` that `zig env` prints for the `zig`
+/// on PATH. Asked once; null when neither names one.
 fn stdDir() ?[]const u8 {
     const lock_io = std.Options.debug_io;
     std_dir_lock.lockUncancelable(lock_io);
@@ -182,7 +186,8 @@ fn stdDir() ?[]const u8 {
             .environ = std.Options.debug_threaded_io.?.environ.process_environ,
         });
         defer threaded.deinit();
-        std_dir = askStdDir(threaded.io()) catch null;
+        const io = threaded.io();
+        std_dir = savedStdDir(io) orelse (askStdDir(io) catch null);
     }
     return std_dir;
 }
@@ -191,16 +196,40 @@ var std_dir_lock: std.Io.Mutex = .init;
 var std_dir_asked = false;
 var std_dir: ?[]const u8 = null;
 
+/// The `std_dir` that `zig-env.zon` beside the executable names, when its
+/// std.zig exists: a Zig removed since the build names none.
+fn savedStdDir(io: std.Io) ?[]const u8 {
+    const gpa = std.heap.page_allocator;
+    const exe_dir = std.process.executableDirPathAlloc(io, gpa) catch return null;
+    defer gpa.free(exe_dir);
+    const path = std.fs.path.join(gpa, &.{ exe_dir, "zig-env.zon" }) catch return null;
+    defer gpa.free(path);
+    const zon = std.Io.Dir.cwd().readFileAlloc(io, path, gpa, .limited(1 << 20)) catch return null;
+    defer gpa.free(zon);
+    const dir = envStdDir(gpa, zon) orelse return null;
+    const std_zig = std.fs.path.join(gpa, &.{ dir, "std.zig" }) catch return null;
+    defer gpa.free(std_zig);
+    std.Io.Dir.cwd().access(io, std_zig, .{}) catch {
+        gpa.free(dir);
+        return null;
+    };
+    return dir;
+}
+
 fn askStdDir(io: std.Io) !?[]const u8 {
     const gpa = std.heap.page_allocator;
     const run = try std.process.run(gpa, io, .{ .argv = &.{ "zig", "env" }, .stdout_limit = .limited(1 << 20) });
     defer gpa.free(run.stderr);
     defer gpa.free(run.stdout);
     if (run.term != .exited or run.term.exited != 0) return null;
-    // `.std_dir = "/path/to/lib/std",` in the ZON `zig env` prints.
+    return envStdDir(gpa, run.stdout);
+}
+
+/// The `std_dir` of the ZON `zig env` prints: `.std_dir = "/path/to/lib/std",`.
+fn envStdDir(gpa: Allocator, zon: []const u8) ?[]const u8 {
     const key = ".std_dir = ";
-    const at = std.mem.find(u8, run.stdout, key) orelse return null;
-    const rest = run.stdout[at + key.len ..];
+    const at = std.mem.find(u8, zon, key) orelse return null;
+    const rest = zon[at + key.len ..];
     const end = std.mem.findScalar(u8, rest, '\n') orelse rest.len;
     const literal = std.mem.trimEnd(u8, rest[0..end], ",");
     return std.zig.string_literal.parseAlloc(gpa, literal) catch null;
