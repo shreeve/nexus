@@ -1,0 +1,4 @@
+# A check that runs past `checkTimeout` is stopped, with every process it
+# started, and logged; nothing is wrong in the file.
+initialize timeout 300 check ["./checker", "slow"]
+open main.tally

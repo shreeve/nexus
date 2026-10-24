@@ -1,0 +1,7 @@
+> initialize root main.tally features -
+{"capabilities":{"positionEncoding":"utf-16","textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+> hover main.tally 4:5
+error -32601 textDocument/hover
+> completion main.tally 4:5
+error -32601 textDocument/completion

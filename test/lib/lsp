@@ -9,11 +9,18 @@ directory of the files the session names; SESSION a file of commands, one
 a line (`#` starts a comment):
 
   initialize [utf-8] [root FILE] [folder] [module NAME=FILE]... [quiet]
+             [features A,B,...] [timeout MS] [check JSON]
                                    the first command: the client's options
                                      (`folder`: ROOT is the workspace's
                                      folder; `module`: NAME's file in the
-                                     `modules` option); `quiet` prints
-                                     nothing of the result
+                                     `modules` option; `features`: the
+                                     `features` option, `-` for none;
+                                     `timeout`: `checkTimeout`; `check`,
+                                     last: the rest of the line, a JSON
+                                     list, the `check` option, each word
+                                     that starts with `./` or `../`
+                                     relative to SESSION's directory);
+                                     `quiet` prints nothing of the result
   open FILE                        didOpen with FILE's text, or with the
                                      `| ` lines after it; a FILE that starts
                                      with `untitled:` is an unsaved document
@@ -37,7 +44,11 @@ a line (`#` starts a comment):
   selection FILE L:C               selectionRange
   rename FILE L:C NAME
   request METHOD FILE              any method, with just the document
+  wait NAME                        wait (10 s at most) for the file NAME in
+                                     the directory $LSP_TMP names
   exit                             exit without shutdown: the last command
+
+A notification followed by ` &` does not wait for what it asks for.
 
 Each command is printed after `> `, then what came back: a request's
 result or error, the diagnostics a notification published, or the status
@@ -46,13 +57,22 @@ paths in other notifications relative to ROOT, semantic tokens as
 `L:C len scope [modifier ...]` (from the legend `initialize` returned),
 and a list one item a line. A session
 without `exit` ends with shutdown and exit; the server must then exit 0.
+
+The server runs with LSP_TMP, a directory of its own, in its environment.
+A check command that writes its process id to a file there named `pid...`
+leads its process group: once the server has exited, no process of that
+group may run.
 """
 
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 
 
 def main():
@@ -60,7 +80,7 @@ def main():
         sys.exit(__doc__)
     server, root, session = sys.argv[1:]
     root = os.path.abspath(root)
-    s = Session(server, root)
+    s = Session(server, root, os.path.dirname(os.path.abspath(session)))
     lines = open(session).read().split("\n")
     i = 0
     try:
@@ -76,13 +96,17 @@ def main():
             print("> " + line)
             if s.exited:
                 raise Failure("a command after exit")
-            s.command(line.split(), "\n".join(body) + "\n" if body else None)
+            wait = not line.endswith(" &")
+            s.command(line.rstrip(" &").split(), "\n".join(body) + "\n" if body else None, wait)
         if not s.exited:
             s.finish()
+        s.no_checks_left()
     except Failure as f:
         print("!! " + str(f))
         s.kill()
         sys.exit(1)
+    finally:
+        shutil.rmtree(s.tmp, ignore_errors=True)
 
 
 class Failure(Exception):
@@ -90,9 +114,12 @@ class Failure(Exception):
 
 
 class Session:
-    def __init__(self, server, root):
+    def __init__(self, server, root, here):
         self.root = root
-        self.proc = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.here = here
+        self.tmp = tempfile.mkdtemp(prefix="nexus-lsp-")
+        env = dict(os.environ, LSP_TMP=self.tmp)
+        self.proc = subprocess.Popen([server], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         self.next_id = 1
         self.legend = []
         self.modifiers = []
@@ -104,6 +131,36 @@ class Session:
     def kill(self):
         self.timer.cancel()
         self.proc.kill()
+        for pid in self.check_pids():
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+    def check_pids(self):
+        pids = []
+        for name in sorted(os.listdir(self.tmp)):
+            if name.startswith("pid"):
+                text = open(os.path.join(self.tmp, name)).read().strip()
+                if text:
+                    pids.append(int(text))
+        return pids
+
+    def no_checks_left(self):
+        """Once the server has exited, no process of a check's group runs
+        (a group being stopped gets 5 s to go)."""
+        for pid in self.check_pids():
+            deadline = time.time() + 5
+            while True:
+                try:
+                    os.killpg(pid, 0)
+                except ProcessLookupError:
+                    break
+                except PermissionError:
+                    pass
+                if time.time() > deadline:
+                    raise Failure("the check's process group %d still runs" % pid)
+                time.sleep(0.05)
 
     def uri(self, path):
         return path if path.startswith("untitled:") else "file://" + os.path.join(self.root, path)
@@ -191,10 +248,23 @@ class Session:
         p["position"] = {"line": int(line) - 1, "character": int(col) - 1}
         return p
 
-    def command(self, words, body):
+    def command(self, words, body, wait=True):
         cmd, args = words[0], words[1:]
         if cmd == "initialize":
             params = {"capabilities": {}, "initializationOptions": {}}
+            if "check" in args:
+                at = args.index("check")
+                check = json.loads(" ".join(args[at + 1 :]))
+                args = args[:at]
+                params["initializationOptions"]["check"] = [
+                    os.path.normpath(os.path.join(self.here, w)) if isinstance(w, str) and w.startswith(("./", "../")) else w
+                    for w in check
+                ]
+            if "features" in args:
+                names = args[args.index("features") + 1]
+                params["initializationOptions"]["features"] = [] if names == "-" else names.split(",")
+            if "timeout" in args:
+                params["initializationOptions"]["checkTimeout"] = int(args[args.index("timeout") + 1])
             if "utf-8" in args:
                 params["capabilities"]["general"] = {"positionEncodings": ["utf-8", "utf-16"]}
             if "root" in args:
@@ -206,9 +276,9 @@ class Session:
                     name, _, file = args[i + 1].partition("=")
                     params["initializationOptions"].setdefault("modules", {})[name] = os.path.join(self.root, file)
             msg = self.request("initialize", params)
-            legend = msg["result"]["capabilities"]["semanticTokensProvider"]["legend"]
-            self.legend = legend["tokenTypes"]
-            self.modifiers = legend["tokenModifiers"]
+            legend = msg["result"]["capabilities"].get("semanticTokensProvider", {}).get("legend", {})
+            self.legend = legend.get("tokenTypes", [])
+            self.modifiers = legend.get("tokenModifiers", [])
             self.notify("initialized", {})
             if "quiet" not in args:
                 self.show(msg)
@@ -249,6 +319,12 @@ class Session:
             self.show(self.request(POSITION[cmd], p))
         elif cmd == "request":
             self.show(self.request(args[0], self.doc(args[1])))
+        elif cmd == "wait":
+            deadline = time.time() + 10
+            while not os.path.exists(os.path.join(self.tmp, args[0])):
+                if time.time() > deadline:
+                    raise Failure("no %s in LSP_TMP" % args[0])
+                time.sleep(0.02)
         elif cmd == "exit":
             self.notify("exit", None)
             self.proc.stdin.close()
@@ -261,7 +337,7 @@ class Session:
             print("exited %d" % code)
         else:
             raise Failure("unknown command " + cmd)
-        if cmd in ("open", "change", "edit", "save", "close"):
+        if cmd in ("open", "change", "edit", "save", "close") and wait:
             self.sync()
 
     def sync(self):

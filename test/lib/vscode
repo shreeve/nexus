@@ -14,8 +14,10 @@
 // type, and `semanticTokenScopes` gives a TextMate scope to exactly the
 // types of `scope_legend` (a standard type it gives none keeps VS Code's
 // own); and the same of the modifiers of the server's `modifier_legend`
-// and package.json's `semanticTokenModifiers`. Prints each disagreement;
-// exit status 1 if there is one.
+// and package.json's `semanticTokenModifiers`; and the `features`
+// setting offers, and asks for by default, the server's `Feature`s, in
+// order, and `server.checkTimeout`'s default is the server's. Prints each
+// disagreement; exit status 1 if there is one.
 //
 // `client`: runs VSCODE_DIR/extension.js under Node with a stub `vscode`
 // module and a stub `vscode-languageclient/node`, as the scenario
@@ -32,6 +34,8 @@
 //   t.elsewhere(full)       the event for a setting of another extension
 //   t.folders(names)        the workspace folders (default: one, "app")
 //   t.trust(bool)           whether the workspace is trusted (default true)
+//   t.grant()               the workspace becomes trusted: VS Code's
+//                             event, then settle
 //   t.bundle()              put a server at <ext>/bin/<id>-lsp
 //   t.failStart(message)    the next client's start() rejects with it
 //   t.hold()                the next start()s wait; returns the release
@@ -105,6 +109,23 @@ function legend(pkgPath, templatePath) {
     if (lspTypes.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, LSP's own type, which keeps VS Code's`);
     else if (!types.includes(s)) problems.push(`semanticTokenScopes gives a scope to ${s}, which the server's legend lacks`);
   }
+  // The features setting offers, and by default asks for, every feature
+  // of the server's `Feature`, in its order.
+  const feature = /const Feature = enum \{([^}]*)\};/.exec(template);
+  if (!feature) return fail(`${templatePath}: no Feature enum`);
+  const serverFeatures = [...feature[1].matchAll(/(\w+),/g)].map((x) => x[1]).join(",");
+  const setting = Object.entries(pkg.contributes.configuration.properties).find(([k]) => k.endsWith(".features"));
+  if (!setting) problems.push("package.json declares no features setting");
+  else {
+    if (setting[1].items.enum.join(",") !== serverFeatures) problems.push(`the features setting offers ${setting[1].items.enum.join(",")}, the server has ${serverFeatures}`);
+    if (setting[1].default.join(",") !== serverFeatures) problems.push(`the features setting asks for ${setting[1].default.join(",")} by default, the server has ${serverFeatures}`);
+  }
+  // The checkTimeout setting's default is the server's own.
+  const timeout = /const default_check_timeout = ([\d_]+);/.exec(template);
+  if (!timeout) return fail(`${templatePath}: no default_check_timeout`);
+  const timeoutSetting = Object.entries(pkg.contributes.configuration.properties).find(([k]) => k.endsWith(".server.checkTimeout"));
+  const serverTimeout = Number(timeout[1].replace(/_/g, ""));
+  if (!timeoutSetting || timeoutSetting[1].default !== serverTimeout) problems.push(`the checkTimeout setting's default is not the server's ${serverTimeout}`);
   for (const p of problems) console.log(p);
   process.exit(problems.length > 0 ? 1 : 0);
 }
@@ -131,7 +152,7 @@ async function client(dir, scenarioPath) {
       : JSON.stringify(x, (k, v) => (v && typeof v === "object" && v.__channel ? `<channel ${v.__channel}>` : v));
   const say = (...parts) => lines.push(parts.map(show).join(" ").split(ext).join("<ext>").split(ws).join("<ws>"));
 
-  const state = { user: {}, workspace: {}, folders: ["app"], trusted: true, listeners: [], failures: [], hold: null };
+  const state = { user: {}, workspace: {}, folders: ["app"], trusted: true, listeners: [], granted: [], failures: [], hold: null };
   const declared = (full) => {
     if (!(full in props)) throw new Error(`the extension reads ${full}, which package.json does not declare`);
     return props[full];
@@ -176,6 +197,10 @@ async function client(dir, scenarioPath) {
       onDidChangeConfiguration(listener) {
         state.listeners.push(listener);
         return { dispose: () => state.listeners.splice(state.listeners.indexOf(listener), 1) };
+      },
+      onDidGrantWorkspaceTrust(listener) {
+        state.granted.push(listener);
+        return { dispose: () => state.granted.splice(state.granted.indexOf(listener), 1) };
       },
     },
     window: {
@@ -258,6 +283,12 @@ async function client(dir, scenarioPath) {
     },
     trust(trusted) {
       state.trusted = trusted;
+    },
+    async grant() {
+      say("the workspace is trusted");
+      state.trusted = true;
+      for (const l of [...state.granted]) l();
+      await settle();
     },
     bundle() {
       fs.mkdirSync(path.join(ext, "bin"), { recursive: true });

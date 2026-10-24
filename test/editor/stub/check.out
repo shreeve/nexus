@@ -1,0 +1,36 @@
+> initialize check ["./checker", "report", "${file}"]
+{"capabilities":{"completionProvider":{"triggerCharacters":[]},"foldingRangeProvider":true,"positionEncoding":"utf-16","selectionRangeProvider":true,"semanticTokensProvider":{"full":true,"legend":{"tokenModifiers":["declaration","definition","readonly","static","deprecated","abstract","async","modification","documentation","defaultLibrary"],"tokenTypes":["keyword","keywordControl","keywordOperator","constant","constantNumeric","constantSymbol","string","stringEscape","comment","operator","punctuation","type","function","functionBuiltin","label","storageModifier","variableParameter","variableSpecial","invalid","namespace","class","enum","interface","struct","typeParameter","variable","property","enumMember","event","method","macro","regexp","decorator"]}},"textDocumentSync":{"change":2,"openClose":true,"save":{"includeText":false}}},"serverInfo":{"name":"tally-lsp"}}
+> open main.tally
+diagnostics main.tally
+  {"message":"total is too big","range":"4:5-4:10","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"add is declared here"}],"severity":1,"source":"checker"}
+  {"message":"scale takes a number","range":"12:7-12:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"7:13-7:19","severity":2,"source":"checker"}
+diagnostics util.tally
+  {"message":"greeting is unused","range":"11:5-11:13","relatedInformation":[{"location":"util.tally 11:5-11:13","message":"greeting is declared here"}],"severity":2,"source":"checker"}
+> edit main.tally 1:1-1:1 "\n"
+diagnostics main.tally
+  {"message":"total is too big","range":"5:5-5:10","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"add is declared here"}],"severity":1,"source":"checker"}
+  {"message":"scale takes a number","range":"13:7-13:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"8:13-8:19","severity":2,"source":"checker"}
+> edit main.tally 5:5-5:10 "sum"
+diagnostics main.tally
+  {"message":"scale takes a number","range":"13:7-13:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"8:13-8:19","severity":2,"source":"checker"}
+> change main.tally
+diagnostics main.tally none
+> save main.tally
+diagnostics main.tally
+  {"message":"total is too big","range":"4:5-4:10","relatedInformation":[{"location":"util.tally 2:4-2:7","message":"add is declared here"}],"severity":1,"source":"checker"}
+  {"message":"scale takes a number","range":"12:7-12:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"7:13-7:19","severity":2,"source":"checker"}
+> open util.tally
+> edit util.tally 1:1-1:1 "\n"
+diagnostics util.tally
+  {"message":"greeting is unused","range":"12:5-12:13","relatedInformation":[{"location":"util.tally 12:5-12:13","message":"greeting is declared here"}],"severity":2,"source":"checker"}
+> open text.tally
+diagnostics main.tally
+  {"message":"total is too big","range":"4:5-4:10","relatedInformation":[{"location":"util.tally 3:4-3:7","message":"add is declared here"}],"severity":1,"source":"checker"}
+  {"message":"scale takes a number","range":"12:7-12:12","severity":1,"source":"checker"}
+  {"message":"factor is never 0","range":"7:13-7:19","severity":2,"source":"checker"}
+diagnostics text.tally
+  {"message":"not a note","range":"2:11-2:11","severity":1,"source":"checker"}

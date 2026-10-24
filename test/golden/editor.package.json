@@ -12,8 +12,8 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "The language server is the one the user's own settings name, never a workspace's.",
-      "restrictedConfigurations": ["nexus-tally.server.path"]
+      "description": "The language server and its check are the ones the user's own settings name, never a workspace's; the check runs only in a trusted workspace.",
+      "restrictedConfigurations": ["nexus-tally.server.path", "nexus-tally.server.check"]
     }
   },
   "dependencies": {"vscode-languageclient": "9.0.1"},
@@ -48,6 +48,26 @@
           "default": {},
           "additionalProperties": {"type": "string"},
           "markdownDescription": "The file of each module name an import names, by name; a relative path is relative to the first workspace folder. An import of another name names a file relative to the importing file."
+        },
+        "nexus-tally.server.check": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "A command that checks the program when a file opens or is saved, as its words, from user settings only and run only in a trusted workspace: `${file}` is the file's path and `${root}` the program's root. Each line of its output `PATH:LINE:COL: error: MESSAGE` (or `warning:`) is a diagnostic, and each `note:` line a note of the one before it. Empty: no check."
+        },
+        "nexus-tally.server.checkTimeout": {
+          "type": "integer",
+          "default": 60000,
+          "minimum": 1,
+          "markdownDescription": "The milliseconds a check may run before it is stopped."
+        },
+        "nexus-tally.features": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["diagnostics", "semanticTokens", "folding", "selection", "symbols", "hover", "definition", "references", "rename", "completion", "signature", "formatting", "check"]},
+          "uniqueItems": true,
+          "default": ["diagnostics", "semanticTokens", "folding", "selection", "symbols", "hover", "definition", "references", "rename", "completion", "signature", "formatting", "check"],
+          "markdownDescription": "The features the language server serves, of those it has. Beside another language server for the language, the features the other lacks, such as `[\"semanticTokens\", \"folding\", \"selection\", \"check\"]`."
         }
       }
     },

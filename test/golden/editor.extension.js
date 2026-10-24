@@ -43,6 +43,18 @@ function serverRoot() {
   return "";
 }
 
+/** The check command. It comes from the user's own settings, never
+ * from a workspace's, and runs only in a trusted workspace: it may
+ * run the workspace's own code. */
+function serverCheck() {
+  const set = vscode.workspace.getConfiguration(prefix).inspect("server.check");
+  const check = set && set.globalValue;
+  if (!Array.isArray(check) || check.length === 0 || !check.every((w) => typeof w === "string")) return [];
+  if (vscode.workspace.isTrusted) return check;
+  output.appendLine(`${prefix}.server.check runs only in a trusted workspace.`);
+  return [];
+}
+
 /** The files of module names, each absolute: a relative one is
  * relative to the first workspace folder. */
 function serverModules() {
@@ -60,13 +72,20 @@ function serverModules() {
 /** @param {vscode.ExtensionContext} context */
 async function start(context) {
   const command = serverCommand(context);
+  const config = vscode.workspace.getConfiguration(prefix);
   const server = { command, args: [] };
   const started = new LanguageClient(prefix, name, { run: server, debug: server }, {
     documentSelector: [
       { scheme: "file", language: id },
       { scheme: "untitled", language: id },
     ],
-    initializationOptions: { root: serverRoot(), modules: serverModules() },
+    initializationOptions: {
+      root: serverRoot(),
+      modules: serverModules(),
+      check: serverCheck(),
+      checkTimeout: config.get("server.checkTimeout"),
+      features: config.get("features"),
+    },
     outputChannel: output,
   });
   try {
@@ -116,8 +135,10 @@ async function activate(context) {
   context.subscriptions.push(
     output,
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration(prefix + ".server")) restart(context);
+      if (e.affectsConfiguration(prefix + ".server") || e.affectsConfiguration(prefix + ".features")) restart(context);
     }),
+    // Trust lets the check run.
+    vscode.workspace.onDidGrantWorkspaceTrust(() => restart(context)),
   );
   await restart(context);
 }

@@ -1,0 +1,55 @@
+#!/bin/sh
+# A check command for the sessions (test/lib/lsp): what it does depends on
+# its first argument.
+#
+#   checker report FILE   print what a checker finds in FILE, errors on
+#                         standard error and warnings on standard output,
+#                         and exit 1 when it finds an error
+#   checker flood         write its process id to $LSP_TMP/pid, print an
+#                         error and then 5 MB, and wait 30 s
+#   checker fail          print an error that names no file, and exit 2
+#   checker slow          write its process id to $LSP_TMP/pid, then wait
+#                         30 s in a process of its own
+case $1 in
+report)
+    case $(basename "$2") in
+    main.tally)
+        cat >&2 <<'EOF'
+main.tally:4:5: error: total is too big
+    let total = util.add(1, 2)
+            ^~~~~
+util.tally:2:4: note: add is declared here
+main.tally:12:7: error: scale takes a number
+EOF
+        cat <<'EOF'
+main.tally:7:13: warning: factor is never 0
+util.tally:11:5: warning: greeting is unused
+util.tally:11:5: note: greeting is declared here
+EOF
+        exit 1
+        ;;
+    util.tally)
+        echo "util.tally:11:5: warning: greeting is unused"
+        ;;
+    text.tally)
+        # Byte 12 of line 2 starts the character after "é", which is two
+        # bytes and one UTF-16 unit.
+        echo "text.tally:2:12: error: not a note"
+        ;;
+    esac
+    ;;
+flood)
+    echo $$ >"$LSP_TMP/pid"
+    echo "main.tally:1:5: error: the first of many"
+    yes "a line of output" | head -c 5000000
+    sleep 30
+    ;;
+fail)
+    echo "error: no step named 'check'" >&2
+    exit 2
+    ;;
+slow)
+    echo $$ >"$LSP_TMP/pid"
+    sleep 30
+    ;;
+esac

@@ -1,0 +1,7 @@
+# A check command that does not start, and one that fails without naming
+# a file, is logged once, until a check succeeds, and shows nothing wrong
+# in the file.
+initialize check ["./no-such-checker", "${file}"]
+open main.tally
+save main.tally
+open util.tally

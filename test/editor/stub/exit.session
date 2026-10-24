@@ -1,0 +1,5 @@
+# Shutdown and exit while a check runs stop it, with every process it
+# started, at once; the server exits 0, and leaks nothing.
+initialize check ["./checker", "slow"]
+open main.tally &
+wait pid

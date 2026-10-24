@@ -3,7 +3,7 @@ activate
 createOutputChannel Tally (Nexus)
 client 1: new nexus-tally Tally (Nexus)
   server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
-  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"<ws>/app/src/main.tally","modules":{}},"outputChannel":"<channel Tally (Nexus)>"}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"<ws>/app/src/main.tally","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
 client 1: start
 client 1: running
 activated
@@ -11,14 +11,14 @@ workspace setting nexus-tally.server.root = "/abs/main.tally"
 client 1: stop
 client 2: new nexus-tally Tally (Nexus)
   server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
-  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"/abs/main.tally","modules":{}},"outputChannel":"<channel Tally (Nexus)>"}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"/abs/main.tally","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
 client 2: start
 client 2: running
 workspace setting nexus-tally.server.root = ""
 client 2: stop
 client 3: new nexus-tally Tally (Nexus)
   server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
-  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{}},"outputChannel":"<channel Tally (Nexus)>"}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
 client 3: start
 client 3: running
 workspace setting nexus-tally.server.root = "main.tally"
@@ -26,7 +26,7 @@ client 3: stop
 warning: Tally (Nexus): nexus-tally.server.root is relative and no folder is open; the server analyzes each file's own program.
 client 4: new nexus-tally Tally (Nexus)
   server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
-  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{}},"outputChannel":"<channel Tally (Nexus)>"}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
 client 4: start
 client 4: running
 deactivate

@@ -143,7 +143,10 @@ TextMate grammar and the client. `companion` contributes the client
 alone, for a language another extension already contributes: the other
 extension keeps the language and its colouring, and this one adds the
 server. Both activate on the language's files and declare the semantic
-token types and the settings.
+token types and the settings. Beside another language server for the
+same language, VS Code asks both and shows what each answers, so a
+companion is best set to serve what the other server lacks
+([Features](#features)).
 
 ### The extension
 
@@ -170,23 +173,31 @@ scope of the grammar's, stands for them. The server's token modifiers are LSP's 
 | `PREFIX.server.path` | the server: a path, or a name on `PATH`; empty means the extension's `bin/LANG-lsp`, else `LANG-lsp` on `PATH` |
 | `PREFIX.server.root` | the file the program starts from, which the server analyzes; a relative path is relative to the first workspace folder; empty means each file's own program ([The analysis](#the-analysis)) |
 | `PREFIX.server.modules` | with `@lsp` `import` lines: the file of each module name an import names, as `{"std": "/path/to/lib/std/std.zig"}`; a relative path is relative to the first workspace folder ([Names across files](#names-across-files)) |
+| `PREFIX.server.check` | a command that checks the program when a file opens or is saved, as a list of its words, `${file}` and `${root}` in place; empty means none ([The check](#the-check)) |
+| `PREFIX.server.checkTimeout` | the milliseconds a check may run before it is stopped; 60000 by default |
+| `PREFIX.features` | the features the server serves, of those it has; all of them by default ([Features](#features)) |
 
-`server.path` names a program to run, so only the user's own settings
-give it: it has `"scope": "machine"`, `package.json` lists it among the
-settings an untrusted workspace may not set, and `extension.js` reads
-only its user-level value. A workspace's `.vscode/settings.json` never
-chooses the server, trusted or not.
+`server.path` and `server.check` name programs to run, so only the
+user's own settings give them: each has `"scope": "machine"`,
+`package.json` lists both among the settings an untrusted workspace may
+not set, and `extension.js` reads only their user-level values. A
+workspace's `.vscode/settings.json` never chooses the server or the
+check, trusted or not. A check may run the workspace's own code (`zig
+build` runs its `build.zig`), so in a workspace not trusted the
+extension passes none, and says so in its output channel; trusting the
+workspace restarts the server with it.
 
 `extension.js` starts the server with `vscode-languageclient` for the
 language's documents of the `file` and `untitled` schemes (not the
 `git:` or diff views of them), and passes `server.root` as the
-`root` option, absolute, and `server.modules` as the `modules` option,
-each file absolute. A relative root with no folder open is left
-out, and the extension says so. A change to a `PREFIX.server` setting
-restarts the server: one restart at a time, each after the one before
-has finished, and changes that come before a restart begins share it,
-so two changes in a row start one server. Every server writes to one
-output channel. When the server does not start, the extension disposes
+`root` option, absolute, `server.modules` as the `modules` option,
+each file absolute, `server.check` as `check`, `server.checkTimeout`
+as `checkTimeout` and `features` as `features`. A relative root with no
+folder open is left out, and the extension says so. A change to a
+`PREFIX.server` setting or to `PREFIX.features` restarts the server:
+one restart at a time, each after the one before has finished, and
+changes that come before a restart begins share it, so two changes in
+a row start one server. Every server writes to one output channel. When the server does not start, the extension disposes
 of the client and says how to set `server.path`; in `standalone` mode
 the TextMate grammar colours the files anyway.
 
@@ -507,6 +518,101 @@ pub fn renamable(a: *Analysis, symbol: lsp.Symbol) bool
 | `foldingRange`, `semanticTokens` | `folds` and `tokens`, else the grammar's |
 | `formatting` | `format` |
 
+## The check
+
+The client's `check` option (`PREFIX.server.check`) is a command, as a
+list of its words, that checks the program: the language's compiler or
+build. It gives the diagnostics only the whole build knows, with no
+function of `hooks.zig`:
+
+| Language | `server.check` |
+|---|---|
+| Zig, a project's `check` step | `["zig", "build", "check"]` |
+| Zig, one file | `["zig", "build-obj", "-fno-emit-bin", "${file}"]` |
+| Rig | `["rig", "check", "${file}"]` |
+
+The server runs it when a file opens and when it is saved, never as you
+type, with `${file}` in each word replaced by the file's path and
+`${root}` by the root of its program ([The analysis](#the-analysis)):
+on a task of its own, after the analyses asked for with it, one check
+at a time. A check asked for while another waits for the same command
+(the words with the paths in place) joins it, so a command that names
+neither path runs once for any number of files. It runs in the first
+workspace folder, else the root's directory, with its standard input
+empty, in a process group of its own.
+
+Each line of its standard error and standard output of the form
+
+```text
+PATH:LINE:COL: error: MESSAGE
+PATH:LINE:COL: warning: MESSAGE
+PATH:LINE:COL: note: MESSAGE
+```
+
+is a diagnostic, an error or a warning, at that place of the file as
+it is on disk (a relative PATH is relative to the directory the check
+ran in; LINE and COL count from 1, COL in bytes, and the server sends
+the position in the client's encoding), from COL to the end of the word
+there (`@highlight`'s `word-chars`), else of no width. A `note:` line is
+related information of the diagnostic before it in the same output.
+Every other line (the source line, a caret, a summary) is not. The
+diagnostics, with the command's first word (its file name, without
+its directory) as their `source`, are
+published to every file they name, beside the file's own, and those of
+an open file move with the edits made since it was saved, as the
+analysis's do: one whose text an edit replaced is dropped, until the
+next check. Each command's diagnostics replace its last ones; one the
+checks of two commands both give is shown once.
+
+A check is bounded: the server stops it, with every process in its
+group, once its output passes 4 MiB (and takes the lines it read),
+after `checkTimeout` milliseconds (`PREFIX.server.checkTimeout`, 60000
+by default), and when the server exits. A check that fails, because the command does not start, runs out
+of time, or exits with a failure and names no file, drops that
+command's diagnostics and shows nothing wrong in the file; the server
+logs it (`window/logMessage`), "the check of ROOT took longer than 300
+ms", or "the check of ROOT exited with code 2: error: no step named
+'check'" with the first line of its output, once, until a check
+succeeds.
+
+How the Zig demo installs beside the official Zig extension, and where
+its settings go, is in [grammars/zig/README.md, "Installing
+it"](../grammars/zig/README.md#installing-it).
+
+## Features
+
+The client's `features` option (`PREFIX.features`) names the features
+the server serves; without it, all of them. The server advertises a
+feature when the grammar or `hooks.zig` gives it and the client asks
+for it, and answers a request of any other with `MethodNotFound`; a
+name that is no feature's is logged (`window/logMessage`).
+
+| Feature | What it serves |
+|---|---|
+| `diagnostics` | syntax errors, the analysis's diagnostics and `@lsp`'s undefined names |
+| `semanticTokens` | semantic tokens |
+| `folding` | folding ranges |
+| `selection` | selection ranges |
+| `symbols` | the outline |
+| `hover` | hover |
+| `definition` | go to definition and go to type definition |
+| `references` | references and document highlights |
+| `rename` | rename |
+| `completion` | completion |
+| `signature` | signature help |
+| `formatting` | Format Document |
+| `check` | [the check](#the-check), when the client gives a command |
+
+Without `diagnostics`, the server publishes the check's diagnostics
+alone. Beside another server for the language (a `companion`
+extension), VS Code shows both servers' diagnostics, hovers and
+completions, and asks which one formats. There the recommended setting
+is the features the other server lacks, such as
+
+```json
+"PREFIX.features": ["semanticTokens", "folding", "selection", "check"]
+```
+
 ## The server's own duties
 
 Whatever the language writes, the server:
@@ -519,10 +625,11 @@ Whatever the language writes, the server:
   (-32601), a request on a document that is not open with
   `InvalidParams` (-32602), and a rename it refuses with `RequestFailed`
   (-32803) and the reason;
-- answers `nexus/idle`, a request of its own, once every analysis asked
-  for has landed and published: a client that needs to know, such as
-  the test driver, asks it after a notification;
-- exits 0 on `exit` after `shutdown`, else 1.
+- answers `nexus/idle`, a request of its own, once every analysis and
+  check asked for has landed and published: a client that needs to
+  know, such as the test driver, asks it after a notification;
+- exits 0 on `exit` after `shutdown`, else 1, once a check under way is
+  stopped, with every process it started.
 
 ## Tests
 
@@ -556,7 +663,11 @@ line:
 {"changes":{"main.tally":[{"newText":"z","range":"8:9-8:10"},{"newText":"z","range":"9:24-9:25"}]}}
 ```
 
-`test/lib/lsp` lists every command. For every other grammar with
+`test/lib/lsp` lists every command. The check's sessions run
+`test/editor/stub/checker`, a script that prints what a checker would
+for each file, prints 5 MB, fails, or waits; the driver checks that no
+process of a check's group is left once the server has exited. For
+every other grammar with
 `@highlight`, the suite runs `--editor` and checks the files it writes
 against the highlighting files, the parser and the goldens, and checks
 that the server compiles; for Zig's, `grammars/zig/compare-scopes` checks
@@ -576,12 +687,15 @@ The suite checks the extension under Node, without VS Code
 types must agree with the server's legend: each type the server sends is
 standard or declared, each declared type is one it sends, each
 `superType` is standard, each type of a scope has a TextMate scope, and
-LSP's 14 are standard types with none. The
+LSP's 14 are standard types with none; and the `features` setting must
+offer the server's features, and `server.checkTimeout` default to the
+server's timeout. The
 scenarios of `test/editor/client/` run `extension.js` against stub
 `vscode` and `vscode-languageclient` modules and compare every call it
 makes with a golden: the server it runs (bundled, on `PATH`, from user
 settings, never from a workspace's, trusted or not), the root and the
-modules it passes,
+modules it passes, the check (from user settings alone, and only once
+the workspace is trusted), its timeout and the features,
 the document selector, one output channel, restarts that wait for each
 other and share a change, a server that does not start, and a
 `companion` extension with an identity of its own. `tools/cli` checks

@@ -1,0 +1,43 @@
+package nexus-local.nexus-tally "Tally (Nexus)" 0.1.0; contributes languages, grammars, configuration, semanticTokenTypes, semanticTokenScopes
+activate
+createOutputChannel Tally (Nexus)
+output: nexus-tally.server.check runs only in a trusted workspace.
+client 1: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
+client 1: start
+client 1: running
+activated
+# trusted, the user's check runs; a workspace's never
+the workspace is trusted
+client 1: stop
+client 2: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":["zig","build-obj","-fno-emit-bin","${file}"],"checkTimeout":60000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
+client 2: start
+client 2: running
+workspace setting nexus-tally.server.checkTimeout = 5000
+client 2: stop
+client 3: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":["zig","build-obj","-fno-emit-bin","${file}"],"checkTimeout":5000,"features":["diagnostics","semanticTokens","folding","selection","symbols","hover","definition","references","rename","completion","signature","formatting","check"]},"outputChannel":"<channel Tally (Nexus)>"}
+client 3: start
+client 3: running
+user setting nexus-tally.features = ["semanticTokens","folding","check"]
+client 3: stop
+client 4: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":["zig","build-obj","-fno-emit-bin","${file}"],"checkTimeout":5000,"features":["semanticTokens","folding","check"]},"outputChannel":"<channel Tally (Nexus)>"}
+client 4: start
+client 4: running
+user setting nexus-tally.server.check = []
+client 4: stop
+client 5: new nexus-tally Tally (Nexus)
+  server {"run":{"command":"tally-lsp","args":[]},"debug":{"command":"tally-lsp","args":[]}}
+  options {"documentSelector":[{"scheme":"file","language":"tally"},{"scheme":"untitled","language":"tally"}],"initializationOptions":{"root":"","modules":{},"check":[],"checkTimeout":5000,"features":["semanticTokens","folding","check"]},"outputChannel":"<channel Tally (Nexus)>"}
+client 5: start
+client 5: running
+deactivate
+client 5: stop
+dispose channel Tally (Nexus)
+deactivated
