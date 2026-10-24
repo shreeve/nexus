@@ -1,5 +1,6 @@
 > initialize quiet
 > open colors.zig
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the import \"std\" in colors.zig names no file. For a module, set nexus-zig.server.modules (the modules option) to its file, as {\"std\": \"/path/to/std.zig\"}.","type":2}}
 > tokens colors.zig
   2:1 5 keyword
   2:7 3 constant declaration readonly

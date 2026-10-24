@@ -4,7 +4,8 @@
 # `property`), an enum's fields, error names, enum literals and error
 # values, each with `declaration` where it is defined, and each name and
 # member of them (`p.sum`, `p.x`) as its definition. With the server the
-# hooks.zig `--editor` writes, on project/colors.zig.
+# hooks.zig `--editor` writes, on project/colors.zig; that hooks.zig has
+# no `resolveImport`, so `@import("std")` names no file, logged once.
 initialize quiet
 open colors.zig
 tokens colors.zig
