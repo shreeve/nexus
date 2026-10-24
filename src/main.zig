@@ -356,7 +356,7 @@ fn writeEditor(allocator: Allocator, io: Io, opts: Options, built: *const Built)
     try files.append(allocator, .{ .path = "vscode/extension.js", .bytes = try editor.extensionJs(allocator, in) });
     try files.append(allocator, .{ .path = "vscode/README.md", .bytes = try editor.readme(allocator, in) });
     try files.append(allocator, .{ .path = "vscode/.vscodeignore", .bytes = try editor.vscodeIgnore(allocator, in) });
-    try files.append(allocator, .{ .path = "vscode/.gitignore", .bytes = "node_modules/\nbin/\n*.vsix\n.vscode-test/\n" });
+    try files.append(allocator, .{ .path = "vscode/.gitignore", .bytes = "node_modules/\ndist/\nbin/\n*.vsix\n.vscode-test/\n" });
     try files.append(allocator, .{ .path = "server/build.zig", .bytes = try editor.buildZig(allocator, in) });
     try files.append(allocator, .{ .path = "server/.gitignore", .bytes = ".zig-cache/\nzig-out/\n" });
     try files.append(allocator, .{ .path = "server/src/main.zig", .bytes = try editor.mainZig(allocator, in) });

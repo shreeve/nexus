@@ -43,6 +43,13 @@ pub const format = lsp.todo;
 /// pub fn resolveImport(arena: std.mem.Allocator, from: []const u8, name: []const u8) !?[]const u8
 pub const resolveImport = lsp.todo;
 
+/// What the server logs, once, of an import whose name names no file:
+/// `.plain` its line, which names the `modules` setting; `.{ .hint =
+/// sentence }` its line and the sentence (why, and what to do); `.quiet`
+/// nothing, for a name that needs no file.
+/// pub fn unresolvedImport(arena: std.mem.Allocator, name: []const u8) !lsp.Unresolved
+pub const unresolvedImport = lsp.todo;
+
 // --- The analysis: the program checked as a whole -------------------------
 
 /// What `analyze` keeps for the functions below.

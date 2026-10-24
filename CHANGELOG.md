@@ -291,8 +291,39 @@
   `extension.js` and `README.md`, and Rig sets `PREFIX.server.check`
   to `["rig", "check", "${file}"]` in its own user settings to have
   `rig check` on save.
+- A `companion` extension says when no extension contributes its
+  language ([LSP.md, "The extension's identity"](docs/LSP.md#the-extensions-identity)):
+  it activates at start-up too (`onStartupFinished`), and when VS Code
+  knows no language of its id, it shows one warning, naming the
+  extension it goes beside (`identity.json`'s new `provider`, an
+  extension's id, only in `companion` mode; a mistake in it is a
+  located error) and how to rebuild it `standalone`, and starts no
+  server. It starts the server at the first of the language's files.
+  The Zig demo's `install` sets `"provider": "ziglang.vscode-zig"` in
+  `companion` mode.
+- An import whose name names no file is logged once
+  ([LSP.md, "Names across files"](docs/LSP.md#names-across-files)):
+  when a file is opened or saved, each such import's name, the first
+  time, with the setting to set (`PREFIX.server.modules`) and an
+  example file. A new optional function of `hooks.zig`,
+  `unresolvedImport`, adds a sentence of why (`.hint`) or leaves a name
+  out (`.quiet`); `language.zig` declares `settings`, the extension's
+  prefix, for a grammar with `import` lines. The Zig demo's says, for
+  `std`, that VS Code started from the Dock does not get a shell's
+  `PATH`, so a `zig` mise puts on it is not found, and leaves out
+  `builtin` and `root`.
 
 ### Changed
+
+- The extension bundles its client: `package.json`'s
+  `vscode:prepublish` script runs esbuild 0.28.2 over `extension.js`
+  and `vscode-languageclient` into `dist/extension.js`, which `main`
+  names; both are `devDependencies`, and `.vscodeignore` packages no
+  `node_modules`. The Zig demo's `.vsix` holds 9 files where it held
+  324, and `vsce package` no longer warns that the extension is
+  unbundled. `npm install --ignore-scripts` installs them (esbuild needs
+  no install script). The opt-in packaging check of the Zig demo checks
+  for no warning, the bundle, which loads, and no `node_modules`.
 
 - The language server (`lsp.zig`) is the same file for every grammar,
   and serves the names of `@lsp` when `language.zig` declares them; a
@@ -373,6 +404,15 @@
 
 Additive, but for the fourth parameter of a `hooks.zig`'s `tokens`.
 Downstream:
+- Rig, em, nexis, with `editors/` written by `--editor`: run it again,
+  then `npm install --ignore-scripts` in `vscode/` and commit the new
+  `package-lock.json` (esbuild, and `vscode-languageclient` as a
+  development dependency); `vscode/.gitignore` gains `dist/`. A
+  `hooks.zig` written earlier lacks `unresolvedImport`, which is then not
+  written (no change needed); add `pub const unresolvedImport =
+  lsp.todo;` to keep the stub's list whole. A `companion` extension may
+  set `provider` in `identity.json`. Generated parsers are byte for byte
+  the same.
 - Rig, em, nexis: `@lsp` is new syntax (`@lsp` was an error), so no
   grammar changes meaning, and generated parsers are byte for byte the
   same; a server written by `--editor` without `@lsp` answers as before.

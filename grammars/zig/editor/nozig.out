@@ -1,0 +1,4 @@
+> initialize folder quiet
+> open main.zig
+notification {"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"the import \"std\" in main.zig names no file. For a module, set nexus-zig.server.modules (the modules option) to its file, as {\"std\": \"/path/to/std.zig\"}. No zig-env.zon beside the server names a std.zig, and no `zig` on its PATH gives one: VS Code started from the Dock does not get a shell's PATH, so a zig that mise or a shell profile puts on PATH is not on it. Start VS Code from a shell (`code`), or run grammars/zig/editor/install again, which saves zig-env.zon beside the server.","type":2}}
+> save main.zig

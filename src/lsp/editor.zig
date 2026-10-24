@@ -30,10 +30,16 @@ const names = @import("names.zig");
 pub const server_template = @embedFile("server_template.zig");
 pub const scopes_template = @embedFile("scopes_template.zig");
 
-/// The version of vscode-languageclient the extension depends on, and the
-/// VS Code it needs.
+/// The version of vscode-languageclient the extension depends on, of
+/// esbuild, which bundles it with the client, and the VS Code it needs.
 const client_version = "9.0.1";
+const esbuild_version = "0.28.2";
 const vscode_engine = "^1.82.0";
+
+/// The bundle `vsce package` makes before it packages (`vscode:prepublish`):
+/// extension.js and vscode-languageclient in one file, `vscode` left to
+/// VS Code.
+const bundle_command = "esbuild extension.js --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js";
 
 /// The features the server can serve, as its `Feature` names them: the
 /// values of the `features` setting, and its default.
@@ -91,6 +97,7 @@ pub fn languageZig(allocator: Allocator, in: Input) Error![]const u8 {
     try header(w, in, "The language's table for lsp.zig.");
     try w.writeAll("const std = @import(\"std\");\nconst lsp = @import(\"lsp.zig\");\nconst parser = @import(\"parser.zig\");\n\n");
     try w.print("pub const name = \"{f}\";\npub const id = \"{f}\";\n", .{ std.zig.fmtString(in.h.language), std.zig.fmtString(in.h.id) });
+    if (hasImports(in)) try w.print("/// The prefix of the extension's settings, whose `server.modules` the server\n/// names for an import that names no file.\npub const settings = \"{f}\";\n", .{std.zig.fmtString(in.identity.settings)});
 
     // Token entries: a scope per token category.
     try w.writeAll("\n/// The scope of a token by its category: the token entries of `@highlight`.\npub fn tokenScope(cat: parser.TokenCat) ?lsp.Scope {\n");
@@ -478,6 +485,13 @@ const hooks_body =
     \\/// pub fn resolveImport(arena: std.mem.Allocator, from: []const u8, name: []const u8) !?[]const u8
     \\pub const resolveImport = lsp.todo;
     \\
+    \\/// What the server logs, once, of an import whose name names no file:
+    \\/// `.plain` its line, which names the `modules` setting; `.{ .hint =
+    \\/// sentence }` its line and the sentence (why, and what to do); `.quiet`
+    \\/// nothing, for a name that needs no file.
+    \\/// pub fn unresolvedImport(arena: std.mem.Allocator, name: []const u8) !lsp.Unresolved
+    \\pub const unresolvedImport = lsp.todo;
+    \\
     \\// --- The analysis: the program checked as a whole -------------------------
     \\
     \\/// What `analyze` keeps for the functions below.
@@ -613,13 +627,16 @@ pub fn packageJson(allocator: Allocator, in: Input) Error![]const u8 {
         try w.writeAll(",\n  \"repository\": ");
         try json.string(w, id.repository);
     }
-    try w.print(",\n  \"engines\": {{\"vscode\": \"{s}\"}},\n  \"categories\": [\"Programming Languages\"],\n  \"main\": \"./extension.js\",\n  \"activationEvents\": [", .{vscode_engine});
+    try w.print(",\n  \"engines\": {{\"vscode\": \"{s}\"}},\n  \"categories\": [\"Programming Languages\"],\n  \"main\": \"./dist/extension.js\",\n  \"activationEvents\": [", .{vscode_engine});
     try json.string(w, try std.mem.concat(allocator, u8, &.{ "onLanguage:", h.id }));
+    // A companion starts with VS Code too, to say when no extension
+    // contributes the language, which `onLanguage` never sees.
+    if (id.mode == .companion) try w.writeAll(", \"onStartupFinished\"");
     try w.writeAll("],\n  \"capabilities\": {\n    \"untrustedWorkspaces\": {\n      \"supported\": \"limited\",\n      \"description\": \"The language server and its check are the ones the user's own settings name, never a workspace's; the check runs only in a trusted workspace.\",\n      \"restrictedConfigurations\": [");
     try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.path" }));
     try w.writeAll(", ");
     try json.string(w, try std.mem.concat(allocator, u8, &.{ id.settings, ".server.check" }));
-    try w.print("]\n    }}\n  }},\n  \"dependencies\": {{\"vscode-languageclient\": \"{s}\"}},\n  \"contributes\": {{\n", .{client_version});
+    try w.print("]\n    }}\n  }},\n  \"scripts\": {{\"vscode:prepublish\": \"{s}\"}},\n  \"devDependencies\": {{\"esbuild\": \"{s}\", \"vscode-languageclient\": \"{s}\"}},\n  \"contributes\": {{\n", .{ bundle_command, esbuild_version, client_version });
     if (id.mode == .standalone) {
         try w.writeAll("    \"languages\": [{\n      \"id\": ");
         try json.string(w, h.id);
@@ -721,14 +738,15 @@ fn superType(scope: Scope) ?[]const u8 {
 }
 
 /// `vscode/.vscodeignore`: what `vsce package` leaves out, which is
-/// everything but the extension's own files, the server it bundles, its
-/// dependencies and a licence (package.json and README.md go in always).
+/// everything but the bundled client, the extension's other own files,
+/// the server it bundles and a licence (package.json and README.md go in
+/// always).
 pub fn vscodeIgnore(allocator: Allocator, in: Input) Error![]const u8 {
     var out: Writer.Allocating = .init(allocator);
     const w = &out.writer;
-    try w.writeAll("**\n!extension.js\n");
+    try w.writeAll("**\n!dist/extension.js\n");
     if (in.identity.mode == .standalone) try w.writeAll("!language-configuration.json\n!syntaxes/**\n");
-    try w.writeAll("!bin/**\n!node_modules/**\n!LICENSE*\n");
+    try w.writeAll("!bin/**\n!LICENSE*\n");
     return out.written();
 }
 
@@ -743,7 +761,12 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
     try w.print("# {s}\n\n{s}\n\n", .{ id.displayName, id.description });
     switch (id.mode) {
         .standalone => try w.print("This extension gives VS Code the {s} language: its files ({s}), their colouring and the {s} language server.\n", .{ h.language, try extensionList(allocator, h), h.language }),
-        .companion => try w.print("This extension gives the files of the {s} language (`{s}`) the {s} language server. The language itself, and its colouring, come from another extension.\n", .{ h.language, h.id, h.language }),
+        .companion => try w.print("This extension gives the files of the {s} language (`{s}`) the {s} language server. The language itself, and its colouring, come from {s}, installed beside it; without it, the extension says so when VS Code starts.\n", .{
+            h.language,
+            h.id,
+            h.language,
+            if (id.provider.len > 0) try allocator.print("`{s}`", .{id.provider}) else "another extension",
+        }),
     }
     try w.print(
         \\
@@ -766,10 +789,14 @@ pub fn readme(allocator: Allocator, in: Input) Error![]const u8 {
         \\in the extension. Then, in this directory:
         \\
         \\```bash
-        \\npm install
+        \\npm install --ignore-scripts
         \\npx @vscode/vsce package --skip-license{s}
         \\```
         \\
+        \\`npm install` installs the client's library and esbuild, which needs
+        \\none of its install scripts; `vsce package` first bundles the client
+        \\into `dist/extension.js` (`npm run vscode:prepublish`), the one file
+        \\of JavaScript the package holds.
         \\`--skip-license` packages the extension without a `LICENSE` file in
         \\this directory{s}.
         \\
@@ -931,28 +958,94 @@ pub fn extensionJs(allocator: Allocator, in: Input) Error![]const u8 {
         \\  return queue;
         \\}}
         \\
-        \\/** @param {{vscode.ExtensionContext}} context */
-        \\async function activate(context) {{
-        \\  output = vscode.window.createOutputChannel(name);
-        \\  context.subscriptions.push(
-        \\    output,
-        \\    vscode.workspace.onDidChangeConfiguration((e) => {{
-        \\      if (e.affectsConfiguration(prefix + ".server") || e.affectsConfiguration(prefix + ".features")) restart(context);
-        \\    }}),
-        \\    // Trust lets the check run.
-        \\    vscode.workspace.onDidGrantWorkspaceTrust(() => restart(context)),
-        \\  );
-        \\  await restart(context);
-        \\}}
-        \\
+        \\{s}
         \\function deactivate() {{
         \\  return queue.then(stop);
         \\}}
         \\
         \\module.exports = {{ activate, deactivate }};
         \\
-    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2], if (hasImports(in)) modules_js else "", if (hasImports(in)) "\n      modules: serverModules()," else "" });
+    , .{ in.version, in.grammarName, in.identity.settings, h.id, h.id, quoted[0], quoted[1], quoted[2], if (hasImports(in)) modules_js else "", if (hasImports(in)) "\n      modules: serverModules()," else "", switch (in.identity.mode) {
+        .standalone => activate_js,
+        .companion => try companionJs(allocator, in.identity.provider),
+    } });
     return out.written();
+}
+
+/// extension.js's `activate` in `standalone` mode, which VS Code runs at
+/// the first of the language's files: the server starts at once.
+const activate_js =
+    \\/** @param {vscode.ExtensionContext} context */
+    \\async function activate(context) {
+    \\  output = vscode.window.createOutputChannel(name);
+    \\  context.subscriptions.push(
+    \\    output,
+    \\    vscode.workspace.onDidChangeConfiguration((e) => {
+    \\      if (e.affectsConfiguration(prefix + ".server") || e.affectsConfiguration(prefix + ".features")) restart(context);
+    \\    }),
+    \\    // Trust lets the check run.
+    \\    vscode.workspace.onDidGrantWorkspaceTrust(() => restart(context)),
+    \\  );
+    \\  await restart(context);
+    \\}
+    \\
+;
+
+/// extension.js's `activate` in `companion` mode, which VS Code runs at
+/// start-up too: it says so when no extension contributes the language,
+/// whose files would then never reach the server, and else starts the
+/// server at the first of the language's files. `provider` names the
+/// extension that contributes it, or is empty.
+fn companionJs(allocator: Allocator, provider: []const u8) Allocator.Error![]const u8 {
+    // The text of a JavaScript template literal: `provider` has no `, \ or $.
+    const beside, const install = if (provider.len > 0)
+        .{ provider, "it" }
+    else
+        .{ "the extension that contributes it", "that one" };
+    return allocator.print(
+        \\/** Whether one of the language's files has been open: the server
+        \\ * starts then. */
+        \\let wanted = false;
+        \\
+        \\/** Start the server, once: at the first of the language's files.
+        \\ * @param {{vscode.ExtensionContext}} context */
+        \\function want(context) {{
+        \\  if (wanted) return queue;
+        \\  wanted = true;
+        \\  return restart(context);
+        \\}}
+        \\
+        \\/** @param {{vscode.ExtensionContext}} context */
+        \\async function activate(context) {{
+        \\  output = vscode.window.createOutputChannel(name);
+        \\  context.subscriptions.push(
+        \\    output,
+        \\    vscode.workspace.onDidChangeConfiguration((e) => {{
+        \\      if (!wanted) return;
+        \\      if (e.affectsConfiguration(prefix + ".server") || e.affectsConfiguration(prefix + ".features")) restart(context);
+        \\    }}),
+        \\    // Trust lets the check run.
+        \\    vscode.workspace.onDidGrantWorkspaceTrust(() => {{
+        \\      if (wanted) restart(context);
+        \\    }}),
+        \\    vscode.workspace.onDidOpenTextDocument((doc) => {{
+        \\      if (doc.languageId === id) want(context);
+        \\    }}),
+        \\  );
+        \\  // This extension serves a language another extension contributes:
+        \\  // without that one, VS Code gives the files another language, and
+        \\  // the server never starts.
+        \\  if (!(await vscode.languages.getLanguages()).includes(id)) {{
+        \\    vscode.window.showWarningMessage(
+        \\      `${{name}}: no installed extension contributes the language "${{id}}". This extension serves it beside {s}: ` +
+        \\        `install {s}, or rebuild this extension in standalone mode ("mode": "standalone" in its identity.json).`,
+        \\    );
+        \\    return;
+        \\  }}
+        \\  if (vscode.workspace.textDocuments.some((doc) => doc.languageId === id)) await want(context);
+        \\}}
+        \\
+    , .{ beside, install });
 }
 
 /// Whether the grammar's `@lsp` imports files, which gives the extension

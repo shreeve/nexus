@@ -7,5 +7,6 @@
   "license": "UNLICENSED",
   "repository": "",
   "settings": "nexus-tally",
-  "mode": "standalone"
+  "mode": "standalone",
+  "provider": ""
 }

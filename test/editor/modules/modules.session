@@ -2,6 +2,11 @@
 # language's `resolveImport` (this server's hooks.zig: `std_NAME` is
 # NAME.tally beside the importing file), else the name taken as a path
 # beside the importing file (`file "{}.tally"`).
+#
+# An import that names no file is logged once in the server's life, with
+# the setting to set and the language's `unresolvedImport`: its hint for
+# `std_none`, its line alone for `nowhere` and for `broken` (an error),
+# nothing for `builtin`.
 initialize module core=util.tally module std_lib=app.tally quiet
 open main.tally
 | use core
@@ -14,9 +19,18 @@ open main.tally
 | let c = std_lib.n
 | let d = util.greeting
 | let e = std_none.x
+| use nowhere
+| use builtin
+| use broken
 definition main.tally 6:14
 definition main.tally 7:18
 definition main.tally 8:17
 definition main.tally 9:14
 definition main.tally 10:18
 completion main.tally 8:17
+# Said once: not again on saving, nor for another file's import.
+save main.tally
+open app.tally
+| use std_none
+| use nowhere
+| use util

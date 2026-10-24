@@ -320,7 +320,13 @@ in process:
   `nexus-zig.server.modules` setting overrides both. The server asks
   once, when it first meets the import. Definition, references, hover
   and completion go through it into the standard library: hover on
-  `std.mem.eql` shows its prototype and doc.
+  `std.mem.eql` shows its prototype and doc. When neither gives one, the
+  server logs it once in its output ("Zig (Nexus)"), with the setting
+  to set and why: VS Code started from the Dock does not get a shell's
+  `PATH`, so a `zig` that mise or a shell profile puts on it is not on
+  the server's. `builtin` and `root`, the compilation's own modules,
+  are never logged; another module a `build.zig` declares is, with the
+  setting.
 
 What it does not do: anything that needs types. A value's members
 whose type needs inference (`list.` for an `std.ArrayList(u8)`, a
@@ -338,11 +344,15 @@ replacement for ZLS, and the extension is not published.
 completion after `list.` answering nothing (`names.session`). It runs
 `editor/install --no-package` too (`zig/install`), into a directory of
 its own, once in each mode: the server it builds, with no `zig` on its
-`PATH`, answers `names.session` as above, std included; and without
+`PATH`, answers `names.session` as above, std included, and without
+`zig-env.zon` too logs that std names no file, with the hint
+(`nozig.replay`, a session only that check replays); and without
 `bin/nexus`, or with a `zig` that is not 0.17.0, it stops and writes
-nothing. With
-`NEXUS_TEST_PACKAGE=1` set, that check packages the extension too
-(`npm install` and `vsce`, which fetch from the network the first time).
+nothing. With `NEXUS_TEST_PACKAGE=1` set, that check packages the
+extension too (`npm install` and `vsce`, which fetch from the network
+the first time): `vsce` packages it without a warning, and the `.vsix`
+holds 9 files, the client bundled into `dist/extension.js` (which loads
+with only `vscode` outside it), and no `node_modules`.
 
 ### Installing it
 
@@ -362,15 +372,18 @@ fails, with the end of that log:
 1. **mode**: `companion` when `code --list-extensions` lists the
    official Zig extension, `ziglang.vscode-zig`, else `standalone`
    (`--companion` and `--standalone` choose), written into
-   `vscode/identity.json`;
+   `vscode/identity.json`, with `"provider": "ziglang.vscode-zig"` in
+   `companion` mode;
 2. **generate**: `bin/nexus --editor --lang zig.zig zig.grammar` into
    the directory;
 3. **hooks**: `editor/hooks.zig` in place of the stub;
 4. **build**: the server, `zig build -Doptimize=safe --prefix
    ../vscode`, into `vscode/bin/zig-lsp`, and that Zig's `zig env`
    beside it, `vscode/bin/zig-env.zon`, where the server finds std;
-5. **npm** and **package**: `npm install` and `vsce package`, into
-   `vscode/nexus-zig-0.1.0.vsix` (`--no-package` stops before them);
+5. **npm** and **package**: `npm install --ignore-scripts` and `vsce
+   package`, which bundles the client into `dist/extension.js` with
+   esbuild first, into `vscode/nexus-zig-0.1.0.vsix` (`--no-package`
+   stops before them);
 6. **install**: `code --install-extension ... --force`
    (`--no-install` stops before it, and VS Code is not touched).
 
@@ -387,10 +400,15 @@ its commands and ZLS, and this one adds its server. VS Code then runs
 both servers on every Zig file and shows both servers' diagnostics;
 `"zig.zls.enabled": "off"` in VS Code's settings shows this one's
 alone. Without the official extension, in `standalone` mode, this one
-contributes the `zig` language, its colouring and the server.
+contributes the `zig` language, its colouring and the server. A
+`companion` installed after the official extension is uninstalled
+(VS Code then knows no `zig` language, and calls a `.zig` file
+whatever it guesses) says so when VS Code starts, and starts no
+server: run `install` again, which chooses `standalone`.
 
 By hand, the same steps are these (`companion` mode: `"mode":
-"companion"` in `~/nexus-zig/vscode/identity.json` before `--editor`):
+"companion"` and `"provider": "ziglang.vscode-zig"` in
+`~/nexus-zig/vscode/identity.json` before `--editor`):
 
 ```bash
 cd grammars/zig
@@ -398,7 +416,7 @@ cd grammars/zig
 cp editor/hooks.zig ~/nexus-zig/server/src/hooks.zig
 cd ~/nexus-zig/server && zig build -Doptimize=safe --prefix ../vscode
 zig env >../vscode/bin/zig-env.zon
-cd ../vscode && npm install
+cd ../vscode && npm install --ignore-scripts
 npx @vscode/vsce package --skip-license --allow-missing-repository
 code --install-extension nexus-zig-0.1.0.vsix --force
 ```
@@ -500,8 +518,12 @@ general tree of nodes.
 
 ## Rerunning every check
 
-Build Nexus (`zig build` at the repository root) and use Zig 0.17.0. `Z`
-is a checkout of Zig at tag 0.17.0.
+Use Zig 0.17.0, and run these in a worktree of Nexus
+([AGENTS.md, "Downstream"](../../AGENTS.md#downstream)): `./test/run`
+builds `bin/nexus` in debug mode first, and the `bin/nexus` of the
+checkout Rig, em and nexis build with must stay the safe build of main.
+The `compare-*` tools need only an existing `bin/nexus`. `Z` is a
+checkout of Zig at tag 0.17.0.
 
 ```bash
 ./test/run zig                                    # cases, tokens_test, trees_test, messages_test

@@ -6,8 +6,9 @@
 //! Replace one with a function of the signature above it to turn them on.
 //!
 //! The editor suite's modules/ server: the hooks.zig `--editor` writes,
-//! with `resolveImport` written. `use std_NAME` imports NAME.tally beside
-//! the importing file.
+//! with `resolveImport` and `unresolvedImport` written. `use std_NAME`
+//! imports NAME.tally beside the importing file; `use builtin` needs no
+//! file; `use broken` makes `unresolvedImport` fail.
 
 const std = @import("std");
 const lsp = @import("lsp.zig");
@@ -48,6 +49,18 @@ pub fn resolveImport(arena: std.mem.Allocator, from: []const u8, name: []const u
     if (!std.mem.startsWith(u8, name, "std_")) return null;
     const dir = std.fs.path.dirname(from) orelse return null;
     return try std.fs.path.join(arena, &.{ dir, try arena.print("{s}.tally", .{name["std_".len..]}) });
+}
+
+/// What the server logs, once, of an import whose name names no file:
+/// `.plain` its line, which names the `modules` setting; `.{ .hint =
+/// sentence }` its line and the sentence (why, and what to do); `.quiet`
+/// nothing, for a name that needs no file.
+/// pub fn unresolvedImport(arena: std.mem.Allocator, name: []const u8) !lsp.Unresolved
+pub fn unresolvedImport(arena: std.mem.Allocator, name: []const u8) !lsp.Unresolved {
+    if (std.mem.eql(u8, name, "builtin")) return .quiet;
+    if (std.mem.eql(u8, name, "broken")) return error.Broken;
+    if (!std.mem.startsWith(u8, name, "std_")) return .plain;
+    return .{ .hint = try arena.print("{s} is {s}.tally beside the importing file.", .{ name, name["std_".len..] }) };
 }
 
 // --- The analysis: the program checked as a whole -------------------------

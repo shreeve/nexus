@@ -20,7 +20,8 @@
 # editor/hooks.zig in place, builds the server in safe mode with the `zig`
 # on PATH (0.17.0) into the extension, saves that Zig's `zig env` beside
 # the server (vscode/bin/zig-env.zon, where hooks.zig finds std without
-# `zig` on PATH), packages the extension with vsce and installs it with
+# `zig` on PATH), packages the extension with vsce (which first bundles
+# the client into dist/extension.js with esbuild) and installs it with
 # `code --install-extension --force`, so a rerun after `git pull` brings
 # the installed extension up to date. Each step's output goes to
 # DIR/install.log.
@@ -109,19 +110,24 @@ else
 fi
 step mode "$MODE ($why)"
 # identity.json is the extension's, which `--editor` writes only when it
-# is missing; its mode is set here before every run of `--editor`.
+# is missing; its mode is set here before every run of `--editor`, and in
+# companion mode its provider, the official extension, which it names
+# when no extension contributes the language.
 run node -e '
 const fs = require("fs");
 const [file, mode] = process.argv.slice(1);
+const provider = mode === "companion" ? "ziglang.vscode-zig" : "";
 if (!fs.existsSync(file)) {
     if (mode === "standalone") process.exit(0); // the default `--editor` writes
     fs.mkdirSync(require("path").dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ mode }, null, 2) + "\n");
+    fs.writeFileSync(file, JSON.stringify({ mode, provider }, null, 2) + "\n");
     process.exit(0);
 }
 const id = JSON.parse(fs.readFileSync(file, "utf8"));
-if (id.mode === mode || (id.mode === undefined && mode === "standalone")) process.exit(0);
+if ((id.mode || "standalone") === mode && (id.provider || "") === provider) process.exit(0);
 id.mode = mode;
+if (provider) id.provider = provider;
+else delete id.provider;
 fs.writeFileSync(file, JSON.stringify(id, null, 2) + "\n");
 ' "$DIR/vscode/identity.json" "$MODE"
 
@@ -143,7 +149,7 @@ if [ -z "$PACKAGE" ]; then
 fi
 
 step npm "$DIR/vscode/node_modules"
-run in_dir "$DIR/vscode" npm install --no-audit --no-fund
+run in_dir "$DIR/vscode" npm install --ignore-scripts --no-audit --no-fund
 ID=$(node -p 'const p = require(process.argv[1]); p.publisher + "." + p.name' "$DIR/vscode/package.json")
 VSIX=$DIR/vscode/$(node -p 'const p = require(process.argv[1]); p.name + "-" + p.version' "$DIR/vscode/package.json").vsix
 step package "$VSIX"

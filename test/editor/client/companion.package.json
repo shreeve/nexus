@@ -8,8 +8,8 @@
   "repository": "https://example.com/tally.git",
   "engines": {"vscode": "^1.82.0"},
   "categories": ["Programming Languages"],
-  "main": "./extension.js",
-  "activationEvents": ["onLanguage:tally"],
+  "main": "./dist/extension.js",
+  "activationEvents": ["onLanguage:tally", "onStartupFinished"],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
@@ -17,7 +17,8 @@
       "restrictedConfigurations": ["tally.server.path", "tally.server.check"]
     }
   },
-  "dependencies": {"vscode-languageclient": "9.0.1"},
+  "scripts": {"vscode:prepublish": "esbuild extension.js --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.js"},
+  "devDependencies": {"esbuild": "0.28.2", "vscode-languageclient": "9.0.1"},
   "contributes": {
     "configuration": {
       "title": "Tally Server",

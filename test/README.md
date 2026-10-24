@@ -12,7 +12,9 @@ test/bench/run              # generation time and parse throughput
 The summary line reads `N passed, M failed, K known`. The suite is green
 when nothing fails and no known-failing test has started passing. It
 always rebuilds `bin/nexus` first (`zig build`), so a stale binary is never
-tested. `zig build test` runs it too. It needs bash, perl, Node (for
+tested; run it in a worktree, never in the checkout whose safe-mode
+`bin/nexus` Rig, em and nexis build with ([AGENTS.md,
+"Downstream"](../AGENTS.md#downstream)). `zig build test` runs it too. It needs bash, perl, Node (for
 the VS Code extension's checks, `test/lib/vscode`), python3 (for
 `tools/lexfuzz`, the `highlight/*` checks and the language-server
 sessions), Vim with `+syntax` (for `highlight/*`) and Zig 0.17, and runs
@@ -38,10 +40,10 @@ on macOS and Linux with the systems' own tools.
 | `editor/<grammar>/files` | for a grammar with `@highlight`: `nexus --editor` (with the suite's lang module) writes exactly its files: the highlighting files equal to `--highlight all`'s, `parser.zig` equal to `--spans` output, `lsp.zig` the server template under its header, the lang module and its imports equal to their sources, and `language.zig` and `package.json` equal to their goldens (`test/golden/<grammar>.language.zig`, `.package.json`; for `editor`, `extension.js`, `identity.json`, `README.md`, `.vscodeignore`, `build.zig`, `main.zig` and `hooks.zig` too); `package.json`'s semantic token types agree with the server's legend (`test/lib/vscode legend`, see "The VS Code client"); a second run keeps an edited `hooks.zig` and `identity.json` (`Kept`) and writes every other file the same |
 | `editor/<grammar>/server` | that server type checks (`zig build-exe -fno-emit-bin src/main.zig`) with the stub `hooks.zig` |
 | `<grammar>/<dir>/<session>` | the language server built from `<suite>/<dir>/` (its `hooks.zig`, else the stub) answers `<suite>/<dir>/<session>.session` as `<session>.out` says (`test/lib/lsp`, see "Language-server sessions") |
-| `<grammar>/client/<scenario>` | the extension `--editor` writes (with `<scenario>.identity.json` as its `identity.json` when there is one, and then `package.json`, `README.md` and `.vscodeignore` equal to `<scenario>.package.json`, `.readme.txt` and `.vscodeignore`), its `extension.js` run under Node against stubs of VS Code as `<suite>/client/<scenario>.js` says, makes the calls `<scenario>.out` lists (`test/lib/vscode client`, see "The VS Code client") |
+| `<grammar>/client/<scenario>` | the extension `--editor` writes (with `<scenario>.identity.json` as its `identity.json` when there is one, and then `package.json`, `README.md` and `.vscodeignore` equal to `<scenario>.package.json`, `.readme.txt` and `.vscodeignore`, each that is there), its `extension.js` run under Node against stubs of VS Code as `<suite>/client/<scenario>.js` says, makes the calls `<scenario>.out` lists (`test/lib/vscode client`, see "The VS Code client") |
 | `<grammar>/scopes` | for a suite with `compare-scopes` (`zig`): it finds no disagreement on the cases between the names `@lsp` resolves and the compiler's (AstGen's) |
 | `<grammar>/members` | for a suite with `compare-members` (`zig`): it finds no wrong member or import on the cases and `members/` against a resolution over `std.zig.Ast` |
-| `<grammar>/install` | for a suite with `editor/install` (`zig`): run with `--no-package` into a directory of its own, once with `--companion` and once with `--standalone`, it sets each mode in `identity.json` before `--editor`, puts `editor/hooks.zig` in place each time, and builds the server in safe mode with `zig env` saved beside it as `zig-env.zon`; with no `zig` on its `PATH`, that server answers `editor/names.session` as `names.out` says; without `bin/nexus`, or with a `zig` that is not 0.17.0, it stops with its message and writes nothing. With `NEXUS_TEST_PACKAGE=1`, each run packages the extension too (`npm install` and `vsce`, from the network the first time) and the `.vsix` holds `bin/zig-env.zon`; VS Code is never run |
+| `<grammar>/install` | for a suite with `editor/install` (`zig`): run with `--no-package` into a directory of its own, once with `--companion` and once with `--standalone`, it sets each mode in `identity.json` before `--editor`, puts `editor/hooks.zig` in place each time, and builds the server in safe mode with `zig env` saved beside it as `zig-env.zon`; with no `zig` on its `PATH`, that server answers `editor/names.session` as `names.out` says; without `bin/nexus`, or with a `zig` that is not 0.17.0, it stops with its message and writes nothing. With `NEXUS_TEST_PACKAGE=1`, each run packages the extension too (`npm install` and `vsce`, from the network the first time), without a warning from `vsce`, and the `.vsix` holds `bin/zig-env.zon` and the client bundled into `dist/extension.js`, which loads, and no `node_modules`; without `zig-env.zon` too, the server answers `editor/nozig.replay` as `nozig.out` says; VS Code is never run |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
@@ -182,7 +184,8 @@ current behavior only.
 `test/diff` generates a parser from each of two (nexus, grammar) pairs,
 parses a corpus with both (parallel chunks, safe mode), and compares
 trees file by file. Each nexus is a path to a binary or `current`, this
-checkout's `bin/nexus` (rebuilt first).
+checkout's `bin/nexus` (rebuilt first, in debug mode, so `current` is
+for a worktree).
 
 ```bash
 # A generator change under review: the previous build against this checkout, over VistA
@@ -309,7 +312,8 @@ scopes' types.
 `vscode-languageclient/node` modules and runs a scenario, a CommonJS
 module of steps (settings at user or workspace level, a trusted or
 untrusted workspace, its folders, a bundled server, a start that fails or
-waits, activation); it prints each call the extension makes, paths under
+waits, the languages VS Code knows, the documents open and opened,
+activation); it prints each call the extension makes, paths under
 `<ext>` (the extension) and `<ws>` (the workspace). The stub gives
 settings as VS Code does: a `machine` setting, and in an untrusted
 workspace a restricted one, takes no workspace value. A setting the

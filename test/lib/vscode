@@ -36,6 +36,15 @@
 //   t.trust(bool)           whether the workspace is trusted (default true)
 //   t.grant()               the workspace becomes trusted: VS Code's
 //                             event, then settle
+//   t.languages(ids)        the language ids VS Code knows (default: the
+//                             language's and plaintext; a companion's
+//                             language is there when another extension
+//                             contributes it)
+//   t.documents(ids)        the language ids of the documents open at
+//                             activation (default: one of the language,
+//                             as `onLanguage` activates)
+//   t.open(languageId)      a document is opened: VS Code's event, then
+//                             settle
 //   t.bundle()              put a server at <ext>/bin/<id>-lsp
 //   t.failStart(message)    the next client's start() rejects with it
 //   t.hold()                the next start()s wait; returns the release
@@ -152,7 +161,20 @@ async function client(dir, scenarioPath) {
       : JSON.stringify(x, (k, v) => (v && typeof v === "object" && v.__channel ? `<channel ${v.__channel}>` : v));
   const say = (...parts) => lines.push(parts.map(show).join(" ").split(ext).join("<ext>").split(ws).join("<ws>"));
 
-  const state = { user: {}, workspace: {}, folders: ["app"], trusted: true, listeners: [], granted: [], failures: [], hold: null };
+  const state = {
+    user: {},
+    workspace: {},
+    folders: ["app"],
+    trusted: true,
+    listeners: [],
+    granted: [],
+    opened: [],
+    languages: ["plaintext", id],
+    documents: [id],
+    failures: [],
+    hold: null,
+  };
+  const document = (languageId, n) => ({ languageId, uri: { scheme: "file", fsPath: path.join(ws, `doc${n}`) } });
   const declared = (full) => {
     if (!(full in props)) throw new Error(`the extension reads ${full}, which package.json does not declare`);
     return props[full];
@@ -201,6 +223,18 @@ async function client(dir, scenarioPath) {
       onDidGrantWorkspaceTrust(listener) {
         state.granted.push(listener);
         return { dispose: () => state.granted.splice(state.granted.indexOf(listener), 1) };
+      },
+      get textDocuments() {
+        return state.documents.map(document);
+      },
+      onDidOpenTextDocument(listener) {
+        state.opened.push(listener);
+        return { dispose: () => state.opened.splice(state.opened.indexOf(listener), 1) };
+      },
+    },
+    languages: {
+      getLanguages() {
+        return Promise.resolve([...state.languages]);
       },
     },
     window: {
@@ -288,6 +322,19 @@ async function client(dir, scenarioPath) {
       say("the workspace is trusted");
       state.trusted = true;
       for (const l of [...state.granted]) l();
+      await settle();
+    },
+    languages(ids) {
+      state.languages = ids;
+    },
+    documents(ids) {
+      state.documents = ids;
+    },
+    async open(languageId) {
+      say(`open a ${languageId} document`);
+      state.documents.push(languageId);
+      const doc = document(languageId, state.documents.length - 1);
+      for (const l of [...state.opened]) l(doc);
       await settle();
     },
     bundle() {

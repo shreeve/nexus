@@ -47,6 +47,7 @@ editors/
 │   ├── identity.json                   the extension's name and mode: written once
 │   ├── package.json                    the extension: the language, its grammar, its settings
 │   ├── extension.js                    the client: starts the server
+│   ├── dist/extension.js               the client bundled, which `vsce package` makes
 │   ├── README.md                       the extension's page: its settings, building it
 │   ├── language-configuration.json     comments, brackets, indentation
 │   ├── syntaxes/LANG.tmLanguage.json   the TextMate grammar
@@ -88,7 +89,9 @@ never again. It prints `Wrote` for each file it writes and `Kept` for a
   `@keywords` terminal that is a word, where `@highlight`'s `word-chars`
   says what a word is, and the words of `@lsp words`. With `@lsp`, it
   holds its lines too (`names`), each slot as the parser's `ir.slot` of
-  its kind and role.
+  its kind and role, and with `import` lines, `settings`, the prefix
+  of the extension's settings, which the server names when an import
+  names no file.
 - `parser.zig` is the parser `--spans` generates, followed by the
   runtime's `complete` section, which only the server's parser has:
   `pauseAt` and `takesAt`, with which completion tests words against the
@@ -116,7 +119,8 @@ installs beside the language's own extension without clashing:
   "license": "UNLICENSED",
   "repository": "",
   "settings": "nexus-LANG",
-  "mode": "standalone"
+  "mode": "standalone",
+  "provider": ""
 }
 ```
 
@@ -136,17 +140,31 @@ its key's rule:
 | `version` | three numbers joined by dots |
 | `settings` | names of letters, digits, `_` and `-`, joined by dots |
 | `mode` | `standalone` or `companion` |
+| `provider` | empty, or an extension's id, `publisher.name`; only in `companion` mode |
 
 `mode` says what the extension contributes. `standalone` contributes the
 language (its id, file extensions and language configuration), the
 TextMate grammar and the client. `companion` contributes the client
 alone, for a language another extension already contributes: the other
 extension keeps the language and its colouring, and this one adds the
-server. Both activate on the language's files and declare the semantic
-token types and the settings. Beside another language server for the
-same language, VS Code asks both and shows what each answers, so a
-companion is best set to serve what the other server lacks
+server; `provider` names that other extension (`ziglang.vscode-zig`).
+Both activate on the language's files and declare the semantic token
+types and the settings. Beside another language server for the same
+language, VS Code asks both and shows what each answers, so a companion
+is best set to serve what the other server lacks
 ([Features](#features)).
+
+A companion activates when VS Code starts too (`onStartupFinished`),
+since without an extension that contributes the language, VS Code gives
+the language's files another one (or guesses one) and `onLanguage` never
+fires. When VS Code knows no language of the id
+(`vscode.languages.getLanguages`), it starts no server and shows one
+warning: that no installed extension contributes the language, that
+this extension serves it beside `provider` (without one, beside "the
+extension that contributes it"), and to install that one or rebuild
+this extension in `standalone` mode. Otherwise it starts the server at
+the first of the language's files, open at start-up or opened later,
+and not before; a setting changed before then starts nothing.
 
 ### The extension
 
@@ -187,7 +205,8 @@ build` runs its `build.zig`), so in a workspace not trusted the
 extension passes none, and says so in its output channel; trusting the
 workspace restarts the server with it.
 
-`extension.js` starts the server with `vscode-languageclient` for the
+`extension.js` starts the server with `vscode-languageclient` (in
+`standalone` mode when it activates, in `companion` mode as above) for the
 language's documents of the `file` and `untitled` schemes (not the
 `git:` or diff views of them), and passes `server.root` as the
 `root` option, absolute, `server.modules` as the `modules` option,
@@ -212,14 +231,21 @@ extension. A plain `zig build` puts it in `editors/server/zig-out/bin/`.
 VS Code's own tools package and install the extension:
 
 ```bash
-cd editors/vscode && npm install
+cd editors/vscode && npm install --ignore-scripts
 npx @vscode/vsce package --skip-license --allow-missing-repository
 code --install-extension nexus-LANG-0.1.0.vsix
 ```
 
-`.vscodeignore` packages `extension.js`, the TextMate grammar and
-language configuration (in `standalone` mode), `bin/`, the dependencies
-and a `LICENSE` file; `vsce` adds `package.json` and `README.md`. `vsce`
+`npm install` installs the extension's two development dependencies,
+`vscode-languageclient` and esbuild (which needs none of its install
+scripts). Before it packages, `vsce` runs `package.json`'s
+`vscode:prepublish` script, which bundles `extension.js` and
+`vscode-languageclient` into `dist/extension.js` with esbuild, `vscode`
+left to VS Code; `main` names that file. `.vscodeignore` packages
+`dist/extension.js`, the TextMate grammar and language configuration
+(in `standalone` mode), `bin/` and a `LICENSE` file, and no
+`node_modules`; `vsce` adds `package.json` and `README.md`. The package
+is a handful of files, which `vsce` packages without a warning. `vsce`
 asks before it packages an extension without a `LICENSE` file or a
 `repository`; the two flags answer for it. A language that sets
 `repository` in `identity.json` and puts its `LICENSE` in `vscode/`
@@ -321,6 +347,16 @@ leads to other files:
   `resolveImport` gives one; else it is a path relative to the importing
   file, made with `file "{}.ext"` when the line has it. A document
   without a path (`untitled:`) imports modules alone.
+- **An import that names no file.** When a file is opened or saved,
+  each of its imports whose name gives no file that is open or on disk
+  is logged (`window/logMessage`, a warning), once per name for the
+  life of the server: "the import "std" in /a/main.zig names no file.
+  For a module, set PREFIX.server.modules (the modules option) to its
+  file, as {"std": "/path/to/std.zig"}." (the example's file is the
+  name made with `file "{}.ext"`, else with the language's first
+  extension when it has none). The language's `unresolvedImport` adds a
+  sentence of why, and what to do, or leaves out a name that needs no
+  file (Zig's `builtin`).
 - **The text of a file.** An open document's text, saved or not, is the
   one every request reads; a file not open is read from disk, and its
   index kept while its text on disk is the one it read (the 256 used
@@ -379,6 +415,7 @@ import's module when the `modules` option does not.
 | `folds` | the language's folding ranges, in place of the grammar's |
 | `format` | Format Document |
 | `resolveImport` | with `@lsp` `import` lines: the file of a module's name, after the `modules` option |
+| `unresolvedImport` | with `@lsp` `import` lines: what the server logs of an import that names no file |
 | `analyze` | the analysis's diagnostics; every function below reads the analysis |
 | `symbolAt` | go to definition, references, document highlight, rename |
 | `typeAt` | with `describe`: hover over an expression, go to type definition |
@@ -422,6 +459,15 @@ client's `modules` option answers first. An error answers nothing.
 
 ```zig fragment
 pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]const u8
+```
+
+`unresolvedImport` says what the server logs of an import whose name
+names no file ([Names across files](#names-across-files)): `.plain`, its
+line alone; `.{ .hint = sentence }`, its line and the sentence after
+it; `.quiet`, nothing. An error logs the line alone.
+
+```zig fragment
+pub fn unresolvedImport(arena: Allocator, name: []const u8) !lsp.Unresolved
 ```
 
 ### The analysis
@@ -698,6 +744,13 @@ modules it passes, the check (from user settings alone, and only once
 the workspace is trusted), its timeout and the features,
 the document selector, one output channel, restarts that wait for each
 other and share a change, a server that does not start, and a
-`companion` extension with an identity of its own. `tools/cli` checks
-each mistake `identity.json` can have. Nothing in the suite runs VS Code
-itself or `vsce`.
+`companion` extension with an identity of its own: started with VS Code
+and with no file of the language open, it starts the server at the
+first one; with no extension that contributes the language, it says
+so, with its `provider` or without one, and starts none. `tools/cli`
+checks each mistake `identity.json` can have. Nothing in the suite runs
+VS Code itself; `vsce` runs only in the opt-in packaging check of the
+Zig demo (`NEXUS_TEST_PACKAGE=1`; [grammars/zig/README.md, "The language
+server"](../grammars/zig/README.md#the-language-server)), which packages
+without a warning from `vsce`, and checks that the `.vsix` holds the
+bundle and no `node_modules`, and that the bundle loads.

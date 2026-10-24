@@ -168,6 +168,19 @@ pub fn resolveImport(arena: Allocator, from: []const u8, name: []const u8) !?[]c
     return try std.fs.path.join(arena, &.{ dir, "std.zig" });
 }
 
+/// What the server logs of an import that names no file: nothing for
+/// `builtin` and `root`, the compilation's own modules, which no file
+/// holds; for `std` when `stdDir` finds none, why; else the server's line.
+pub fn unresolvedImport(arena: Allocator, name: []const u8) !lsp.Unresolved {
+    _ = arena;
+    if (std.mem.eql(u8, name, "builtin") or std.mem.eql(u8, name, "root")) return .quiet;
+    if (!std.mem.eql(u8, name, "std") or stdDir() != null) return .plain;
+    return .{ .hint = "No zig-env.zon beside the server names a std.zig, and no `zig` on its PATH gives one: " ++
+        "VS Code started from the Dock does not get a shell's PATH, so a zig that mise or a shell profile puts " ++
+        "on PATH is not on it. Start VS Code from a shell (`code`), or run grammars/zig/editor/install again, " ++
+        "which saves zig-env.zon beside the server." };
+}
+
 /// The `std_dir` of the Zig that built the server, from the `zig env`
 /// output saved beside the server's executable as `zig-env.zon`, when its
 /// std.zig exists; else the `std_dir` that `zig env` prints for the `zig`
