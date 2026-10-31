@@ -334,7 +334,10 @@
   node ids, errors, messages and tolerant results of a new parser, file
   for file, over all of VistA (24,704 routines), Zig's source (2,620
   files) and Rig's sources (704). Its memory is already touched, so its
-  parses take no page faults: @@NUMBERS@@
+  parses take almost no page faults: one pass over VistA takes 241
+  instead of 486,551, over Rig's sources 351 instead of 7,891, and over
+  Zig's source 37,319 instead of 148,150 (those left come from the files
+  over 16 MiB) (pup, Linux).
 - The extension bundles its client: `package.json`'s
   `vscode:prepublish` script runs esbuild 0.28.2 over `extension.js`
   and `vscode-languageclient` into `dist/extension.js`, which `main`
