@@ -250,6 +250,35 @@ check_case() {
     return 0
 }
 
+# check_reuse <suite dir>: one parser, reset before each of the suite's
+# cases in turn, shows for each what a new parser shows (`driver
+# --reuse-check`, one run per start rule).
+check_reuse() {
+    local dir=$1 file start tree list res rc
+    check_built "$dir" || return 1
+    suite_conf "$dir"
+    local out="$OUTROOT/build/$(key_of "$dir")" lists="$WORK/out/$(key_of "$dir").reuse"
+    mkdir -p "$lists"
+    while IFS=$'\x1f' read -r file start tree; do
+        printf '%s\n' "$file" >>"$lists/${start:-default}"
+    done < <(list_cases "$dir/cases")
+    for list in "$lists"/*; do
+        [[ -f $list ]] || continue
+        start=$(basename "$list")
+        local args=()
+        [[ $start != default ]] && args=(--start "$start")
+        res=$(with_timeout "$TIMEOUT" "$out/driver" ${args[@]+"${args[@]}"} --reuse-check --list "$list" 2>&1 </dev/null)
+        rc=$?
+        echo "$res" >>"$LOG"
+        if [[ $rc -eq 124 ]]; then REASON="timed out after ${TIMEOUT}s"; return 1; fi
+        if ! grep -qE '^reuse-check: ([0-9]+ files, 0 differ|no reset)$' <<<"$res" || [[ $rc -ne 0 ]]; then
+            REASON="$(grep -m1 -E "$PANIC_RE|differ" <<<"$res" || tail -1 <<<"$res") (exit $rc)"
+            return 1
+        fi
+    done
+    return 0
+}
+
 # check_rejects <grammar>: generation (and `nexus check`) fails with exit 1, writing nothing, a
 # file:line:col diagnostic, every `# error:` text of the grammar, and none
 # of its `# absent:` texts.
@@ -1029,6 +1058,7 @@ worker() {
     local ok
     case $kind in
         case)        check_case "$a" "$b" "$c" "${6:-}" "$( [[ "$id" == */known/* ]] && echo 0 || echo 1)"; ok=$? ;;
+        reuse)       check_reuse "$a"; ok=$? ;;
         bug)         check_bug_suite "$a"; ok=$? ;;
         adverse)     check_rejects "$a"; ok=$? ;;
         gen)         check_golden_gen "$a" "$b"; ok=$? ;;
@@ -1171,7 +1201,7 @@ add() { # add <id> <kind> [args...]
     local IFS=$'\x1f' to=$EARLY
     case $2 in
         unit-nexus|unit-lang|diff-tool|lexfuzz|messages|editor-server|scopes|members|install) to=$LONG ;;
-        case|bug|hl|session) to=$LATE ;;
+        case|bug|hl|session|reuse) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
 }
@@ -1241,6 +1271,7 @@ for dir in grammars/*/ test/*/; do
     [[ -x $dir/compare-members ]] && add "$name/members" members "$dir"
     [[ -x $dir/editor/install ]] && add "$name/install" install "$dir"
     add "wasm32/$name" wasm32 "$dir" && need_build "$dir"
+    [[ -d $dir/cases ]] && add "reuse/$name" reuse "$dir" && need_build "$dir"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"
     fi

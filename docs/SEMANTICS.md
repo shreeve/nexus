@@ -258,6 +258,27 @@ test "a wrapper builds an @wrapper node" {
     try testing.expectEqualStrings("x", ir.Note.text(note).getText(source));
     try testing.expectEqual(null, p.ruleOf(note));
 }
+
+test "one parser for many inputs" {
+    const inputs = [_][]const u8{ "x += 1", "let = 2", "f(y, 3)" };
+    // Values outlive a reset; trees, node ids and slices of the parser do not.
+    var spans: [inputs.len]parser.Span = undefined;
+    var p = parser.Parser.init(testing.allocator, "");
+    defer p.deinit();
+    for (inputs, &spans) |text, *span| {
+        p.reset(text); // as parser.Parser.init(allocator, text) would start
+        const tree = p.parseProgram() catch |err| {
+            try testing.expectEqual(error.ParseError, err);
+            span.* = p.lastError().?.span;
+            continue;
+        };
+        try testing.expectEqual(4, p.nodeCount()); // counted from 1 again
+        span.* = p.span(ir.Module.stmts(tree)[0]);
+    }
+    try testing.expectEqualStrings("x += 1", spans[0].text(inputs[0]));
+    try testing.expectEqualStrings("=", spans[1].text(inputs[1])); // no name after `let`
+    try testing.expectEqualStrings("f(y, 3)", spans[2].text(inputs[2]));
+}
 ```
 
 The module exports:
@@ -288,8 +309,8 @@ The module exports:
 | `maxExpected` | the most symbols any state expects: room for `expectedNames` |
 
 `BaseParser` methods: `init(allocator, source)`, `deinit()`,
-`reset(source)` (parse new input in the memory the parser holds; earlier
-trees are gone), `allocator()` (the allocator that holds the trees, freed
+`reset(source)` (start over on new input in the memory the parser holds;
+see below), `allocator()` (the allocator that holds the trees, freed
 by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
@@ -305,6 +326,25 @@ message). A parse fails with `error.ParseError` (see `lastError()`),
 are 32-bit), or, with `@longtokens`, `error.TokenEndUnknown` (a token over
 65534 bytes whose end the lexer did not hold:
 [GRAMMAR.md](GRAMMAR.md#long-tokens)).
+
+A parser parses many inputs one after another with `reset(source)`,
+which starts it over as `init(allocator, source)` would start a new one:
+the same trees, spans, node ids, errors, messages and tolerant results.
+What differs is memory. A new parser's trees, stacks and node store fill
+memory the process has not touched yet, and its page faults are much of
+the cost of parsing a short input; a reset parser keeps the memory it
+holds, already touched, up to `BaseParser.resetKeeps` bytes (16 MiB), and
+gives the rest back to its allocator, so between inputs it holds no more
+than that, whatever the largest input needed (`test/bench/BASELINE.md`
+has the numbers). A reset ends everything of the parses before it: their
+trees and lists, node ids, `trivia()`, `Tolerant` results and whatever
+was allocated with `allocator()` (Debug builds overwrite that memory, so a
+tree held across a reset reads no value of its parse). What a caller
+keeps across it are values: spans, leaves (`.src`), tokens, `Failure`s,
+text of its own source, and what it has written out. A lang `Parser`
+wrapper is reset by its own `reset` ([The lang module](#the-lang-module));
+generic code reuses a parser when `@hasDecl(Parser, "reset")`, and
+otherwise makes a new one per input.
 
 `ir.get` and `ir.rest` look the slot up by the node's kind at run time;
 asking for a role the kind lacks panics in safety-checked builds (and names
@@ -674,7 +714,8 @@ the actions' inventory, ready to paste:
 Every list the parser builds for the tree gets a node id and an entry in
 the node store: its span and the rule that built it. Ids are dense, from 1,
 in the order the nodes are built; a parser that parses again keeps
-counting, so the trees of earlier parses stay valid (until `reset`).
+counting, so the trees of earlier parses stay valid (until `reset`, after
+which ids count from 1 again).
 
 - A node spans its reduction: from its first token to its last, including
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
@@ -861,7 +902,7 @@ reads only these declarations from it, each optional:
 | Declaration | Contract |
 |---|---|
 | `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken` or `base.token(...)`, so a match over 65535 bytes is an `err` token as in the scanner; with `@longtokens` it is built with `base.token(...)`, which records the end of a token over 65534 bytes ([GRAMMAR.md](GRAMMAR.md#long-tokens)). A wrapper without `base: BaseLexer` is a compile error. |
-| `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers. Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
+| `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers; optionally `pub fn reset(self: *Parser, source: []const u8) void`, which drops what the wrapper holds and calls `base.reset(source)`, so that the parser can be reused ([The generated API](#the-generated-api)). Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
 | `GId`, `gAs` | per `@as` group `g` that `@keywords` does not declare: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId`; see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names). For a `@keywords` group, declaring its own is a compile error of the generated parser; re-exporting the generated ones (`pub const GId = parser.GId;`) is not |
 | `lookup` | per `@as ... via lookup`: `pub fn lookup(text: []const u8) ?GId`, the group's lookup (`?parser.GId` for a `@keywords` group) |
 | `f` | per `@code = f`: `pub fn f(source: []const u8, pos: u32) bool`, called by the lexer method of that name |

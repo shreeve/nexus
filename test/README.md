@@ -45,6 +45,7 @@ on macOS and Linux with the systems' own tools.
 | `<grammar>/members` | for a suite with `compare-members` (`zig`): it finds no wrong member or import on the cases and `members/` against a resolution over `std.zig.Ast` |
 | `<grammar>/install` | for a suite with `editor/install` (`zig`): run with `--no-package` into a directory of its own, once with `--companion` and once with `--standalone`, it sets each mode in `identity.json` before `--editor`, puts `editor/hooks.zig` in place each time, and builds the server in safe mode with `zig env` saved beside it as `zig-env.zon`; with no `zig` on its `PATH`, that server answers `editor/names.session` as `names.out` says; without `bin/nexus`, or with a `zig` that is not 0.17.0, it stops with its message and writes nothing. With `NEXUS_TEST_PACKAGE=1`, each run packages the extension too (`npm install` and `vsce`, from the network the first time), without a warning from `vsce`, and the `.vsix` holds `bin/zig-env.zon` and the client bundled into `dist/extension.js`, which loads, and no `node_modules`; without `zig-env.zon` too, the server answers `editor/nozig.replay` as `nozig.out` says; VS Code is never run |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
+| `reuse/<grammar>` | one parser, reset before each of the suite's cases in turn, shows for each what a new parser shows (`driver --reuse-check`, per start rule): the tree with its spans, the facts, the error and its message, the trivia, the node count, and with `@repair` a tolerant parse; a lang `Parser` wrapper without `reset` passes it untested (`reuse-check: no reset`) |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
 | `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
@@ -148,7 +149,9 @@ _                    nil
 ```
 
 The driver finds every `pub fn parseX(*Parser) !Sexp` at compile time and
-offers it as a start rule. `--no-spans` omits the spans.
+offers it as a start rule. `--no-spans` omits the spans. It parses the
+files of a run with one parser, `reset` before each (a new parser per file
+with `--fresh`, or when a lang `Parser` wrapper has no `reset`).
 
 ## Known bugs
 
