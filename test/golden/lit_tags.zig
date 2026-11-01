@@ -803,6 +803,8 @@ pub const BaseParser = struct {
     keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
+    /// The value of the last action when it is no list (`actionResult`).
+    actionValue: Sexp = .nil,
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
@@ -1428,11 +1430,23 @@ pub const BaseParser = struct {
 
         // The action reads its elements in place on the value stack; the
         // result then replaces them (a reduction of nothing pushes it). A
-        // rule whose value is nil or one of its elements has no action.
-        // A list passed on keeps its spare, to grow in place in the rule
-        // that extends it.
+        // list the action returns in registers goes straight to its slot
+        // (`inPlace`): the action has read every element by then, and
+        // nothing reads the old `pass[0]` after (recordSides reads the new
+        // value). A rule whose value is nil or one of its elements has no
+        // action. A list passed on keeps its spare, to grow in place in the
+        // rule that extends it.
+        var inPlace = false;
         const result: Sexp = switch (ruleValue[ruleId]) {
-            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            0 => blk: {
+                const value = executeAction(self, ruleId, self.valueStack.items[base..]);
+                if (len > 0 and value.inRegisters() and !self.outOfMemory) {
+                    self.valueStack.items[base] = value.list();
+                    inPlace = true;
+                    break :blk .nil;
+                }
+                break :blk self.actionResult(value);
+            },
             1 => .nil,
             else => |n| blk: {
                 if (n > 2) {
@@ -1445,10 +1459,10 @@ pub const BaseParser = struct {
         if (self.outOfMemory) return error.OutOfMemory;
         const next = gotoOn(self.stateStack.items[top - 1], ruleLhs[ruleId]);
 
-        if (nodeStore) try self.recordSides(ruleId, result);
+        if (nodeStore) try self.recordSides(ruleId, if (inPlace) &self.valueStack.items[base] else &result);
         if (len > 0) {
             self.valueStack.items.len = base + 1;
-            self.valueStack.items[base] = result;
+            if (!inPlace) self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
             self.stateStack.items[top] = next;
             // starts[base] already holds the reduction's start (its first
@@ -1637,10 +1651,10 @@ pub const BaseParser = struct {
         };
     }
 
-    fn recordSides(self: *BaseParser, ruleId: u16, result: Sexp) !void {
+    fn recordSides(self: *BaseParser, ruleId: u16, result: *const Sexp) !void {
         if (!elemEnds) return;
         const labels = ruleSideLabels(ruleId);
-        if (labels.len == 0 or result != .list) return;
+        if (labels.len == 0 or result.* != .list) return;
         const id = result.list.id;
         if (id == 0 or id < self.reduction.firstNode) return;
         for (labels) |label| {
@@ -1755,9 +1769,56 @@ pub const BaseParser = struct {
     // -------------------------------------------------------------------------
     // Tree builders (called by the generated actions)
     // -------------------------------------------------------------------------
+    //
+    // An action returns its value in registers (`ActionValue`), and in an
+    // optimized build the builders it calls are inline (`builderCall`), so
+    // the value is built in registers too. A Sexp returned through memory
+    // is written field by field and read back whole at once, and that read
+    // waits for the writes to reach the cache (no store forwarding). A
+    // Debug build calls the builders: it compiles faster, and its speed is
+    // not the point.
+
+    /// How the tree builders are called: inline in an optimized build, as
+    /// plain functions in a Debug one.
+    const builderCall: std.lang.CallingConvention = if (@import("builtin").optimize == .debug) .auto else .@"inline";
+
+    /// An action's value as `executeAction` returns it: a list of items as
+    /// its pointer, length and node id in one integer; any other value (an
+    /// empty list, whose pointer need not point at a Sexp, or nil after a
+    /// failed allocation) left in `actionValue`, with a pointer of 0. The
+    /// pointer of a list of items addresses its first item: never 0.
+    const ActionValue = packed struct(u128) {
+        ptr: u64,
+        len: u32,
+        id: NodeId,
+
+        /// Whether the value is a list of items held in the integer.
+        fn inRegisters(self: ActionValue) bool {
+            return self.ptr != 0;
+        }
+
+        fn list(self: ActionValue) Sexp {
+            return .{ .list = .{ .ptr = @ptrFromInt(@as(usize, @intCast(self.ptr))), .len = self.len, .id = self.id } };
+        }
+    };
+
+    /// `value` as an action returns it.
+    fn actionValueOf(self: *BaseParser, value: Sexp) callconv(builderCall) ActionValue {
+        if (value == .list and value.list.len > 0) {
+            std.debug.assert(@intFromPtr(value.list.ptr) != 0); // `inRegisters` tells lists by it
+            return .{ .ptr = @intFromPtr(value.list.ptr), .len = value.list.len, .id = value.list.id };
+        }
+        self.actionValue = value;
+        return .{ .ptr = 0, .len = 0, .id = 0 };
+    }
+
+    /// The Sexp an action returned.
+    fn actionResult(self: *const BaseParser, value: ActionValue) Sexp {
+        return if (value.inRegisters()) value.list() else self.actionValue;
+    }
 
     /// Record an allocation failure; the reduction then fails the parse.
-    fn oomNil(self: *BaseParser) Sexp {
+    fn oomNil(self: *BaseParser) callconv(builderCall) Sexp {
         self.outOfMemory = true;
         return .nil;
     }
@@ -1773,7 +1834,7 @@ pub const BaseParser = struct {
     }
 
     /// A list node over exactly `items` (fixed positions).
-    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
+    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         const out = self.allocItems(items.len) catch return self.oomNil();
         @memcpy(out, items);
         return self.node(out, use);
@@ -1781,7 +1842,7 @@ pub const BaseParser = struct {
 
     /// A nested node of the current reduction: its span covers just the
     /// elements lo..hi (0-based, inclusive) it references.
-    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) callconv(builderCall) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
             self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
         }
@@ -1790,7 +1851,7 @@ pub const BaseParser = struct {
 
     /// A nested node that references no elements: empty, at the start of
     /// the reduction.
-    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+    fn nestedEmpty(self: *BaseParser, s: Sexp) callconv(builderCall) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
             const at = self.reduction.start;
             self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
@@ -1812,7 +1873,7 @@ pub const BaseParser = struct {
     /// starts. Without a node store element starts are not kept: it is
     /// placed at the first element from `i` on that spans something, else
     /// at the next token.
-    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) callconv(builderCall) Sexp {
         const pos = if (nodeStore)
             self.starts[self.stackIndex(pass) + i]
         else for (pass[i..]) |e| {
@@ -1823,12 +1884,12 @@ pub const BaseParser = struct {
     }
 
     /// `()`: an empty list.
-    fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
+    fn emptyList(self: *BaseParser, comptime use: ListUse) callconv(builderCall) Sexp {
         return self.node(&.{}, use);
     }
 
     /// `[head, ...tail]`
-    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
+    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         const rest = tail.items();
         const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
@@ -1880,7 +1941,7 @@ pub const BaseParser = struct {
     /// the reduction's value goes. It takes over the node id of element
     /// `n` (still on the value stack), so that nested extensions each keep
     /// their own.
-    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) callconv(builderCall) Sexp {
         const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
         self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
@@ -1895,7 +1956,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list allocated at its length and filled.
-    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         return self.node(out[0..trimmedLen(out)], use);
     }
 
@@ -1905,7 +1966,7 @@ pub const BaseParser = struct {
     /// A list node over `items`, known at compile time (so each call
     /// stores its items directly); unless positions are fixed (`trim`
     /// false, or a schema), without its trailing nils.
-    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) callconv(builderCall) Sexp {
         const out = self.allocItems(items.len) catch return self.oomNil();
         inline for (out[0..items.len], items) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
@@ -1916,7 +1977,7 @@ pub const BaseParser = struct {
     }
 
     /// `(tag items...)`
-    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) callconv(builderCall) Sexp {
         const len = trimmedLen(items);
         const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
@@ -1925,13 +1986,13 @@ pub const BaseParser = struct {
     }
 
     /// `(tag ...spread)`
-    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) Sexp {
+    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) callconv(builderCall) Sexp {
         return self.sexp(tag, spread.items());
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) callconv(builderCall) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
@@ -2456,16 +2517,17 @@ fn promote(_: *BaseParser, _: Token) u16 {
     unreachable; // no @as group
 }
 
-fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    return switch (ruleId) {
-        0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = pass[0]; n += 1; break :blk self.finishItems(out, .spread); },
-        2 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); },
-        4 => self.buildOf(&.{ .{ .tag = .@"set" }, .{ .tag = .@"fixed" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, true),
-        5 => self.buildOf(&.{ .{ .tag = .@"set" }, .{ .tag = .@"move" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, true),
-        6 => blk: { const out = self.allocItems(5) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"set" }; n += 1; out[n] = .{ .tag = .@"+=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = .nil; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
+fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) BaseParser.ActionValue {
+    @setEvalBranchQuota(2153);
+    switch (ruleId) {
+        0 => return self.actionValueOf(self.sexpSpread(.@"module", pass[0])),
+        1 => return self.actionValueOf(blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = pass[0]; n += 1; break :blk self.finishItems(out, .spread); }),
+        2 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); }),
+        4 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"set" }, .{ .tag = .@"fixed" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, true)),
+        5 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"set" }, .{ .tag = .@"move" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, true)),
+        6 => return self.actionValueOf(blk: { const out = self.allocItems(5) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"set" }; n += 1; out[n] = .{ .tag = .@"+=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = .nil; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
         else => unreachable,
-    };
+    }
 }
 
 const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 5, 13 };

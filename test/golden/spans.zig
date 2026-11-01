@@ -1662,6 +1662,8 @@ pub const BaseParser = struct {
     keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
+    /// The value of the last action when it is no list (`actionResult`).
+    actionValue: Sexp = .nil,
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
@@ -2291,11 +2293,23 @@ pub const BaseParser = struct {
 
         // The action reads its elements in place on the value stack; the
         // result then replaces them (a reduction of nothing pushes it). A
-        // rule whose value is nil or one of its elements has no action.
-        // A list passed on keeps its spare, to grow in place in the rule
-        // that extends it.
+        // list the action returns in registers goes straight to its slot
+        // (`inPlace`): the action has read every element by then, and
+        // nothing reads the old `pass[0]` after (recordSides reads the new
+        // value). A rule whose value is nil or one of its elements has no
+        // action. A list passed on keeps its spare, to grow in place in the
+        // rule that extends it.
+        var inPlace = false;
         const result: Sexp = switch (ruleValue[ruleId]) {
-            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            0 => blk: {
+                const value = executeAction(self, ruleId, self.valueStack.items[base..]);
+                if (len > 0 and value.inRegisters() and !self.outOfMemory) {
+                    self.valueStack.items[base] = value.list();
+                    inPlace = true;
+                    break :blk .nil;
+                }
+                break :blk self.actionResult(value);
+            },
             1 => .nil,
             else => |n| blk: {
                 if (n > 2) {
@@ -2308,10 +2322,10 @@ pub const BaseParser = struct {
         if (self.outOfMemory) return error.OutOfMemory;
         const next = gotoOn(self.stateStack.items[top - 1], ruleLhs[ruleId]);
 
-        if (nodeStore) try self.recordSides(ruleId, result);
+        if (nodeStore) try self.recordSides(ruleId, if (inPlace) &self.valueStack.items[base] else &result);
         if (len > 0) {
             self.valueStack.items.len = base + 1;
-            self.valueStack.items[base] = result;
+            if (!inPlace) self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
             self.stateStack.items[top] = next;
             // starts[base] already holds the reduction's start (its first
@@ -2500,10 +2514,10 @@ pub const BaseParser = struct {
         };
     }
 
-    fn recordSides(self: *BaseParser, ruleId: u16, result: Sexp) !void {
+    fn recordSides(self: *BaseParser, ruleId: u16, result: *const Sexp) !void {
         if (!elemEnds) return;
         const labels = ruleSideLabels(ruleId);
-        if (labels.len == 0 or result != .list) return;
+        if (labels.len == 0 or result.* != .list) return;
         const id = result.list.id;
         if (id == 0 or id < self.reduction.firstNode) return;
         for (labels) |label| {
@@ -2618,9 +2632,56 @@ pub const BaseParser = struct {
     // -------------------------------------------------------------------------
     // Tree builders (called by the generated actions)
     // -------------------------------------------------------------------------
+    //
+    // An action returns its value in registers (`ActionValue`), and in an
+    // optimized build the builders it calls are inline (`builderCall`), so
+    // the value is built in registers too. A Sexp returned through memory
+    // is written field by field and read back whole at once, and that read
+    // waits for the writes to reach the cache (no store forwarding). A
+    // Debug build calls the builders: it compiles faster, and its speed is
+    // not the point.
+
+    /// How the tree builders are called: inline in an optimized build, as
+    /// plain functions in a Debug one.
+    const builderCall: std.lang.CallingConvention = if (@import("builtin").optimize == .debug) .auto else .@"inline";
+
+    /// An action's value as `executeAction` returns it: a list of items as
+    /// its pointer, length and node id in one integer; any other value (an
+    /// empty list, whose pointer need not point at a Sexp, or nil after a
+    /// failed allocation) left in `actionValue`, with a pointer of 0. The
+    /// pointer of a list of items addresses its first item: never 0.
+    const ActionValue = packed struct(u128) {
+        ptr: u64,
+        len: u32,
+        id: NodeId,
+
+        /// Whether the value is a list of items held in the integer.
+        fn inRegisters(self: ActionValue) bool {
+            return self.ptr != 0;
+        }
+
+        fn list(self: ActionValue) Sexp {
+            return .{ .list = .{ .ptr = @ptrFromInt(@as(usize, @intCast(self.ptr))), .len = self.len, .id = self.id } };
+        }
+    };
+
+    /// `value` as an action returns it.
+    fn actionValueOf(self: *BaseParser, value: Sexp) callconv(builderCall) ActionValue {
+        if (value == .list and value.list.len > 0) {
+            std.debug.assert(@intFromPtr(value.list.ptr) != 0); // `inRegisters` tells lists by it
+            return .{ .ptr = @intFromPtr(value.list.ptr), .len = value.list.len, .id = value.list.id };
+        }
+        self.actionValue = value;
+        return .{ .ptr = 0, .len = 0, .id = 0 };
+    }
+
+    /// The Sexp an action returned.
+    fn actionResult(self: *const BaseParser, value: ActionValue) Sexp {
+        return if (value.inRegisters()) value.list() else self.actionValue;
+    }
 
     /// Record an allocation failure; the reduction then fails the parse.
-    fn oomNil(self: *BaseParser) Sexp {
+    fn oomNil(self: *BaseParser) callconv(builderCall) Sexp {
         self.outOfMemory = true;
         return .nil;
     }
@@ -2636,7 +2697,7 @@ pub const BaseParser = struct {
     }
 
     /// A list node over exactly `items` (fixed positions).
-    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
+    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         const out = self.allocItems(items.len) catch return self.oomNil();
         @memcpy(out, items);
         return self.node(out, use);
@@ -2644,7 +2705,7 @@ pub const BaseParser = struct {
 
     /// A nested node of the current reduction: its span covers just the
     /// elements lo..hi (0-based, inclusive) it references.
-    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) callconv(builderCall) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
             self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
         }
@@ -2653,7 +2714,7 @@ pub const BaseParser = struct {
 
     /// A nested node that references no elements: empty, at the start of
     /// the reduction.
-    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+    fn nestedEmpty(self: *BaseParser, s: Sexp) callconv(builderCall) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
             const at = self.reduction.start;
             self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
@@ -2675,7 +2736,7 @@ pub const BaseParser = struct {
     /// starts. Without a node store element starts are not kept: it is
     /// placed at the first element from `i` on that spans something, else
     /// at the next token.
-    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) callconv(builderCall) Sexp {
         const pos = if (nodeStore)
             self.starts[self.stackIndex(pass) + i]
         else for (pass[i..]) |e| {
@@ -2686,12 +2747,12 @@ pub const BaseParser = struct {
     }
 
     /// `()`: an empty list.
-    fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
+    fn emptyList(self: *BaseParser, comptime use: ListUse) callconv(builderCall) Sexp {
         return self.node(&.{}, use);
     }
 
     /// `[head, ...tail]`
-    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
+    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         const rest = tail.items();
         const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
@@ -2743,7 +2804,7 @@ pub const BaseParser = struct {
     /// the reduction's value goes. It takes over the node id of element
     /// `n` (still on the value stack), so that nested extensions each keep
     /// their own.
-    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) callconv(builderCall) Sexp {
         const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
         self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
@@ -2758,7 +2819,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list allocated at its length and filled.
-    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) callconv(builderCall) Sexp {
         return self.node(out[0..trimmedLen(out)], use);
     }
 
@@ -2768,7 +2829,7 @@ pub const BaseParser = struct {
     /// A list node over `items`, known at compile time (so each call
     /// stores its items directly); unless positions are fixed (`trim`
     /// false, or a schema), without its trailing nils.
-    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) callconv(builderCall) Sexp {
         const out = self.allocItems(items.len) catch return self.oomNil();
         inline for (out[0..items.len], items) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
@@ -2779,7 +2840,7 @@ pub const BaseParser = struct {
     }
 
     /// `(tag items...)`
-    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) callconv(builderCall) Sexp {
         const len = trimmedLen(items);
         const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
@@ -2788,13 +2849,13 @@ pub const BaseParser = struct {
     }
 
     /// `(tag ...spread)`
-    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) Sexp {
+    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) callconv(builderCall) Sexp {
         return self.sexp(tag, spread.items());
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) callconv(builderCall) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
@@ -3447,210 +3508,211 @@ fn promote(self: *BaseParser, token: Token) u16 {
     return promotableSymbol;
 }
 
-fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    return switch (ruleId) {
-        0 => self.sexpSpread(.@"program", pass[0]),
-        2 => self.buildOf(&.{ .{ .tag = .@"stmts" } }, pass, .tree, true),
-        3 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        6 => self.buildOf(&.{ .{ .tag = .@"stmts" }, .{ .elem = 0 } }, pass, .tree, true),
-        7 => self.buildOf(&.{ .{ .tag = .@"stmts" } }, pass, .tree, true),
-        8 => self.emptyList(.spread),
-        9 => self.emptyList(.spread),
-        26 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true),
-        27 => self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true),
-        28 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 2 }, .{ .elem = 0 } }, pass, .tree, true),
-        29 => self.buildOf(&.{ .{ .tag = .@"until" }, .{ .elem = 2 }, .{ .elem = 0 } }, pass, .tree, true),
-        30 => self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        31 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true),
-        32 => self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true),
-        34 => self.buildOf(&.{ .{ .tag = .@"not" }, .{ .elem = 1 } }, pass, .tree, true),
-        36 => self.buildOf(&.{ .{ .tag = .@"or" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        38 => self.buildOf(&.{ .{ .tag = .@"and" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        40 => self.buildOf(&.{ .{ .tag = .@"masgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        41 => self.buildOf(&.{ .{ .tag = .@"assign" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        42 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"+=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        43 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"-=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        44 => self.buildOf(&.{ .{ .tag = .@"*=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        45 => self.buildOf(&.{ .{ .tag = .@"/=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        46 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"%=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        47 => self.buildOf(&.{ .{ .tag = .@"**=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        48 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"|=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        49 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        50 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"^=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        51 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<<=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        52 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">>=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        53 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"||=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        54 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&&=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        56 => self.buildOf(&.{ .{ .tag = .@"mlhs" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        57 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        58 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        59 => self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true),
-        60 => self.buildOf(&.{ .{ .tag = .@"mrhs" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        61 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        62 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        63 => self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true),
-        69 => self.buildOf(&.{ .{ .tag = .@"attrasgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        70 => self.buildOf(&.{ .{ .tag = .@"indexasgn" }, .{ .elem = 0 } }, pass, .tree, true),
-        71 => self.buildOf(&.{ .{ .tag = .@"indexasgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        72 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
-        74 => self.buildOf(&.{ .{ .tag = .@"u-" }, .{ .elem = 1 } }, pass, .tree, true),
-        75 => self.buildOf(&.{ .{ .tag = .@"u+" }, .{ .elem = 1 } }, pass, .tree, true),
-        76 => self.buildOf(&.{ .{ .tag = .@"!" }, .{ .elem = 1 } }, pass, .tree, true),
-        77 => blk: { const out = self.allocItems(2) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"~" }; n += 1; out[n] = pass[1]; n += 1; break :blk self.finishItems(out, .tree); },
-        78 => self.buildOf(&.{ .{ .tag = .@"defined" }, .{ .elem = 1 } }, pass, .tree, true),
-        80 => self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        82 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        83 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
-        84 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
-        85 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        86 => self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        87 => self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
-        88 => self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
-        89 => self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        90 => self.buildOf(&.{ .{ .tag = .@"index" }, .{ .elem = 0 } }, pass, .tree, true),
-        91 => self.buildOf(&.{ .{ .tag = .@"index" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        92 => self.buildOf(&.{ .{ .tag = .@"scope" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        93 => self.buildOf(&.{ .{ .tag = .@"scope" }, .nil, .{ .elem = 1 } }, pass, .tree, true),
-        94 => self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
-        95 => self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        96 => self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .nil, .{ .elem = 1 } }, pass, .tree, true),
-        97 => self.buildOf(&.{ .{ .tag = .@"super" } }, pass, .tree, true),
-        98 => self.buildOf(&.{ .{ .tag = .@"super" }, .{ .elem = 1 } }, pass, .tree, true),
-        99 => self.buildOf(&.{ .{ .tag = .@"yield" } }, pass, .tree, true),
-        100 => self.buildOf(&.{ .{ .tag = .@"yield" }, .{ .elem = 1 } }, pass, .tree, true),
-        102 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        103 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        104 => self.sexpSpread(.@"args", pass[0]),
-        105 => self.buildOf(&.{ .{ .tag = .@"args" } }, pass, .tree, true),
-        106 => self.sexpSpread(.@"args", pass[1]),
-        108 => self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true),
-        109 => self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true),
-        110 => self.buildOf(&.{ .{ .tag = .@"block_pass" }, .{ .elem = 1 } }, pass, .tree, true),
-        112 => self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
-        113 => self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        114 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
-        115 => self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        116 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        117 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        118 => self.sexpSpread(.@"args", pass[0]),
-        120 => self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true),
-        121 => self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true),
-        122 => self.buildOf(&.{ .{ .tag = .@"block_pass" }, .{ .elem = 1 } }, pass, .tree, true),
-        124 => self.buildOf(&.{ .{ .tag = .@"block" }, .nil, .{ .elem = 1 } }, pass, .tree, true),
-        125 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        126 => self.buildOf(&.{ .{ .tag = .@"block" }, .nil, .{ .elem = 1 } }, pass, .tree, true),
-        127 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        128 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        129 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        130 => self.sexpSpread(.@"params", pass[1]),
-        131 => self.buildOf(&.{ .{ .tag = .@"params" } }, pass, .tree, true),
-        152 => self.buildOf(&.{ .{ .tag = .@"true" } }, pass, .tree, true),
-        153 => self.buildOf(&.{ .{ .tag = .@"false" } }, pass, .tree, true),
-        154 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .nil; n += 1; break :blk self.finishItems(out, .tree); },
-        155 => self.buildOf(&.{ .{ .tag = .@"self" } }, pass, .tree, true),
-        156 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__FILE__" }; n += 1; break :blk self.finishItems(out, .tree); },
-        157 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__LINE__" }; n += 1; break :blk self.finishItems(out, .tree); },
-        158 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__ENCODING__" }; n += 1; break :blk self.finishItems(out, .tree); },
-        159 => self.buildOf(&.{ .{ .tag = .@"lambda" }, .nil, .{ .elem = 1 } }, pass, .tree, true),
-        160 => self.buildOf(&.{ .{ .tag = .@"lambda" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        161 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        162 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        163 => self.sexpSpread(.@"dstr", pass[1]),
-        164 => self.buildOf(&.{ .{ .tag = .@"dstr" } }, pass, .tree, true),
-        166 => self.buildOf(&.{ .{ .tag = .@"evstr" }, .{ .elem = 1 } }, pass, .tree, true),
-        167 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        168 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        171 => self.sexpSpread(.@"array", pass[1]),
-        173 => self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true),
-        174 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        175 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        178 => self.sexpSpread(.@"hash", pass[1]),
-        179 => self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
-        180 => self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        181 => self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true),
-        182 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        183 => self.emptyList(.tree),
-        185 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        186 => self.emptyList(.spread),
-        187 => self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        188 => self.emptyList(.tree),
-        190 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
-        191 => self.buildOf(&.{ .{ .tag = .@"until" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
-        192 => self.emptyList(.spread),
-        193 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, true),
-        194 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        195 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        196 => blk: { const out = self.allocItems(3 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"case" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; out[n] = pass[4]; n += 1; break :blk self.finishItems(out, .tree); },
-        197 => blk: { const out = self.allocItems(3 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"case" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; out[n] = pass[3]; n += 1; break :blk self.finishItems(out, .tree); },
-        198 => self.sexpPosSpread(.@"when", pass[3], pass[1]),
-        199 => self.buildOf(&.{ .{ .tag = .@"begin" }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
-        201 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
-        202 => self.emptyList(.tree),
-        203 => self.buildOf(&.{ .{ .tag = .@"rescue" }, .nil, .nil, .{ .elem = 2 } }, pass, .tree, true),
-        204 => self.buildOf(&.{ .{ .tag = .@"rescue" }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
-        205 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        206 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
-        207 => self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 1 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
-        208 => self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, true),
-        209 => self.buildOf(&.{ .{ .tag = .@"ensure" }, .{ .elem = 2 } }, pass, .tree, true),
-        210 => self.emptyList(.tree),
-        211 => self.buildOf(&.{ .{ .tag = .@"def" }, .{ .elem = 1 }, .nil, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 5 } }, pass, .tree, true),
-        212 => self.buildOf(&.{ .{ .tag = .@"def" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 5 }, .{ .elem = 6 } }, pass, .tree, true),
-        213 => self.buildOf(&.{ .{ .tag = .@"defs" }, .{ .elem = 1 }, .{ .elem = 3 }, .nil, .{ .elem = 5 }, .{ .elem = 6 }, .{ .elem = 7 } }, pass, .tree, true),
-        214 => self.buildOf(&.{ .{ .tag = .@"defs" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 6 }, .{ .elem = 7 }, .{ .elem = 8 } }, pass, .tree, true),
-        215 => self.buildOf(&.{ .{ .tag = .@"params" } }, pass, .tree, true),
-        216 => self.sexpSpread(.@"params", pass[1]),
-        218 => self.buildOf(&.{ .{ .tag = .@"optarg" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        219 => self.buildOf(&.{ .{ .tag = .@"kwarg" }, .{ .elem = 0 } }, pass, .tree, true),
-        220 => self.buildOf(&.{ .{ .tag = .@"kwoptarg" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
-        221 => self.buildOf(&.{ .{ .tag = .@"restarg" }, .{ .elem = 1 } }, pass, .tree, true),
-        222 => self.buildOf(&.{ .{ .tag = .@"kwrestarg" }, .{ .elem = 1 } }, pass, .tree, true),
-        223 => self.buildOf(&.{ .{ .tag = .@"blockarg" }, .{ .elem = 1 } }, pass, .tree, true),
-        224 => self.buildOf(&.{ .{ .tag = .@"class" }, .{ .elem = 1 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
-        225 => self.buildOf(&.{ .{ .tag = .@"class" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
-        226 => self.buildOf(&.{ .{ .tag = .@"sclass" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
-        228 => self.buildOf(&.{ .{ .tag = .@"module" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
-        230 => self.buildOf(&.{ .{ .tag = .@"scope" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        231 => self.buildOf(&.{ .{ .tag = .@"alias" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
-        232 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        233 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
-        234 => self.sexpSpread(.@"undef", pass[1]),
-        237 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, true),
-        238 => self.buildOf(&.{ .{ .tag = .@"return" } }, pass, .tree, true),
-        239 => self.buildOf(&.{ .{ .tag = .@"break" }, .{ .elem = 1 } }, pass, .tree, true),
-        240 => self.buildOf(&.{ .{ .tag = .@"break" } }, pass, .tree, true),
-        241 => self.buildOf(&.{ .{ .tag = .@"next" }, .{ .elem = 1 } }, pass, .tree, true),
-        242 => self.buildOf(&.{ .{ .tag = .@"next" } }, pass, .tree, true),
-        243 => self.buildOf(&.{ .{ .tag = .@"yield" }, .{ .elem = 1 } }, pass, .tree, true),
-        244 => self.buildOf(&.{ .{ .tag = .@"super" }, .{ .elem = 1 } }, pass, .tree, true),
-        245 => self.buildOf(&.{ .{ .tag = .@"retry" } }, pass, .tree, true),
-        246 => self.buildOf(&.{ .{ .tag = .@"redo" } }, pass, .tree, true),
-        249 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@".." }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        250 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"..." }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        252 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"||" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        254 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&&" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        256 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"==" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        257 => self.buildOf(&.{ .{ .tag = .@"!=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        258 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"===" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        259 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<=>" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        260 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"=~" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        261 => self.buildOf(&.{ .{ .tag = .@"!~" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        263 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        264 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        265 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        266 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        268 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"|" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        269 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"^" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        271 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        273 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<<" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        274 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">>" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        276 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"+" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        277 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"-" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
-        279 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        280 => self.buildOf(&.{ .{ .tag = .@"/" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        281 => blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"%" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); },
+fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) BaseParser.ActionValue {
+    @setEvalBranchQuota(32308);
+    switch (ruleId) {
+        0 => return self.actionValueOf(self.sexpSpread(.@"program", pass[0])),
+        2 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"stmts" } }, pass, .tree, true)),
+        3 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        6 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"stmts" }, .{ .elem = 0 } }, pass, .tree, true)),
+        7 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"stmts" } }, pass, .tree, true)),
+        8 => return self.actionValueOf(self.emptyList(.spread)),
+        9 => return self.actionValueOf(self.emptyList(.spread)),
+        26 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true)),
+        27 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true)),
+        28 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 2 }, .{ .elem = 0 } }, pass, .tree, true)),
+        29 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"until" }, .{ .elem = 2 }, .{ .elem = 0 } }, pass, .tree, true)),
+        30 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        31 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true)),
+        32 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 2 }, .{ .elem = 0 }, .nil }, pass, .tree, true)),
+        34 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"not" }, .{ .elem = 1 } }, pass, .tree, true)),
+        36 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"or" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        38 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"and" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        40 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"masgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        41 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"assign" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        42 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"+=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        43 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"-=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        44 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"*=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        45 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"/=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        46 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"%=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        47 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"**=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        48 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"|=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        49 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        50 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"^=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        51 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<<=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        52 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">>=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        53 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"||=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        54 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&&=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        56 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"mlhs" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        57 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        58 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        59 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        60 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"mrhs" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        61 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        62 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        63 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        69 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"attrasgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        70 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"indexasgn" }, .{ .elem = 0 } }, pass, .tree, true)),
+        71 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"indexasgn" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        72 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true)),
+        74 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"u-" }, .{ .elem = 1 } }, pass, .tree, true)),
+        75 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"u+" }, .{ .elem = 1 } }, pass, .tree, true)),
+        76 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"!" }, .{ .elem = 1 } }, pass, .tree, true)),
+        77 => return self.actionValueOf(blk: { const out = self.allocItems(2) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"~" }; n += 1; out[n] = pass[1]; n += 1; break :blk self.finishItems(out, .tree); }),
+        78 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"defined" }, .{ .elem = 1 } }, pass, .tree, true)),
+        80 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        82 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        83 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true)),
+        84 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true)),
+        85 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        86 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        87 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true)),
+        88 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true)),
+        89 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"csend" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        90 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"index" }, .{ .elem = 0 } }, pass, .tree, true)),
+        91 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"index" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        92 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"scope" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        93 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"scope" }, .nil, .{ .elem = 1 } }, pass, .tree, true)),
+        94 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true)),
+        95 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        96 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .nil, .{ .elem = 1 } }, pass, .tree, true)),
+        97 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"super" } }, pass, .tree, true)),
+        98 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"super" }, .{ .elem = 1 } }, pass, .tree, true)),
+        99 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"yield" } }, pass, .tree, true)),
+        100 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"yield" }, .{ .elem = 1 } }, pass, .tree, true)),
+        102 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        103 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        104 => return self.actionValueOf(self.sexpSpread(.@"args", pass[0])),
+        105 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"args" } }, pass, .tree, true)),
+        106 => return self.actionValueOf(self.sexpSpread(.@"args", pass[1])),
+        108 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        109 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        110 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block_pass" }, .{ .elem = 1 } }, pass, .tree, true)),
+        112 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true)),
+        113 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .nil, .{ .elem = 0 }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        114 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true)),
+        115 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"send" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        116 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        117 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        118 => return self.actionValueOf(self.sexpSpread(.@"args", pass[0])),
+        120 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        121 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        122 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block_pass" }, .{ .elem = 1 } }, pass, .tree, true)),
+        124 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block" }, .nil, .{ .elem = 1 } }, pass, .tree, true)),
+        125 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        126 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block" }, .nil, .{ .elem = 1 } }, pass, .tree, true)),
+        127 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        128 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        129 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        130 => return self.actionValueOf(self.sexpSpread(.@"params", pass[1])),
+        131 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"params" } }, pass, .tree, true)),
+        152 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"true" } }, pass, .tree, true)),
+        153 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"false" } }, pass, .tree, true)),
+        154 => return self.actionValueOf(blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .nil; n += 1; break :blk self.finishItems(out, .tree); }),
+        155 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"self" } }, pass, .tree, true)),
+        156 => return self.actionValueOf(blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__FILE__" }; n += 1; break :blk self.finishItems(out, .tree); }),
+        157 => return self.actionValueOf(blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__LINE__" }; n += 1; break :blk self.finishItems(out, .tree); }),
+        158 => return self.actionValueOf(blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"__ENCODING__" }; n += 1; break :blk self.finishItems(out, .tree); }),
+        159 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"lambda" }, .nil, .{ .elem = 1 } }, pass, .tree, true)),
+        160 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"lambda" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        161 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        162 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        163 => return self.actionValueOf(self.sexpSpread(.@"dstr", pass[1])),
+        164 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"dstr" } }, pass, .tree, true)),
+        166 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"evstr" }, .{ .elem = 1 } }, pass, .tree, true)),
+        167 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        168 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        171 => return self.actionValueOf(self.sexpSpread(.@"array", pass[1])),
+        173 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"splat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        174 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        175 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        178 => return self.actionValueOf(self.sexpSpread(.@"hash", pass[1])),
+        179 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true)),
+        180 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        181 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwsplat" }, .{ .elem = 1 } }, pass, .tree, true)),
+        182 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        183 => return self.actionValueOf(self.emptyList(.tree)),
+        185 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        186 => return self.actionValueOf(self.emptyList(.spread)),
+        187 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"unless" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        188 => return self.actionValueOf(self.emptyList(.tree)),
+        190 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true)),
+        191 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"until" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true)),
+        192 => return self.actionValueOf(self.emptyList(.spread)),
+        193 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, true)),
+        194 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        195 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        196 => return self.actionValueOf(blk: { const out = self.allocItems(3 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"case" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; out[n] = pass[4]; n += 1; break :blk self.finishItems(out, .tree); }),
+        197 => return self.actionValueOf(blk: { const out = self.allocItems(3 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"case" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; out[n] = pass[3]; n += 1; break :blk self.finishItems(out, .tree); }),
+        198 => return self.actionValueOf(self.sexpPosSpread(.@"when", pass[3], pass[1])),
+        199 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"begin" }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true)),
+        201 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); }),
+        202 => return self.actionValueOf(self.emptyList(.tree)),
+        203 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"rescue" }, .nil, .nil, .{ .elem = 2 } }, pass, .tree, true)),
+        204 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"rescue" }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true)),
+        205 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false)),
+        206 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); }),
+        207 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 1 }, .nil, .{ .elem = 3 } }, pass, .tree, true)),
+        208 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"rescue" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, true)),
+        209 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"ensure" }, .{ .elem = 2 } }, pass, .tree, true)),
+        210 => return self.actionValueOf(self.emptyList(.tree)),
+        211 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"def" }, .{ .elem = 1 }, .nil, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 5 } }, pass, .tree, true)),
+        212 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"def" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 5 }, .{ .elem = 6 } }, pass, .tree, true)),
+        213 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"defs" }, .{ .elem = 1 }, .{ .elem = 3 }, .nil, .{ .elem = 5 }, .{ .elem = 6 }, .{ .elem = 7 } }, pass, .tree, true)),
+        214 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"defs" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 6 }, .{ .elem = 7 }, .{ .elem = 8 } }, pass, .tree, true)),
+        215 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"params" } }, pass, .tree, true)),
+        216 => return self.actionValueOf(self.sexpSpread(.@"params", pass[1])),
+        218 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"optarg" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        219 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwarg" }, .{ .elem = 0 } }, pass, .tree, true)),
+        220 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwoptarg" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true)),
+        221 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"restarg" }, .{ .elem = 1 } }, pass, .tree, true)),
+        222 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"kwrestarg" }, .{ .elem = 1 } }, pass, .tree, true)),
+        223 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"blockarg" }, .{ .elem = 1 } }, pass, .tree, true)),
+        224 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"class" }, .{ .elem = 1 }, .nil, .{ .elem = 3 } }, pass, .tree, true)),
+        225 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"class" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true)),
+        226 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"sclass" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true)),
+        228 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"module" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true)),
+        230 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"scope" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        231 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"alias" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true)),
+        232 => return self.actionValueOf(self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false)),
+        233 => return self.actionValueOf(blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); }),
+        234 => return self.actionValueOf(self.sexpSpread(.@"undef", pass[1])),
+        237 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, true)),
+        238 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"return" } }, pass, .tree, true)),
+        239 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"break" }, .{ .elem = 1 } }, pass, .tree, true)),
+        240 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"break" } }, pass, .tree, true)),
+        241 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"next" }, .{ .elem = 1 } }, pass, .tree, true)),
+        242 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"next" } }, pass, .tree, true)),
+        243 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"yield" }, .{ .elem = 1 } }, pass, .tree, true)),
+        244 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"super" }, .{ .elem = 1 } }, pass, .tree, true)),
+        245 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"retry" } }, pass, .tree, true)),
+        246 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"redo" } }, pass, .tree, true)),
+        249 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@".." }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        250 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"..." }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        252 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"||" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        254 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&&" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        256 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"==" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        257 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"!=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        258 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"===" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        259 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<=>" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        260 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"=~" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        261 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"!~" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        263 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        264 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        265 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        266 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<=" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        268 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"|" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        269 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"^" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        271 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"&" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        273 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"<<" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        274 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@">>" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        276 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"+" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        277 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"-" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
+        279 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        280 => return self.actionValueOf(self.buildOf(&.{ .{ .tag = .@"/" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true)),
+        281 => return self.actionValueOf(blk: { const out = self.allocItems(3) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"%" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[2]; n += 1; break :blk self.finishItems(out, .tree); }),
         else => unreachable,
-    };
+    }
 }
 
 const promotableSymbol: u16 = 92;
