@@ -319,13 +319,16 @@ top-level `parseX` helpers. Tables are array literals, so a generated
 module needs no comptime expansion. A `ruleValue` table says how each rule
 takes its value: a rule whose value is nil or one of its elements needs no
 call of `executeAction`. `src/codegen/actions.zig` compiles every other
-action tree into the Zig expression `executeAction` returns for it: a list
-whose items are elements, tags or nil is a comptime-known item array that
-one builder unrolls, a list with spreads is allocated once at its length
-and filled, and `(...N x)` extends a left-recursive list in place
-(amortized O(1) per element). It also decides, per rule, whether an
+action tree into the Zig expression of the value `executeAction` writes
+for it: a list whose items are elements, tags or nil is a comptime-known
+item array that one builder unrolls, a list with spreads is allocated once
+at its length and filled, and `(...N x)` extends a left-recursive list in
+place (amortized O(1) per element). It also decides, per rule, whether an
 untagged list can reach the tree (and needs a node id) or is only ever
-spliced (plumbing, no id).
+spliced (plumbing, no id). The builders are inline, and `executeAction`
+writes the value over the reduction's first element on the value stack:
+a value is never copied out of the frame that built it while the stores
+that wrote it are in flight, which would stall the load that copies it.
 
 The runtime is `src/codegen/runtime_template.zig`, a real Zig file that
 compiles and has its own tests against a small hand-written fixture.

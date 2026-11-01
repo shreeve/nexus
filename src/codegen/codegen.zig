@@ -582,12 +582,20 @@ const Codegen = struct {
             try a.writeAll(",\n");
         }
         self.usesNested = uses.nested;
-        try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
+        // The builders are inline, and unroll each arm's items at compile
+        // time: the quota has room for a branch per byte of the arms.
+        try w.writeAll("\n/// Rule `ruleId`'s value from its elements `pass`, written to `dest` (which\n/// may be `pass[0]`: every element is read before it is written).\n");
+        try w.writeAll("fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp, dest: *Sexp) void {\n");
         if (!uses.self) try w.writeAll("    _ = self;\n");
         if (!uses.pass) try w.writeAll("    _ = pass;\n");
-        try w.writeAll("    return switch (ruleId) {\n");
+        if (arms.written().len == 0) {
+            try w.writeAll("    _ = ruleId;\n    _ = dest;\n    unreachable; // no rule has an action\n}\n");
+            return out.written();
+        }
+        try w.print("    @setEvalBranchQuota({d});\n", .{1000 + arms.written().len});
+        try w.writeAll("    const result: Sexp = switch (ruleId) {\n");
         try w.writeAll(arms.written());
-        try w.writeAll("        else => unreachable,\n    };\n}\n");
+        try w.writeAll("        else => unreachable,\n    };\n    dest.* = result;\n}\n");
         return out.written();
     }
 
