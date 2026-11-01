@@ -1,7 +1,8 @@
 //! Action codegen: compiles a rule's action tree (grammar.ActionTree) into
-//! the Zig expression `executeAction` returns for it, and collects the tags
-//! actions use (for the generated Tag enum). A rule whose value is nil or
-//! one of its elements gets no expression: `ruleValue` takes it.
+//! the Zig expression of the value `executeAction` returns for it (through
+//! `actionValueOf`), and collects the tags actions use (for the generated
+//! Tag enum). A rule whose value is nil or one of its elements gets no
+//! expression: `ruleValue` takes it.
 //!
 //! A list whose items are all elements, tags or nil is static data that
 //! `buildOf` reads; a spread uses a dedicated builder (`(tag ...N)` is

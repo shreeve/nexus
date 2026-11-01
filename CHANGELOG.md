@@ -636,6 +636,24 @@ error of the three corpora, and of em's, Rig's and nexis's own corpora
   moves within 3% (pup, one P-core, three rotated orders, best of 5:
   VistA -0.5% with a new parser per file, +0.1% reset; Rig +1.3%; Zig
   +1.3%, +2.6% reset), and generation takes a few milliseconds more.
+- An action returns its value in registers: `executeAction` gives a list
+  as one integer (pointer, length, node id), which `reduce` writes
+  straight into the reduction's slot on the value stack, and the tree
+  builders an action calls are inline. A value returned through memory
+  was written field by field and read back whole at once, and that read
+  waited for the writes to reach the cache: VistA's parse took 39 M such
+  blocked loads per pass, 7 M now, Zig's source 11 M, 3 M now. VistA
+  parses 4% faster with a reset parser and 2-3% with a new parser per
+  file, Zig's source and Rig's sources 2-3%, with 2-4% fewer
+  instructions (pup, one P-core, three rotated orders, best of 5, two
+  runs; `test/bench/run` gives VistA -2.9% and -0.9% reset, Rig -2.0%,
+  with its lexer, the same code, 3% slower by layout). The builders are
+  inline in optimized builds only: a ReleaseFast build of a generated
+  parser takes 11% longer for MUMPS (20.3 → 22.5 s), 16% for Rig (24.7 →
+  28.6 s) and 26% for Zig (18.7 → 23.5 s), and a Debug build the same
+  time as before (5.8-5.9 s, 1.2-1.3 s, 0.8 s; the tree driver, a fresh
+  cache, pup P-cores). Rig's own tree builds in Debug in 77-87 s with
+  either generator.
 
 The generated code changes (the downstream rebuild recompiles em once);
 no lang module or consumer changes.
