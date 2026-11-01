@@ -326,7 +326,15 @@ one builder unrolls, a list with spreads is allocated once at its length
 and filled, and `(...N x)` extends a left-recursive list in place
 (amortized O(1) per element). It also decides, per rule, whether an
 untagged list can reach the tree (and needs a node id) or is only ever
-spliced (plumbing, no id).
+spliced (plumbing, no id). Each arm returns its value through
+`actionValueOf`: a list of items as one integer (pointer, length, node
+id) in registers, which `reduce` writes straight into the reduction's
+slot on the value stack; anything else (an empty list, nil after a failed
+allocation) through `BaseParser.actionValue`. In an optimized build the
+builders are inline, so a value is built in registers too: a Sexp
+returned through memory is written field by field and read back whole at
+once, and that read waits for the writes to reach the cache. A Debug
+build calls them as functions (`builderCall`), which compiles faster.
 
 ### The parse table
 
