@@ -337,7 +337,10 @@
   parses take almost no page faults: one pass over VistA takes 241
   instead of 486,551, over Rig's sources 351 instead of 7,891, and over
   Zig's source 37,319 instead of 148,150 (those left come from the files
-  over 16 MiB) (pup, Linux).
+  over 16 MiB), and a reset parser parses VistA 29% faster than a new
+  parser per file (1215 ms instead of 1714), Rig's sources 14% faster and
+  Zig's source 16% faster (pup, one P-core;
+  [test/bench/BASELINE.md](test/bench/BASELINE.md#reusing-a-parser)).
 - The extension bundles its client: `package.json`'s
   `vscode:prepublish` script runs esbuild 0.28.2 over `extension.js`
   and `vscode-languageclient` into `dist/extension.js`, which `main`

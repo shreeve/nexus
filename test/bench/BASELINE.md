@@ -60,6 +60,37 @@ The MUMPS and Rig rows were recorded with the grammars `grammars/mumps` and
 Parsing costs about 7x lexing on MUMPS (22 M tokens/s end to end), so
 parser-side work (tables, reductions, tree building) dominates.
 
+## Reusing a parser
+
+`test/bench/run` also times parsing with one parser `reset` before each
+file (*reset*; `-` for Rig, whose lang `Parser` wrapper has no `reset`).
+Recorded on pup (Intel Core Ultra 9 185H, Linux, Zig 0.17.0), the whole
+run pinned to one P-core (`taskset -c 2`), two runs, the lower of each:
+
+| input | files | MB | parse ms | parse MB/s | reset ms | reset MB/s |
+|---|---:|---:|---:|---:|---:|---:|
+| mumps | 24704 | 86.5 | 1776.3 | 48.7 | 1229.1 | 70.4 |
+
+A fresh parser fills memory the process has not touched, and the kernel
+faults each page in: 2.46 M page faults over five rounds of VistA against
+24 K with a reset parser, 9.1 G kernel cycles against 0.6 G. The same
+harness (one parser reset per file against a new one, three rotated
+orders, one pinned P-core, best of 5 rounds) over Rig's 704 sources and
+Zig 0.17.0's source tree, with Rig's wrapper given a `reset`:
+
+| input | new parser ms | reset ms | page faults (new / reset, 5 rounds) | held between files |
+|---|---:|---:|---:|---:|
+| mumps (24,704 files) | 1714.2 | 1215.4 (-29%) | 2,455,372 / 23,826 | 1.1 MB |
+| rig (704 files) | 64.3 | 55.0 (-14%) | 40,465 / 2,756 | 1.2 MB |
+| zig (2,620 files) | 838.5 | 708.4 (-16%) | 758,204 / 204,054 | 16 MB |
+
+Peak RSS is the same either way (90, 17 and 185 MB: the input held in
+memory, and for Zig its largest file's parse). `reset` keeps at most
+`resetKeeps` (16 MiB): a reset that kept everything held 136 MB after
+Zig's largest file and was 1.3% slower there (717.5 ms, 237,754 faults:
+growing the kept buffer reallocates it, untouched); on VistA and Rig the
+two are within 1%.
+
 ## Reading a difference
 
 Run each side at least twice and compare minimums; interleave A/B runs of
