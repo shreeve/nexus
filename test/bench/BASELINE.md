@@ -18,19 +18,22 @@ without a shell, so the time includes the process start of nexus itself).
 
 | grammar | mean ms | min ms | output lines | output KB |
 |---|---:|---:|---:|---:|
-| mumps | 9.6 | 8.9 | 8130 | 1031 |
-| ruby | 4.9 | 4.7 | 4678 | 451 |
-| rig | 22.8 | 22.1 | 11706 | 1579 |
-| slash | 1.5 | 1.4 | 3358 | 168 |
-| nexis | 0.8 | 0.8 | 2605 | 111 |
-| nexus | 3.0 | 2.9 | 4959 | 351 |
-| features | 0.8 | 0.8 | 2698 | 111 |
-| basic | 0.8 | 0.7 | 2602 | 107 |
-| lit_tags | 0.7 | 0.6 | 2540 | 103 |
+| mumps | 10.6 | 10.3 | 8130 | 545 |
+| ruby | 6.1 | 5.9 | 5525 | 410 |
+| rig | 28.1 | 27.4 | 10873 | 779 |
+| slash | 1.5 | 1.4 | 3443 | 168 |
+| nexis | 0.8 | 0.8 | 2663 | 118 |
+| nexus | 3.1 | 3.0 | 4777 | 240 |
+| features | 0.8 | 0.8 | 2750 | 114 |
+| basic | 0.7 | 0.7 | 2655 | 111 |
+| lit_tags | 0.6 | 0.6 | 2600 | 106 |
 
 Generated modules hold their parse tables as literal arrays, which makes
 them larger than the code that builds them would be and quicker to
-compile. A grammar whose `@infix` table folds (rig, basic, features) runs
+compile; the tables are compressed by row displacement
+([INTERNALS.md, "The parse table"](../../docs/INTERNALS.md#the-parse-table)),
+which costs generation a few milliseconds (mumps 8.4, ruby 4.2 and rig
+21.5 ms with a dense table, interleaved with the rows above). A grammar whose `@infix` table folds (rig, basic, features) runs
 the LR stage twice: once on the chain, which every check sees, and once
 on the folded table it generates from.
 
@@ -56,11 +59,17 @@ The MUMPS and Rig rows were recorded with the grammars `grammars/mumps` and
 
 | input | files | MB | tokens | lex ms | lex MB/s | parse ms | parse MB/s | reset ms | reset MB/s | parsed ok |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| mumps | 24704 | 86.5 | 35,634,361 | 224.9 | 384.7 | 1610.4 | 53.7 | 1028.9 | 84.1 | 24646 |
-| rig | 6168 | 4.9 | 1,209,984 | 35.3 | 138.4 | 93.6 | 52.2 | - | - | 6168 |
+| mumps | 24704 | 86.5 | 35,634,361 | 240.5 | 359.8 | 1592.5 | 54.3 | 1015.8 | 85.2 | 24646 |
+| rig | 6168 | 4.9 | 1,209,984 | 34.9 | 140.0 | 92.3 | 53.0 | - | - | 6168 |
 
 Parsing costs about 7x lexing on MUMPS (22 M tokens/s end to end), so
 parser-side work (tables, reductions, tree building) dominates.
+
+The lexing column moves with the layout of the binary around the lexer,
+not only with its code: interleaved with the rows above, the parsers of
+the dense table, whose lexer is the same code, lexed VistA in 225.7 ms
+and Rig's programs in 35.3, and parsed them in 1594.7 (reset 1027.2) and
+91.3 ms.
 
 ## Reusing a parser
 

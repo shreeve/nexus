@@ -594,6 +594,18 @@ error of the three corpora, and of em's, Rig's and nexis's own corpora
   (names, digits) 16 bytes at a time after its first byte. The blanks
   before a token stay a plain loop: a vector scan of them made Rig's
   lexing of short programs 3% slower.
+- The parse table is compressed by row displacement
+  ([INTERNALS.md, "The parse table"](docs/INTERNALS.md#the-parse-table)):
+  each state's action row and goto row share one array of cells with a
+  check per cell, and the parse loop reads gotos as a default per
+  nonterminal with exceptions. No default reductions, so errors, expected
+  sets and tolerant repairs are unchanged. The table takes 91 KiB instead
+  of 646 KiB for MUMPS, 101 KiB instead of 1001 KiB for Rig and 475 KiB
+  instead of 1334 KiB for Zig; the generated module shrinks to 546 KB
+  (from 1033), 779 KB (from 1581) and 1597 KB (from 2166). Parsing speed
+  moves within 3% (pup, one P-core, three rotated orders, best of 5:
+  VistA -0.5% with a new parser per file, +0.1% reset; Rig +1.3%; Zig
+  +1.3%, +2.6% reset), and generation takes a few milliseconds more.
 
 The generated code changes (the downstream rebuild recompiles em once);
 no lang module or consumer changes.
