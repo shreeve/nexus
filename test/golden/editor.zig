@@ -1169,11 +1169,16 @@ pub const BaseParser = struct {
         var arena = self.arena;
         _ = arena.reset(.{ .retain_with_limit = resetKeeps });
         if (@import("builtin").optimize == .debug) {
-            // The arena keeps one buffer: take all of it, then give it back.
-            if (arena.allocator().alloc(u8, arena.queryCapacity())) |kept| {
-                @memset(kept, undefined);
-                _ = arena.reset(.{ .retain_with_limit = resetKeeps });
-            } else |_| {}
+            // Take all the memory kept, overwrite it, and give it back. An
+            // arena that kept more than one buffer (its used and free
+            // lists) serves this from a new one instead, and so keeps
+            // nothing rather than memory not overwritten.
+            const kept = arena.queryCapacity();
+            const covered = if (arena.allocator().alloc(u8, kept)) |bytes| blk: {
+                @memset(bytes, undefined);
+                break :blk arena.queryCapacity() == kept;
+            } else |_| false;
+            _ = arena.reset(if (covered) .{ .retain_with_limit = resetKeeps } else .free_all);
         }
         self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined, .chainEnds = self.chainEnds };
         self.setCurrent(self.lexer.next());

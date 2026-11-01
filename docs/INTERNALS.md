@@ -357,7 +357,7 @@ store entries (span and rule, 12 bytes) live in chunks of 128 that never
 move. Parse memory comes from a bump allocator over chunks of the arena
 (the arena itself is threadsafe, and the parser needs no atomics). The
 stacks, the node store and the trees all live there, so `reset` keeps
-their memory by keeping the arena's: one buffer as large as all the
+their memory by keeping the arena's: a buffer as large as all the
 arena held, up to `resetKeeps` bytes, its pages already mapped. An
 `@as` keyword is looked up once per token, per group (in a `@keywords`
 group's generated `gAs`: a switch on the first byte, then a comparison per
