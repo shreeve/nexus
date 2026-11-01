@@ -594,6 +594,17 @@ error of the three corpora, and of em's, Rig's and nexis's own corpora
   (names, digits) 16 bytes at a time after its first byte. The blanks
   before a token stay a plain loop: a vector scan of them made Rig's
   lexing of short programs 3% slower.
+- The tree builders an action calls are inline, and `executeAction`
+  writes a reduction's value over its first element on the value stack,
+  so a value is not copied out of the frame that built it while the
+  stores that wrote it are in flight (each such load waited for them).
+  VistA parses 5% faster with a reset parser (1023 → 971 ms) and 4% with
+  a new parser per file (1662 → 1601 ms), with 4% fewer instructions;
+  Rig's sources and Zig's source move less than 1% (pup, one P-core, three
+  rotated orders, best of 5). A ReleaseFast build of a generated parser
+  takes longer: 33 → 40 s for MUMPS, 42 → 56 s for Rig, 36 → 44 s for Zig
+  (the tree driver, a fresh cache); Debug builds take under 6 s either
+  way.
 
 The generated code changes (the downstream rebuild recompiles em once);
 no lang module or consumer changes.

@@ -56,11 +56,17 @@ The MUMPS and Rig rows were recorded with the grammars `grammars/mumps` and
 
 | input | files | MB | tokens | lex ms | lex MB/s | parse ms | parse MB/s | reset ms | reset MB/s | parsed ok |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| mumps | 24704 | 86.5 | 35,634,361 | 224.9 | 384.7 | 1610.4 | 53.7 | 1028.9 | 84.1 | 24646 |
-| rig | 6168 | 4.9 | 1,209,984 | 35.3 | 138.4 | 93.6 | 52.2 | - | - | 6168 |
+| mumps | 24704 | 86.5 | 35,634,361 | 244.6 | 353.7 | 1584.4 | 54.6 | 1002.6 | 86.3 | 24646 |
+| rig | 6168 | 4.9 | 1,209,984 | 34.8 | 140.7 | 92.9 | 52.6 | - | - | 6168 |
 
 Parsing costs about 7x lexing on MUMPS (22 M tokens/s end to end), so
 parser-side work (tables, reductions, tree building) dominates.
+
+The lexing column moves with the layout of the binary around the lexer,
+not only with its code: interleaved with the rows above, the previous
+generator's parsers, whose lexer is the same code, lexed VistA in 230.4
+ms and Rig's programs in 35.4, and parsed them in 1608.5 (reset 1047.4)
+and 94.1 ms.
 
 ## Reusing a parser
 
