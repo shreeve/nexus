@@ -110,10 +110,15 @@ pub const BaseLexer = struct {
                 const hit = if (r[0] == r[1]) v == @as(V, @splat(r[0])) else v -% @as(V, @splat(r[0])) <= @as(V, @splat(r[1] - r[0]));
                 in |= @select(u8, hit, @as(V, @splat(0xFF)), @as(V, @splat(0)));
             }
-            // Two u64 lanes rather than a 16-bit mask: no movemask.
-            const out: @Vector(2, u64) = @bitCast(~in);
-            if (out[0] != 0) return p + @ctz(out[0]) / 8;
-            if (out[1] != 0) return p + 8 + @ctz(out[1]) / 8;
+            if (comptime @import("builtin").cpu.arch.endian() == .little) {
+                // Two u64 lanes rather than a 16-bit mask: no movemask.
+                const out: @Vector(2, u64) = @bitCast(~in);
+                if (out[0] != 0) return p + @ctz(out[0]) / 8;
+                if (out[1] != 0) return p + 8 + @ctz(out[1]) / 8;
+            } else {
+                const out: u16 = @bitCast(in == @as(V, @splat(0)));
+                if (out != 0) return p + @ctz(out);
+            }
         }
         while (p < src.len) : (p += 1) if (!inRanges(src[p], ranges)) return p;
         return p;
