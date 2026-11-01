@@ -58,6 +58,7 @@ test {
     _ = @import("lr/lr.zig");
     _ = @import("codegen/runtime.zig");
     _ = @import("codegen/codegen.zig");
+    _ = @import("codegen/comb.zig");
     _ = @import("highlight/render.zig");
     _ = @import("highlight/highlight.zig");
     _ = @import("lsp/names.zig");

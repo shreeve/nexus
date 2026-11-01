@@ -28,6 +28,7 @@ const Schema = grammar.Schema;
 const Automaton = @import("../lr/automaton.zig").Automaton;
 const Table = @import("../lr/table.zig").Table;
 const actions = @import("actions.zig");
+const comb = @import("comb.zig");
 const semantics = @import("../semantics.zig");
 const runtime = @import("runtime.zig");
 const messages = @import("../messages.zig");
@@ -840,32 +841,64 @@ const Codegen = struct {
         };
     }
 
-    /// The parse table as a literal, one row of actions per state: no
-    /// comptime work, so its size meets no evaluation quota.
+    /// The parse table, compressed by row displacement (comb.zig), as
+    /// literals: no comptime work, so its size meets no evaluation quota.
+    /// The comb is decoded against the dense table before it is written.
     fn emitParseTable(self: *Codegen, w: *std.Io.Writer) !void {
         const rows = self.table.rows;
-        try w.print(
-            \\
-            \\// Parse table: {d} states x {d} symbols. 0 = error, > 0 = shift or
-            \\// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
-            \\// reduction an `X "c"` hint overrides (`hinted`).
-            \\const parseTable = [_][numSymbols]i16{{
-            \\
-        , .{ rows.len, self.g.symbols.items.len });
+        const numSymbols = self.g.symbols.items.len;
         const xs = self.table.xExcludes.items;
-        for (rows, 0..) |row, state| {
+        const dense = try self.allocator.alloc([]i16, rows.len);
+        for (rows, dense, 0..) |row, *out, state| {
             const hints = xs[self.table.xExcludeStart[state]..self.table.xExcludeStart[state + 1]];
-            try w.writeAll("    .{");
-            for (row, 0..) |action, sym| {
-                const value: i16 = for (hints) |x| {
+            out.* = try self.allocator.alloc(i16, row.len);
+            for (row, out.*, 0..) |action, *value, sym| {
+                value.* = for (hints) |x| {
                     if (x.sym == sym) break std.math.minInt(i16);
                 } else actionValue(action);
-                if (sym > 0) try w.writeByte(',');
-                try w.print("{d}", .{value});
             }
-            try w.writeAll("},\n");
         }
+        const nonterminal = try self.allocator.alloc(bool, numSymbols);
+        for (self.g.symbols.items, nonterminal) |sym, *nt| nt.* = sym.kind == .nonterminal;
+        const t = try comb.encode(self.allocator, dense, nonterminal);
+        if (!t.matches(dense, nonterminal)) {
+            diag.err("internal error: the compressed parse table does not decode to the table", .{});
+            return error.CodegenFailed;
+        }
+        try w.print(
+            \\
+            \\// Parse table: {d} states x {d} symbols, compressed by row displacement
+            \\// (src/codegen/comb.zig). An action: 0 = error, > 0 = shift or goto,
+            \\// -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a reduction an
+            \\// `X "c"` hint overrides (`hinted`). A state's actions and its gotos are
+            \\// rows of `combCells` at its `actionBase` and `gotoBase`: the cell of
+            \\// symbol `sym` is `combCells[base + sym]`, `check << 16 | action`, and
+            \\// belongs to the row when `check` is the base mod 65536.
+            \\const numStates = {d};
+            \\const actionBase = [_]{s}{{
+        , .{ rows.len, numSymbols, rows.len, baseType(t.cells.len) });
+        try writeList(w, u32, t.actionBase);
+        try w.print("}};\nconst gotoBase = [_]{s}{{", .{baseType(t.cells.len)});
+        try writeList(w, u32, t.gotoBase);
+        try w.writeAll("};\nconst combCells = [_]u32{");
+        try writeList(w, u32, t.cells);
+        try w.writeAll(
+            \\};
+            \\// The parse loop's gotos: a nonterminal's most common target, unless
+            \\// `gotoExceptions[gotoExceptionBase[lhs] + state]` is `state << 16 | target`.
+            \\const gotoDefault = [_]u16{
+        );
+        try writeList(w, u16, t.gotoDefault);
+        try w.print("}};\nconst gotoExceptionBase = [_]{s}{{", .{baseType(t.exceptions.len)});
+        try writeList(w, u32, t.exceptionBase);
+        try w.writeAll("};\nconst gotoExceptions = [_]u32{");
+        try writeList(w, u32, t.exceptions);
         try w.writeAll("};\n");
+    }
+
+    /// The narrowest index type that reaches every slot of `len`.
+    fn baseType(len: usize) []const u8 {
+        return if (len <= std.math.maxInt(u16) + 1) "u16" else "u32";
     }
 
     /// `X "c"` exclusions (grouped by state): the runtime shift override,

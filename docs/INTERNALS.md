@@ -271,11 +271,12 @@ accept) and the reductions that want it: `<` and an `X "c"` hint naming
 this terminal (resolved before LR) let a reduction win (an `X "c"` win also
 records a run-time override that shifts that terminal when it touches the
 previous token), `>` suppresses the report, a shift or accept otherwise
-wins, and among reductions the lowest-numbered rule wins. The tables stay
-dense (`[state][symbol]`): a row-displacement form makes the MUMPS parser
-smaller and parsing slower. After the table is built, `lr.zig` rejects a
-table that reduces forever on one lookahead, by simulating each reduce
-chain from every empty-reduction cell on an explicit stack.
+wins, and among reductions the lowest-numbered rule wins. The table is
+dense (`[state][symbol]`) in the generator; generated parsers hold it
+compressed ([The parse table](#the-parse-table)). After the table is built,
+`lr.zig` rejects a table that reduces forever on one lookahead, by
+simulating each reduce chain from every empty-reduction cell on an
+explicit stack.
 
 `conflicts.zig` aggregates the unresolved cells into manifest entries
 (`shift rule` / `reduce winner over loser`, with cell counts), compares them
@@ -327,12 +328,48 @@ and filled, and `(...N x)` extends a left-recursive list in place
 untagged list can reach the tree (and needs a node id) or is only ever
 spliced (plumbing, no id).
 
+### The parse table
+
+`src/codegen/comb.zig` compresses the table by row displacement, with no
+default reductions: every cell keeps its action, so errors, expected sets
+and tolerant repairs are those of the dense table. A state's cells in
+terminal columns are its action row and its cells in nonterminal columns
+its goto row; equal rows are stored once. Densest first, each distinct
+row takes the first base, not taken by another row, at which its nonempty
+cells meet free slots of one array, `combCells`, indexed by symbol id
+(searching from the base of the row before it when that row has as many
+cells, four or more: the slots before it are as full, and a search from
+the start would scan the whole comb for each dense row). The cell of
+`sym` in the row at `base` is `combCells[base + sym]`. A cell is
+`check << 16 | action` (the action as an i16), and `check` is the row's
+base mod 65536. A lookup that lands on another row's cell finds another
+check, and one on an empty slot finds action 0, error. Bases are distinct,
+so two rows whose checks agree are at least 65536 slots apart, farther
+than a symbol id reaches. Per state, `actionBase` and `gotoBase` (u16 when
+`combCells` has at most 65536 slots, else u32) give the rows' bases;
+`getAction(state, sym)` reads the action row, then the goto row.
+
+The parse loop reads a goto, which always exists there, from a second
+form: the nonterminal's most common target (`gotoDefault`) unless the
+state is an exception, `gotoExceptions[gotoExceptionBase[lhs] + state]`
+holding `state << 16 | target` (columns of exceptions packed the same way,
+checked by state). Debug builds assert that it agrees with the goto row.
+Terminal lookups in the parse loop read the action row alone (`actionAt`).
+
+The generator decodes every cell of the comb against the dense table, and
+every goto of the second form, before it writes the module; comb.zig's
+unit tests do the same on constructed tables (repeated and empty rows, a
+comb past 65536 slots), and the runtime template's fixture test decodes
+its comb against its dense table. The table's arrays take 91 KiB (MUMPS),
+101 KiB (Rig) and 475 KiB (Zig) where the dense table took 646 KiB, 1001
+KiB and 1334 KiB.
+
 The runtime is `src/codegen/runtime_template.zig`, a real Zig file that
 compiles and has its own tests against a small hand-written fixture.
 `runtime.zig` extracts its `// @section NAME ... // @end` blocks and fills
 `// @slot NAME` lines (lexgen emits the `longEnds` section); everything outside the sections (the fixture, the
 tests) is never emitted. The template refers to a fixed set of generated
-names (`parseTable`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
+names (`combCells`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
 at its top. A grammar with `@messages` also gets the `messages` section and
 its `messages` table, and `writeFailure`'s `messageLookup` slot calls
 `messageFor`; a grammar without one gets neither, and the same bytes as if
@@ -478,6 +515,7 @@ current numbers and how to compare two builds.
 | `src/lr/` | grammar facts, automaton, lookaheads, table, conflicts, expected sets, repair |
 | `src/codegen/codegen.zig` | module composition and grammar-specific code |
 | `src/codegen/actions.zig` | action trees to Zig |
+| `src/codegen/comb.zig` | the parse table compressed by row displacement |
 | `src/codegen/runtime_template.zig`, `runtime.zig` | the runtime and its section extraction |
 | `src/version.zig` | the version stamped into generated files |
 | `nexus.grammar` | the grammar-file grammar |

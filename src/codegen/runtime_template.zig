@@ -19,7 +19,9 @@
 //!   config     longTokens, nodeStore, elemEnds, keepTrailingNils, hasTrivia,
 //!              hasRepair, asGroups, numSymbols, endSymbol, errorSymbol,
 //!              xExcludes, maxExpected
-//!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
+//!   tables     ruleLhs, ruleLen, ruleValue, numStates, actionBase, gotoBase,
+//!              combCells, gotoDefault, gotoExceptionBase, gotoExceptions,
+//!              xExcludeStart,
 //!              expectedSymbols, expectedOffsets, expectedOf, namedRules,
 //!              repairTokens, repairOffsets
 //!   functions  startState, startMarker, tokenToSymbol, promote,
@@ -368,9 +370,33 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`. The
+/// table is a comb (src/codegen/comb.zig): the state's action row, then
+/// its goto row.
 inline fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
+    const action = actionAt(state, sym);
+    return if (action != 0) action else combAt(gotoBase[state], sym);
+}
+
+/// The action for terminal `sym` in `state` (0 for a nonterminal).
+inline fn actionAt(state: u16, sym: u16) i16 {
+    return combAt(actionBase[state], sym);
+}
+
+/// The cell of `sym` in the comb row at `base`: its action when its check
+/// is the base (mod 65536), else 0 (another row's cell, or none).
+inline fn combAt(base: usize, sym: u16) i16 {
+    const cell = combCells[base + sym];
+    return if (cell >> 16 == @as(u16, @truncate(base))) @bitCast(@as(u16, @truncate(cell))) else 0;
+}
+
+/// The goto on `lhs` from `state` after a reduction, which always has one:
+/// the nonterminal's most common target unless `state` is an exception.
+inline fn gotoOn(state: u16, lhs: u16) u16 {
+    const cell = gotoExceptions[@as(usize, gotoExceptionBase[lhs]) + state];
+    const next: u16 = if (cell >> 16 == state) @truncate(cell) else gotoDefault[lhs];
+    std.debug.assert(next == getAction(state, lhs)); // every reduction has a goto
+    return next;
 }
 
 /// Whether rule `r` is a pass-through `A → B`: one element, and its value.
@@ -396,7 +422,7 @@ const ChainEnd = struct {
     state: u16 = 0,
     action: i16 = 0,
 
-    const Key = if (@as(u64, parseTable.len) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
+    const Key = if (@as(u64, numStates) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
     const bits = 11;
     const slots = 1 << bits;
 
@@ -452,12 +478,14 @@ fn idCount(comptime Id: type) usize {
 /// The states that take one of an `@as` group's symbols, `toSymbol` and
 /// `fallback` (by a shift, or with any action when `permissive`): the only
 /// states where `tryPromote` looks the token up in the group.
-fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(parseTable.len) {
-    @setEvalBranchQuota(parseTable.len * (toSymbol.len + 1) * 4 + 1000);
-    var takers: std.StaticBitSet(parseTable.len) = .empty;
-    for (parseTable, 0..) |row, state| {
+fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(numStates) {
+    @setEvalBranchQuota(numStates * (toSymbol.len + 1) * 16 + 1000);
+    var takers: std.StaticBitSet(numStates) = .empty;
+    for (0..numStates) |state| {
         for (toSymbol ++ [_]u16{fallback}) |sym| {
-            if (sym != 0 and (if (permissive) row[sym] != 0 else row[sym] > 0)) takers.set(state);
+            if (sym == 0) continue;
+            const action = actionAt(state, sym);
+            if (if (permissive) action != 0 else action > 0) takers.set(state);
         }
     }
     return takers;
@@ -897,8 +925,8 @@ pub const BaseParser = struct {
         var state: u16 = undefined;
         var action: i16 = undefined;
         while (true) {
-            state = @intCast(getAction(below, ruleLhs[rule]));
-            action = getAction(state, sym);
+            state = gotoOn(below, ruleLhs[rule]);
+            action = actionAt(state, sym);
             if (xExcludes.len > 0 and action == hinted) {
                 plain = false;
                 action = self.strictAction(state, sym);
@@ -1131,7 +1159,7 @@ pub const BaseParser = struct {
         const id = self.keywordId(group, text, lookup) orelse return null;
         for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
             if (sym == 0) continue;
-            const action = getAction(state, sym);
+            const action = actionAt(state, sym);
             if (if (permissive) action != 0 else action > 0) {
                 self.lastMatchedId = id;
                 return sym;
@@ -1156,7 +1184,7 @@ pub const BaseParser = struct {
     /// on the hinted token and it touches the previous token, shift
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
-        const action = getAction(state, sym);
+        const action = actionAt(state, sym);
         if (xExcludes.len > 0 and action == hinted)
             return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
         return action;
@@ -1164,7 +1192,7 @@ pub const BaseParser = struct {
 
     /// `actionFor` on a token of the input.
     inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
-        const action = getAction(state, sym);
+        const action = actionAt(state, sym);
         if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
@@ -1235,10 +1263,9 @@ pub const BaseParser = struct {
     inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
         if (isPassThrough(ruleId)) {
             const states = self.stateStack.items;
-            const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
-            std.debug.assert(next > 0); // every reduction has a goto
-            states[states.len - 1] = @intCast(next);
-            return @intCast(next);
+            const next = gotoOn(states[states.len - 2], ruleLhs[ruleId]);
+            states[states.len - 1] = next;
+            return next;
         }
         try self.reduce(ruleId);
         return self.stateStack.items[self.stateStack.items.len - 1];
@@ -1286,20 +1313,19 @@ pub const BaseParser = struct {
             },
         };
         if (self.outOfMemory) return error.OutOfMemory;
-        const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
-        std.debug.assert(next > 0); // every reduction has a goto
+        const next = gotoOn(self.stateStack.items[top - 1], ruleLhs[ruleId]);
 
         if (nodeStore) try self.recordSides(ruleId, result);
         if (len > 0) {
             self.valueStack.items.len = base + 1;
             self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
-            self.stateStack.items[top] = @intCast(next);
+            self.stateStack.items[top] = next;
             // starts[base] already holds the reduction's start (its first
             // element's).
             if (elemEnds) self.ends[base] = self.lastEnd;
         } else {
-            try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
+            try self.pushEntry(next, result, self.reduction.start, self.lastEnd);
         }
     }
 
@@ -2683,7 +2709,8 @@ const sparse = [_][]const i16{
     &.{ 1, -10, 8, -10, 11, -10, 13, -10 },
 };
 
-const parseTable = blk: {
+/// The fixture's table, dense: the oracle of the comb below.
+const denseTable = blk: {
     var t: [sparse.len][numSymbols]i16 = @splat(@splat(0));
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
@@ -2691,6 +2718,70 @@ const parseTable = blk: {
     }
     break :blk t;
 };
+
+fn isNonterminal(sym: usize) bool {
+    return sym == 0 or std.mem.findScalar(u16, &ruleLhs, @intCast(sym)) != null;
+}
+
+/// The comb of `denseTable` as comb.zig lays it out, built here at compile
+/// time (every row placed apart, first fit; codegen also shares equal rows
+/// and places the densest first).
+const fixtureComb = blk: {
+    @setEvalBranchQuota(1_000_000);
+    const n = sparse.len;
+    var cells: [2 * n * numSymbols + numSymbols]u32 = @splat(0);
+    var used: [cells.len]bool = @splat(false);
+    var taken: [cells.len]bool = @splat(false);
+    var bases: [2][n]u32 = undefined;
+    var top: usize = 0;
+    for (0..2) |kind| {
+        for (denseTable, 0..) |row, state| {
+            var d: usize = 0;
+            while (taken[d] or for (row, 0..) |v, sym| {
+                if (v != 0 and isNonterminal(sym) == (kind == 1) and used[d + sym]) break true;
+            } else false) d += 1;
+            taken[d] = true;
+            for (row, 0..) |v, sym| {
+                if (v != 0 and isNonterminal(sym) == (kind == 1)) {
+                    used[d + sym] = true;
+                    cells[d + sym] = @as(u32, d) << 16 | @as(u16, @bitCast(v));
+                }
+            }
+            bases[kind][state] = d;
+            top = @max(top, d + numSymbols);
+        }
+    }
+    // Gotos: the most common target per nonterminal; every other state is
+    // an exception, in a column of `n` slots per symbol.
+    var defaults: [numSymbols]u16 = @splat(0);
+    var exceptionBase: [numSymbols]u32 = undefined;
+    var exceptions: [numSymbols * n]u32 = @splat(std.math.maxInt(u32));
+    for (0..numSymbols) |sym| {
+        exceptionBase[sym] = sym * n;
+        if (!isNonterminal(sym)) continue;
+        var bestCount: usize = 0;
+        for (denseTable) |row| {
+            if (row[sym] <= 0) continue;
+            var count: usize = 0;
+            for (denseTable) |other| count += @intFromBool(other[sym] == row[sym]);
+            if (count > bestCount) {
+                bestCount = count;
+                defaults[sym] = @intCast(row[sym]);
+            }
+        }
+        for (denseTable, 0..) |row, state| {
+            if (row[sym] > 0 and row[sym] != defaults[sym]) exceptions[sym * n + state] = @as(u32, state) << 16 | @as(u16, @intCast(row[sym]));
+        }
+    }
+    break :blk .{ .cells = cells[0..top].*, .bases = bases, .defaults = defaults, .exceptionBase = exceptionBase, .exceptions = exceptions };
+};
+const numStates = sparse.len;
+const actionBase = fixtureComb.bases[0];
+const gotoBase = fixtureComb.bases[1];
+const combCells = fixtureComb.cells;
+const gotoDefault = fixtureComb.defaults;
+const gotoExceptionBase = fixtureComb.exceptionBase;
+const gotoExceptions = fixtureComb.exceptions;
 
 // Expected lists, hand-built from the table with `expr` named "an
 // expression": {}, {expr}, {IDENT "("}, {$end NEWLINE},
@@ -2867,6 +2958,18 @@ fn errorText(p: *BaseParser) ![]const u8 {
     var out: std.Io.Writer.Allocating = .init(p.allocator());
     try p.writeError(&out.writer);
     return out.written();
+}
+
+test "the comb decodes to the dense table; the parse loop's gotos match it" {
+    for (denseTable, 0..) |row, state| {
+        for (row, 0..) |want, sym| {
+            try testing.expectEqual(want, getAction(@intCast(state), @intCast(sym)));
+            if (isNonterminal(sym)) {
+                try testing.expectEqual(@as(i16, 0), actionAt(@intCast(state), @intCast(sym)));
+                if (want > 0) try testing.expectEqual(@as(u16, @intCast(want)), gotoOn(@intCast(state), @intCast(sym)));
+            }
+        }
+    }
 }
 
 test "LongEnds holds the last ends it recorded; a position has one end or none" {

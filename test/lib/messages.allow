@@ -14,3 +14,4 @@ src/main.zig	cannot read {s}: larger than {d} bytes	untested: a size limit; need
 src/expand.zig	groups and choices nested too deeply (the limit is {d})	internal: the frontend scanner rejects deeper ( ) and [ ] first (lang.zig maxNesting); kept as a backstop
 src/expand.zig	action nodes nested too deeply (the limit is {d})	internal: the frontend scanner rejects deeper ( ) first (lang.zig maxNesting); kept as a backstop
 src/main.zig	lexer generation failed: {s}	internal: an error other than a reported one (out of memory)
+src/codegen/codegen.zig	internal error: the compressed parse table does not decode to the table	internal invariant: comb.encode places every row where its cells meet free slots; checked cell for cell on every generation, and by comb.zig's unit tests
