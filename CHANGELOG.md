@@ -534,6 +534,33 @@ Downstream:
   `identity.json` (Rig: `"settings": "rig"`); beside an extension that
   already gives the language (Zig's), set `"mode": "companion"`.
 
+### Performance
+
+Generated parsers are faster, with the same API, trees, spans, errors,
+messages and tolerant parses. On pup (Intel Core Ultra 9 185H, one pinned
+P-core, a fresh parser per file, best of 3 interleaved rotations), parse
+time falls 6% on VistA (1784 → 1678 ms), 13% on Rig's sources (65 → 56
+ms), 5% on Rig's short test programs and 25% on Zig 0.17's source tree
+(823 → 621 ms); `test/bench/run` gives MUMPS 1747 → 1628 ms and Rig 98 →
+95 ms ([test/bench/BASELINE.md](test/bench/BASELINE.md)). Every tree and
+error of the three corpora, and of em's, Rig's and nexis's own corpora
+(`test/diff`), is unchanged.
+
+- The end of a run of pass-through reductions (an operand climbing a
+  grammar's precedence levels) is kept in a cache of 2,048 entries per
+  parser, from its backing allocator (16 KiB, kept across `reset`, freed
+  by `deinit`): the run follows from the tables alone, so each one is
+  climbed once.
+- `@as` promotion looks the keyword up only in a state that takes one of
+  the group's symbols (a bitset per group, built at compile time).
+- The lexer scans a self-loop over a class of at most four byte ranges
+  (names, digits) 16 bytes at a time after its first byte. The blanks
+  before a token stay a plain loop: a vector scan of them made Rig's
+  lexing of short programs 3% slower.
+
+The generated code changes (the downstream rebuild recompiles em once);
+no lang module or consumer changes.
+
 ## 2.3.0 — 2026-10-15
 
 ### Added

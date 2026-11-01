@@ -48,6 +48,13 @@ const maxGuardAtoms = 10;
 
 /// A self-loop that excludes at most this many bytes is scanned with SIMD.
 const maxSimdStops = 3;
+/// A self-loop over a class of at most this many byte ranges is scanned
+/// with SIMD after `simdProbe` bytes tested one at a time. One byte
+/// measured best (of 0, 1, 2, 4 and 8): longer probes cost more than they
+/// save on short runs (MUMPS names), none costs a vector load on every
+/// empty run.
+const maxSimdRanges = 4;
+const simdProbe = 1;
 
 /// The implicit whitespace, skipped before every token into `pre`.
 const blanks: ByteSet = blk: {
@@ -68,7 +75,8 @@ pub const LexerGenerator = struct {
     /// Where emission goes (the output, or a scratch buffer).
     w: *std.Io.Writer = undefined,
     arena: std.heap.ArenaAllocator,
-    simdUsed: bool = false,
+    scanUntilUsed: bool = false,
+    scanWhileUsed: bool = false,
 
     // Analysis results
     /// Spec indices of the rules in the DFA (consuming rules), in priority order.
@@ -1127,7 +1135,8 @@ pub const LexerGenerator = struct {
         try self.emitNextBody();
         self.w = main;
         try self.emitTableDecls(self.w);
-        if (self.simdUsed) try self.write(simdHelper);
+        if (self.scanUntilUsed) try self.write(scanUntilHelper);
+        if (self.scanWhileUsed) try self.write(scanWhileHelper);
         try self.write(body.written());
     }
 
@@ -1145,6 +1154,8 @@ pub const LexerGenerator = struct {
         );
         const ind = if (skipLoop) "            " else "        ";
         if (skipLoop) try self.write("        scan: while (true) {\n");
+        // Blanks stay a plain loop: most runs are one blank, and a vector
+        // scan after it measured slower on short sources (Rig's).
         try self.print(
             \\{s}while (p < n and (src[p] == ' ' or src[p] == '\t')) p += 1;
             \\{s}{s} pre: u8 = @intCast(@min(p - wsStart, 255));
@@ -1519,11 +1530,21 @@ pub const LexerGenerator = struct {
         try self.print("{s}}}\n", .{ind});
     }
 
+    /// `.{ lo, hi }, ...`: the ranges of a scanWhile class.
+    fn emitRangeList(self: *LexerGenerator, rs: []const Range) !void {
+        var b1: [8]u8 = undefined;
+        var b2: [8]u8 = undefined;
+        for (rs, 0..) |r, i| {
+            if (i > 0) try self.write(", ");
+            try self.print(".{{ {s}, {s} }}", .{ byteLit(&b1, r.lo), byteLit(&b2, r.hi) });
+        }
+    }
+
     fn emitLoop(self: *LexerGenerator, loop: ByteSet, ind: []const u8) !void {
         const stops = loop.invert();
         const nstops = stops.count();
         if (nstops >= 1 and nstops <= maxSimdStops) {
-            self.simdUsed = true;
+            self.scanUntilUsed = true;
             var buf: [maxSimdStops]u8 = undefined;
             var k: usize = 0;
             for (0..256) |b| {
@@ -1541,16 +1562,34 @@ pub const LexerGenerator = struct {
             try self.write("});\n");
             return;
         }
-        try self.print("{s}while (p < n and ", .{ind});
-        try self.emitMembership(loop, "src[p]");
-        try self.write(") p += 1;\n");
+        try self.emitRun(loop, ind);
+    }
+
+    /// Skip a run of bytes of `set`. A class of a few ranges is probed
+    /// `simdProbe` bytes one at a time (many runs are empty), then scanned
+    /// 16 bytes at a time.
+    fn emitRun(self: *LexerGenerator, set: ByteSet, ind: []const u8) !void {
+        var rbuf: [128]Range = undefined;
+        const rs = ranges(set, &rbuf);
+        if (rs.len > maxSimdRanges) {
+            try self.print("{s}while (p < n and ", .{ind});
+            try self.emitMembership(set, "src[p]");
+            try self.write(") p += 1;\n");
+            return;
+        }
+        self.scanWhileUsed = true;
+        try self.print("{s}{{\n{s}    const probeEnd = @min(n, p + {d});\n{s}    while (p < probeEnd and ", .{ ind, ind, simdProbe, ind });
+        try self.emitMembership(set, "src[p]");
+        try self.print(") p += 1;\n{s}    if (p == probeEnd) p = scanWhile(src, p, &.{{ ", .{ind});
+        try self.emitRangeList(rs);
+        try self.print(" }});\n{s}}}\n", .{ind});
     }
 };
 
 /// Emitted when a self-loop excludes only a few bytes: finds the first byte
 /// at or after `from` that is one of `stops` (or the end of input), 16 bytes
 /// at a time.
-const simdHelper =
+const scanUntilHelper =
     \\
     \\    /// First index at or after `from` whose byte is in `stops` (or src.len).
     \\    inline fn scanUntil(src: []const u8, from: usize, comptime stops: []const u8) usize {
@@ -1566,6 +1605,45 @@ const simdHelper =
     \\            inline for (stops) |c| if (src[p] == c) return p;
     \\        }
     \\        return p;
+    \\    }
+    \\
+;
+
+/// Emitted when a run of a class of a few byte ranges is skipped (see
+/// `emitRun`): finds the first byte at or after `from` outside the class
+/// (or the end of input), 16 bytes at a time.
+const scanWhileHelper =
+    \\
+    \\    /// First index at or after `from` whose byte is in none of the
+    \\    /// inclusive `ranges` (or src.len).
+    \\    inline fn scanWhile(src: []const u8, from: usize, comptime ranges: []const [2]u8) usize {
+    \\        const V = @Vector(16, u8);
+    \\        var p = from;
+    \\        while (p + 16 <= src.len) : (p += 16) {
+    \\            const v: V = src[p..][0..16].*;
+    \\            var in: V = @splat(0);
+    \\            inline for (ranges) |r| {
+    \\                const hit = if (r[0] == r[1]) v == @as(V, @splat(r[0])) else v -% @as(V, @splat(r[0])) <= @as(V, @splat(r[1] - r[0]));
+    \\                in |= @select(u8, hit, @as(V, @splat(0xFF)), @as(V, @splat(0)));
+    \\            }
+    \\            if (comptime @import("builtin").cpu.arch.endian() == .little) {
+    \\                // Two u64 lanes rather than a 16-bit mask: no movemask.
+    \\                const out: @Vector(2, u64) = @bitCast(~in);
+    \\                if (out[0] != 0) return p + @ctz(out[0]) / 8;
+    \\                if (out[1] != 0) return p + 8 + @ctz(out[1]) / 8;
+    \\            } else {
+    \\                const out: u16 = @bitCast(in == @as(V, @splat(0)));
+    \\                if (out != 0) return p + @ctz(out);
+    \\            }
+    \\        }
+    \\        while (p < src.len) : (p += 1) if (!inRanges(src[p], ranges)) return p;
+    \\        return p;
+    \\    }
+    \\
+    \\    inline fn inRanges(c: u8, comptime ranges: []const [2]u8) bool {
+    \\        var in = false;
+    \\        inline for (ranges) |r| in = in or c -% r[0] <= r[1] - r[0];
+    \\        return in;
     \\    }
     \\
 ;

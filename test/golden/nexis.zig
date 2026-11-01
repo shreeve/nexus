@@ -441,6 +441,39 @@ inline fn isPassThrough(r: u16) bool {
     return ruleLen[r] == 1 and ruleValue[r] == 2;
 }
 
+/// Whether the grammar has a pass-through rule.
+const hasPassThrough = blk: {
+    for (0..ruleLen.len) |r| if (isPassThrough(r)) break :blk true;
+    break :blk false;
+};
+
+/// Where a run of pass-throughs ends (see `BaseParser.climb`): a
+/// reduction by a pass-through rule for nonterminal `lhs` over state
+/// `below`, with lookahead `sym`, climbs a chain of gotos (an operand
+/// rising through a grammar's precedence levels) to `state`, whose action
+/// on `sym` is `action`. The chain follows from the tables alone, so a
+/// parser keeps the ends it has climbed in a direct-mapped cache of
+/// `slots` entries, `BaseParser.chainEnds`.
+const ChainEnd = struct {
+    key: Key = 0,
+    state: u16 = 0,
+    action: i16 = 0,
+
+    const Key = if (@as(u64, parseTable.len) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
+    const bits = 11;
+    const slots = 1 << bits;
+
+    /// The key of (below, lhs, sym); 0 marks an empty slot.
+    inline fn keyOf(below: u16, lhs: u16, sym: u16) Key {
+        return @intCast((@as(u64, below) * numSymbols + lhs) * numSymbols + sym + 1);
+    }
+
+    inline fn slotOf(key: Key) usize {
+        const mixed: u32 = @truncate(key *% 0x9E3779B1);
+        return mixed >> (32 - bits);
+    }
+};
+
 /// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
 /// decides it (no rule has this number: rules are fewer than 32766).
 const hinted: i16 = std.math.minInt(i16);
@@ -477,6 +510,20 @@ fn idCount(comptime Id: type) usize {
     var n: usize = 0;
     for (@typeInfo(Id).@"enum".field_values) |v| n = @max(n, v + 1);
     return n;
+}
+
+/// The states that take one of an `@as` group's symbols, `toSymbol` and
+/// `fallback` (by a shift, or with any action when `permissive`): the only
+/// states where `tryPromote` looks the token up in the group.
+fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(parseTable.len) {
+    @setEvalBranchQuota(parseTable.len * (toSymbol.len + 1) * 4 + 1000);
+    var takers: std.StaticBitSet(parseTable.len) = .empty;
+    for (parseTable, 0..) |row, state| {
+        for (toSymbol ++ [_]u16{fallback}) |sym| {
+            if (sym != 0 and (if (permissive) row[sym] != 0 else row[sym] > 0)) takers.set(state);
+        }
+    }
+    return takers;
 }
 
 /// Where a token over 65534 bytes starts and ends (`longTokens`).
@@ -705,6 +752,10 @@ pub const BaseParser = struct {
     /// With `longTokens`: the start and end of every token over 65534
     /// bytes read from this source, in source order (see `tokenEnd`).
     longTokenEnds: if (longTokens) std.ArrayList(TokenEnd) else void = if (longTokens) .empty else {},
+    /// The ends of pass-through chains `parse` has climbed. They follow
+    /// from the tables alone, so they are kept across parses and `reset`,
+    /// from the backing allocator (empty until the first parse).
+    chainEnds: []ChainEnd = &.{},
 
     const Spare = struct {
         items: [*]const Sexp,
@@ -736,6 +787,7 @@ pub const BaseParser = struct {
     }
 
     pub fn deinit(self: *BaseParser) void {
+        self.arena.child_allocator.free(self.chainEnds);
         self.arena.deinit();
     }
 
@@ -745,7 +797,7 @@ pub const BaseParser = struct {
     pub fn reset(self: *BaseParser, source: []const u8) void {
         var arena = self.arena;
         _ = arena.reset(.retain_capacity);
-        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined };
+        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined, .chainEnds = self.chainEnds };
         self.setCurrent(self.lexer.next());
     }
 
@@ -836,9 +888,14 @@ pub const BaseParser = struct {
     /// when a token is shifted, except that `@as` promotion depends on the
     /// state, so a promotable token is promoted again after each
     /// reduction. A run of pass-throughs (an operand climbing a chain of
-    /// `A → B` rules) keeps the state below it and writes the stack once.
+    /// `A → B` rules) keeps the state below it, takes its end from
+    /// `chainEnds` (`climb` on a miss), and writes the stack once.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
+        if (hasPassThrough and self.chainEnds.len == 0) {
+            self.chainEnds = try self.arena.child_allocator.alloc(ChainEnd, ChainEnd.slots);
+            @memset(self.chainEnds, .{});
+        }
         // The start marker, which the start state shifts before any input.
         if (self.injectedToken) |marker| try self.shift(@intCast(getAction(self.stateStack.last().?, marker)));
         var state = self.stateStack.last().?;
@@ -853,17 +910,15 @@ pub const BaseParser = struct {
                 sym = self.promoted(raw);
                 action = self.strictAction(state, sym);
             } else if (action < -1) {
-                var rule: u16 = @intCast(-action - 2);
+                const rule: u16 = @intCast(-action - 2);
                 if (isPassThrough(rule) and !(asGroups > 0 and raw == needsPromotion)) {
                     const states = self.stateStack.items;
                     const below = states[states.len - 2];
-                    while (true) {
-                        state = @intCast(getAction(below, ruleLhs[rule]));
-                        action = self.strictAction(state, sym);
-                        if (action >= -1) break;
-                        rule = @intCast(-action - 2);
-                        if (!isPassThrough(rule)) break;
-                    }
+                    const key = ChainEnd.keyOf(below, ruleLhs[rule], sym);
+                    const slot = &self.chainEnds[ChainEnd.slotOf(key)];
+                    if (slot.key != key) self.climb(slot, key, below, rule, sym);
+                    state = slot.state;
+                    action = slot.action;
                     states[states.len - 1] = state;
                 } else {
                     state = try self.reduceOrPass(rule);
@@ -877,6 +932,30 @@ pub const BaseParser = struct {
                 return error.ParseError;
             }
         }
+    }
+
+    /// Climb the run of pass-throughs that starts with reducing by `first`
+    /// over state `below` on lookahead `sym`, into `slot`: the state it
+    /// ends in and that state's action on `sym`. The slot keeps them under
+    /// `key` unless the chain met a `hinted` cell, whose action depends on
+    /// the current token's spacing.
+    noinline fn climb(self: *const BaseParser, slot: *ChainEnd, key: ChainEnd.Key, below: u16, first: u16, sym: u16) void {
+        var rule = first;
+        var plain = true;
+        var state: u16 = undefined;
+        var action: i16 = undefined;
+        while (true) {
+            state = @intCast(getAction(below, ruleLhs[rule]));
+            action = getAction(state, sym);
+            if (xExcludes.len > 0 and action == hinted) {
+                plain = false;
+                action = self.strictAction(state, sym);
+            }
+            if (action >= -1) break;
+            rule = @intCast(-action - 2);
+            if (!isPassThrough(rule)) break;
+        }
+        slot.* = .{ .key = if (plain) key else 0, .state = state, .action = action };
     }
 
     /// The symbol of the current token, `raw` from `tokenToSymbol`, after
@@ -1093,8 +1172,11 @@ pub const BaseParser = struct {
         comptime fallback: u16,
         comptime permissive: bool,
     ) ?u16 {
-        const id = self.keywordId(group, text, lookup) orelse return null;
         const state = self.stateStack.last().?;
+        // A state that takes none of the group's symbols needs no lookup.
+        const takers = comptime statesTaking(toSymbol, fallback, permissive);
+        if (!takers.isSet(state)) return null;
+        const id = self.keywordId(group, text, lookup) orelse return null;
         for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
             if (sym == 0) continue;
             const action = getAction(state, sym);

@@ -160,9 +160,12 @@ longest match with ties to the earlier rule.
 
 The scanner is a labeled `switch` with one prong per DFA state, jumping
 with `continue`. Fast paths are derived from the automaton, not from token
-names: a self-loop becomes a tight loop (a range test, a comptime byte
-table, or a SIMD scan when the loop excludes at most three bytes), and
-transitions into states that cannot continue return the token in place.
+names: a self-loop becomes a tight loop (a range test or a comptime byte
+table), a SIMD scan for the first byte it stops at when it excludes at
+most three bytes, or, over a class of at most four byte ranges, a test
+of its first byte followed by a SIMD scan 16 bytes at a time; transitions
+into states that cannot
+continue return the token in place.
 Only a token that ends in a state some DFA cycle reaches can exceed 65535
 bytes (65534 with `@longtokens`), so only those finishes test the length.
 With `@longtokens` such a finish records the token's start and end in the
@@ -355,12 +358,20 @@ move. Parse memory comes from a bump allocator over chunks of the arena
 (the arena itself is threadsafe, and the parser needs no atomics). An
 `@as` keyword is looked up once per token, per group (in a `@keywords`
 group's generated `gAs`: a switch on the first byte, then a comparison per
-entry with that byte); only the table
-checks run again in each state. The strict loop keeps the state, the
-token's symbol and the next action in locals. A pass-through rule (`A →
-B`, the value of its one element) builds nothing, so reducing it only
-replaces the top state, and a run of them (an operand climbing a chain of
-levels) keeps the state below in a register and writes the stack once. A
+entry with that byte), and only in a state that takes one of the group's
+symbols (a bitset per group, computed at compile time from the table);
+only the table checks run again in each state. The strict loop keeps the
+state, the token's symbol and the next action in locals. A pass-through
+rule (`A → B`, the value of its one element) builds nothing, so reducing
+it only replaces the top state, and a run of them (an operand climbing a
+chain of levels) keeps the state below in a register and writes the stack
+once. Where such a run ends depends only on the state below, the first
+rule's nonterminal and the lookahead, so each parser keeps the ends it has
+climbed in a direct-mapped cache of 2,048 entries (16 KiB from its
+backing allocator, kept across `reset`; a run through a `hinted` cell is
+not kept). A table of every end, built by the generator, would hold
+about 500,000 entries for Zig's grammar; the cache is small, and no
+state is shared between parsers or threads. A
 cell an `X "c"` hint overrides holds a marker (`hinted`), so no other cell
 pays for the check. Every walk of a tree (`write`, `span`,
 `writeFacts`, placing the empty leaf of `~N`) keeps its frames on an

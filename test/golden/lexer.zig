@@ -162,6 +162,38 @@ pub const BaseLexer = struct {
         return p;
     }
 
+    /// First index at or after `from` whose byte is in none of the
+    /// inclusive `ranges` (or src.len).
+    inline fn scanWhile(src: []const u8, from: usize, comptime ranges: []const [2]u8) usize {
+        const V = @Vector(16, u8);
+        var p = from;
+        while (p + 16 <= src.len) : (p += 16) {
+            const v: V = src[p..][0..16].*;
+            var in: V = @splat(0);
+            inline for (ranges) |r| {
+                const hit = if (r[0] == r[1]) v == @as(V, @splat(r[0])) else v -% @as(V, @splat(r[0])) <= @as(V, @splat(r[1] - r[0]));
+                in |= @select(u8, hit, @as(V, @splat(0xFF)), @as(V, @splat(0)));
+            }
+            if (comptime @import("builtin").cpu.arch.endian() == .little) {
+                // Two u64 lanes rather than a 16-bit mask: no movemask.
+                const out: @Vector(2, u64) = @bitCast(~in);
+                if (out[0] != 0) return p + @ctz(out[0]) / 8;
+                if (out[1] != 0) return p + 8 + @ctz(out[1]) / 8;
+            } else {
+                const out: u16 = @bitCast(in == @as(V, @splat(0)));
+                if (out != 0) return p + @ctz(out);
+            }
+        }
+        while (p < src.len) : (p += 1) if (!inRanges(src[p], ranges)) return p;
+        return p;
+    }
+
+    inline fn inRanges(c: u8, comptime ranges: []const [2]u8) bool {
+        var in = false;
+        inline for (ranges) |r| in = in or c -% r[0] <= r[1] - r[0];
+        return in;
+    }
+
     /// Scan the next token.
     pub fn next(self: *Self) Token {
         const src = self.source;
@@ -400,7 +432,11 @@ pub const BaseLexer = struct {
                     return .{ .cat = .@"num", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },
                 15 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     acc = 9;
                     accEnd = p;
                     if (p < n) switch (src[p]) {
@@ -463,7 +499,11 @@ pub const BaseLexer = struct {
                     return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },
                 20 => {
-                    while (p < n and cls3[src[p]]) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and cls3[src[p]]) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' }, .{ '_', '_' }, .{ 'a', 'z' } });
+                    }
                     self.beg = 0;
                     self.pos = @intCast(p);
                     return makeToken(.@"word", pre, start, p);
@@ -494,7 +534,11 @@ pub const BaseLexer = struct {
                     return .{ .cat = .@"num", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },
                 24 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     self.beg = 0;
                     self.pos = @intCast(p);
                     return makeToken(.@"num", pre, start, p);
@@ -549,7 +593,11 @@ pub const BaseLexer = struct {
                     return makeToken(.@"sstr", pre, start, p);
                 },
                 33 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     self.beg = 0;
                     self.pos = @intCast(p);
                     return makeToken(.@"real", pre, start, p);
@@ -590,7 +638,11 @@ pub const BaseLexer = struct {
                     break :dfa;
                 },
                 38 => {
-                    while (p < n and src[p] -% 'a' <= 25) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% 'a' <= 25) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ 'a', 'z' } });
+                    }
                     if (p < n) switch (src[p]) {
                         '>' => { p += 1; self.beg = 0; self.pos = @intCast(p); return makeToken(.@"tag", pre, start, p); },
                         else => {},
@@ -598,7 +650,11 @@ pub const BaseLexer = struct {
                     break :dfa;
                 },
                 39 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     if (p < n) switch (src[p]) {
                         'A'...'Z' => {
                             p += 1;
@@ -626,7 +682,11 @@ pub const BaseLexer = struct {
                     break :dfa;
                 },
                 41 => {
-                    while (p < n and src[p] -% 'A' <= 25) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% 'A' <= 25) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ 'A', 'Z' } });
+                    }
                     if (p < n) switch (src[p]) {
                         ':' => { p += 1; continue :dfa 40; },
                         else => {},
@@ -643,7 +703,11 @@ pub const BaseLexer = struct {
                     return .{ .cat = .@"kw_if", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },
                 44 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     acc = 8;
                     accEnd = p;
                     if (p < n) switch (src[p]) {
@@ -662,7 +726,11 @@ pub const BaseLexer = struct {
                     break :dfa;
                 },
                 46 => {
-                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    {
+                        const probeEnd = @min(n, p + 1);
+                        while (p < probeEnd and src[p] -% '0' <= 9) p += 1;
+                        if (p == probeEnd) p = scanWhile(src, p, &.{ .{ '0', '9' } });
+                    }
                     self.beg = 0;
                     self.pos = @intCast(p);
                     return makeToken(.@"real", pre, start, p);
@@ -1080,6 +1148,39 @@ inline fn isPassThrough(r: u16) bool {
     return ruleLen[r] == 1 and ruleValue[r] == 2;
 }
 
+/// Whether the grammar has a pass-through rule.
+const hasPassThrough = blk: {
+    for (0..ruleLen.len) |r| if (isPassThrough(r)) break :blk true;
+    break :blk false;
+};
+
+/// Where a run of pass-throughs ends (see `BaseParser.climb`): a
+/// reduction by a pass-through rule for nonterminal `lhs` over state
+/// `below`, with lookahead `sym`, climbs a chain of gotos (an operand
+/// rising through a grammar's precedence levels) to `state`, whose action
+/// on `sym` is `action`. The chain follows from the tables alone, so a
+/// parser keeps the ends it has climbed in a direct-mapped cache of
+/// `slots` entries, `BaseParser.chainEnds`.
+const ChainEnd = struct {
+    key: Key = 0,
+    state: u16 = 0,
+    action: i16 = 0,
+
+    const Key = if (@as(u64, parseTable.len) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
+    const bits = 11;
+    const slots = 1 << bits;
+
+    /// The key of (below, lhs, sym); 0 marks an empty slot.
+    inline fn keyOf(below: u16, lhs: u16, sym: u16) Key {
+        return @intCast((@as(u64, below) * numSymbols + lhs) * numSymbols + sym + 1);
+    }
+
+    inline fn slotOf(key: Key) usize {
+        const mixed: u32 = @truncate(key *% 0x9E3779B1);
+        return mixed >> (32 - bits);
+    }
+};
+
 /// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
 /// decides it (no rule has this number: rules are fewer than 32766).
 const hinted: i16 = std.math.minInt(i16);
@@ -1116,6 +1217,20 @@ fn idCount(comptime Id: type) usize {
     var n: usize = 0;
     for (@typeInfo(Id).@"enum".field_values) |v| n = @max(n, v + 1);
     return n;
+}
+
+/// The states that take one of an `@as` group's symbols, `toSymbol` and
+/// `fallback` (by a shift, or with any action when `permissive`): the only
+/// states where `tryPromote` looks the token up in the group.
+fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(parseTable.len) {
+    @setEvalBranchQuota(parseTable.len * (toSymbol.len + 1) * 4 + 1000);
+    var takers: std.StaticBitSet(parseTable.len) = .empty;
+    for (parseTable, 0..) |row, state| {
+        for (toSymbol ++ [_]u16{fallback}) |sym| {
+            if (sym != 0 and (if (permissive) row[sym] != 0 else row[sym] > 0)) takers.set(state);
+        }
+    }
+    return takers;
 }
 
 /// Where a token over 65534 bytes starts and ends (`longTokens`).
@@ -1344,6 +1459,10 @@ pub const BaseParser = struct {
     /// With `longTokens`: the start and end of every token over 65534
     /// bytes read from this source, in source order (see `tokenEnd`).
     longTokenEnds: if (longTokens) std.ArrayList(TokenEnd) else void = if (longTokens) .empty else {},
+    /// The ends of pass-through chains `parse` has climbed. They follow
+    /// from the tables alone, so they are kept across parses and `reset`,
+    /// from the backing allocator (empty until the first parse).
+    chainEnds: []ChainEnd = &.{},
 
     const Spare = struct {
         items: [*]const Sexp,
@@ -1375,6 +1494,7 @@ pub const BaseParser = struct {
     }
 
     pub fn deinit(self: *BaseParser) void {
+        self.arena.child_allocator.free(self.chainEnds);
         self.arena.deinit();
     }
 
@@ -1384,7 +1504,7 @@ pub const BaseParser = struct {
     pub fn reset(self: *BaseParser, source: []const u8) void {
         var arena = self.arena;
         _ = arena.reset(.retain_capacity);
-        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined };
+        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined, .chainEnds = self.chainEnds };
         self.setCurrent(self.lexer.next());
     }
 
@@ -1471,9 +1591,14 @@ pub const BaseParser = struct {
     /// when a token is shifted, except that `@as` promotion depends on the
     /// state, so a promotable token is promoted again after each
     /// reduction. A run of pass-throughs (an operand climbing a chain of
-    /// `A → B` rules) keeps the state below it and writes the stack once.
+    /// `A → B` rules) keeps the state below it, takes its end from
+    /// `chainEnds` (`climb` on a miss), and writes the stack once.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
+        if (hasPassThrough and self.chainEnds.len == 0) {
+            self.chainEnds = try self.arena.child_allocator.alloc(ChainEnd, ChainEnd.slots);
+            @memset(self.chainEnds, .{});
+        }
         // The start marker, which the start state shifts before any input.
         if (self.injectedToken) |marker| try self.shift(@intCast(getAction(self.stateStack.last().?, marker)));
         var state = self.stateStack.last().?;
@@ -1488,17 +1613,15 @@ pub const BaseParser = struct {
                 sym = self.promoted(raw);
                 action = self.strictAction(state, sym);
             } else if (action < -1) {
-                var rule: u16 = @intCast(-action - 2);
+                const rule: u16 = @intCast(-action - 2);
                 if (isPassThrough(rule) and !(asGroups > 0 and raw == needsPromotion)) {
                     const states = self.stateStack.items;
                     const below = states[states.len - 2];
-                    while (true) {
-                        state = @intCast(getAction(below, ruleLhs[rule]));
-                        action = self.strictAction(state, sym);
-                        if (action >= -1) break;
-                        rule = @intCast(-action - 2);
-                        if (!isPassThrough(rule)) break;
-                    }
+                    const key = ChainEnd.keyOf(below, ruleLhs[rule], sym);
+                    const slot = &self.chainEnds[ChainEnd.slotOf(key)];
+                    if (slot.key != key) self.climb(slot, key, below, rule, sym);
+                    state = slot.state;
+                    action = slot.action;
                     states[states.len - 1] = state;
                 } else {
                     state = try self.reduceOrPass(rule);
@@ -1512,6 +1635,30 @@ pub const BaseParser = struct {
                 return error.ParseError;
             }
         }
+    }
+
+    /// Climb the run of pass-throughs that starts with reducing by `first`
+    /// over state `below` on lookahead `sym`, into `slot`: the state it
+    /// ends in and that state's action on `sym`. The slot keeps them under
+    /// `key` unless the chain met a `hinted` cell, whose action depends on
+    /// the current token's spacing.
+    noinline fn climb(self: *const BaseParser, slot: *ChainEnd, key: ChainEnd.Key, below: u16, first: u16, sym: u16) void {
+        var rule = first;
+        var plain = true;
+        var state: u16 = undefined;
+        var action: i16 = undefined;
+        while (true) {
+            state = @intCast(getAction(below, ruleLhs[rule]));
+            action = getAction(state, sym);
+            if (xExcludes.len > 0 and action == hinted) {
+                plain = false;
+                action = self.strictAction(state, sym);
+            }
+            if (action >= -1) break;
+            rule = @intCast(-action - 2);
+            if (!isPassThrough(rule)) break;
+        }
+        slot.* = .{ .key = if (plain) key else 0, .state = state, .action = action };
     }
 
     /// The symbol of the current token, `raw` from `tokenToSymbol`, after
@@ -1728,8 +1875,11 @@ pub const BaseParser = struct {
         comptime fallback: u16,
         comptime permissive: bool,
     ) ?u16 {
-        const id = self.keywordId(group, text, lookup) orelse return null;
         const state = self.stateStack.last().?;
+        // A state that takes none of the group's symbols needs no lookup.
+        const takers = comptime statesTaking(toSymbol, fallback, permissive);
+        if (!takers.isSet(state)) return null;
+        const id = self.keywordId(group, text, lookup) orelse return null;
         for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
             if (sym == 0) continue;
             const action = getAction(state, sym);
