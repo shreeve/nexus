@@ -286,7 +286,7 @@ The module exports:
 | Name | What |
 |---|---|
 | `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols (all generated from the grammar) |
-| `Token`, `TokenCat` | a token (8 bytes: `pos`, `len`, `cat`, `pre`, the count of blanks before it) and the token categories |
+| `Token`, `TokenCat` | a token, a `packed struct(u64)` (`pos: u32` in the low bits, then `len: u16`, `cat: TokenCat`, and `pre: u8`, the count of blanks before it), and the token categories |
 | `longTokens` | whether the grammar has `@longtokens`, so a `len` of 65535 stands for a longer token ([GRAMMAR.md](GRAMMAR.md#long-tokens)); with it, `LongEnds`, the lexer's record of their ends |
 | `BaseLexer` | the generated scanner ([GRAMMAR.md](GRAMMAR.md#the-generated-lexer)) |
 | `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
