@@ -326,6 +326,30 @@
 
 ### Changed
 
+- `Token` is a `packed struct(u64)` (was a plain struct of the same
+  fields): `pos: u32` in the low 32 bits, then `len: u16`, `cat:
+  TokenCat` and `pre: u8`. A token is passed and returned in a register;
+  returned through memory, as every lang `Lexer.next` returns it, it was
+  written field by field and read back whole, and that read waited for
+  the writes to reach the cache. Building a token (`.{ .pos = ..., .len =
+  ..., .cat = ..., .pre = ... }`), reading and assigning its fields, `*Token`
+  and slices of tokens are unchanged. What breaks:
+  - taking a field's address: `&tok.pos` is a `*align(8:0:8) u32` (a
+    field of a packed struct), which coerces to no `*u32` (likewise `len`,
+    `cat`, `pre`): pass the token, or copy the field, instead;
+  - layout assumptions: the layout is that of the u64's bits. On a
+    little-endian target the fields keep their bytes (`pos` 0, `len` 4,
+    `cat` 6, `pre` 7, as `@offsetOf` says); on a big-endian one the bytes
+    reverse. A `Token` in an `extern struct` or across a C boundary is
+    that integer, and `@ptrCast` of a `*Token`, or byte views
+    (`std.mem.asBytes`), read fields by position only on little-endian
+    targets. `@bitCast` between `Token` and `u64` is well defined.
+  Every lang module, test and tool in this repository compiles unchanged,
+  and Rig (main 928b44bf2), em (main c67768c5) and nexis (main 3f2bc47f)
+  each build whole against it. Zig's source parses 17% faster with a new
+  parser per file and 26% faster with a reset parser, VistA 2% and 4%,
+  Rig's sources 2% (pup, one P-core, best of 5, against the compressed
+  table alone); trees, spans, errors and messages are unchanged.
 - `BaseParser.reset(source)` keeps at most `BaseParser.resetKeeps` bytes
   (16 MiB) of the memory the parser holds and gives the rest back, so a
   parser reused over many files holds no more than that between them
@@ -430,6 +454,12 @@
 
 Additive, but for the fourth parameter of a `hooks.zig`'s `tokens`.
 Downstream:
+- Rig, em, nexis: `Token` is a `packed struct(u64)`. Nothing to change
+  unless the project takes the address of a token's field or relies on
+  its byte layout (each of Rig, em and nexis builds whole as it is):
+  replace `&tok.field` by the token or a copy of the field, and byte
+  views of a token by field access (or `@bitCast(tok)` to a `u64`).
+  Regenerate the parser (every build does).
 - Rig, em, nexis, with `editors/` written by `--editor`: run it again,
   then `npm install --ignore-scripts` in `vscode/` and commit the new
   `package-lock.json` (esbuild, and `vscode-languageclient` as a

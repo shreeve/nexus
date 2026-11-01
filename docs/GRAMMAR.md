@@ -117,7 +117,7 @@ grammar that does not care about lines skips them with a rule
 earlier rule shadows on every text it matches is an error that names the
 winning rule and an example text.
 
-A token is 8 bytes: `pos: u32`, `len: u16`, `cat: TokenCat`, `pre: u8`.
+A token is a `packed struct(u64)`: `pos: u32`, `len: u16`, `cat: TokenCat`, `pre: u8`.
 Its text is a slice of the source; the lexer never allocates.
 [Long tokens](#long-tokens) are longer than `len` can say.
 

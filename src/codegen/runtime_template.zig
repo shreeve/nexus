@@ -2618,7 +2618,7 @@ const Role = enum(u16) { target, value, left, right, stmts, eq };
 const Start = enum(u16) { prog = 3 };
 
 const TokenCat = enum(u8) { ident, eq, plus, lparen, rparen, newline, comment, eof, err };
-const Token = struct { pos: u32, len: u16, cat: TokenCat, pre: u8 };
+const Token = packed struct(u64) { pos: u32, len: u16, cat: TokenCat, pre: u8 };
 
 const BaseLexer = struct {
     source: []const u8,

@@ -86,18 +86,18 @@ pub const TokenCat = enum(u8) {
 };
 
 // =============================================================================
-// TOKEN STRUCT (8 bytes)
+// TOKEN (a u64)
 // =============================================================================
 
-pub const Token = struct {
-    pos: u32, // Byte position in source (4 bytes)
-    len: u16, // Token length in bytes (2 bytes)
-    cat: TokenCat, // Token category (1 byte)
-    pre: u8, // Preceding whitespace count (1 byte)
-
-    comptime {
-        std.debug.assert(@sizeOf(Token) == 8);
-    }
+/// A token, packed into a u64 (`pos` in its low 32 bits), so that it is
+/// passed and returned in a register: a token returned through memory is
+/// written field by field and read back whole, and that read waits for
+/// the writes to reach the cache.
+pub const Token = packed struct(u64) {
+    pos: u32, // Byte position in source
+    len: u16, // Token length in bytes
+    cat: TokenCat, // Token category
+    pre: u8, // Preceding whitespace count
 };
 
 /// No `@longtokens`: a match over 65535 bytes is an `err` token of
