@@ -1,8 +1,10 @@
 //! Generic test driver for Nexus-generated parsers.
 //!
 //! Compiled next to a generated `parser.zig` (and the grammar's `@lang`
-//! module files) by test/lib/build-grammar. It parses source files with a
-//! fresh parser each and prints the resulting trees in a canonical form:
+//! module files) by test/lib/build-grammar. It parses source files with one
+//! parser, `reset` before each file (a new parser per file when the lang
+//! Parser wrapper has no `reset`, or with `--fresh`), and prints the
+//! resulting trees in a canonical form:
 //!
 //!   (tag child …)      a list; the head is printed like any other child
 //!   `text`             a .src leaf (escaped: \\ \` \n \r \t \xHH)
@@ -14,13 +16,23 @@
 //!   !error Name at L:C unexpected <cat>   a parse failure
 //!
 //! Usage:
-//!   driver [--start parseX] [--pretty|--compact|--hash] [--no-spans]
-//!          [--tolerant N] [--list FILE] [--bench N] FILE...
+//!   driver [--start parseX] [--pretty|--compact|--hash|--reuse-check]
+//!          [--no-spans] [--fresh] [--tolerant N] [--list FILE] [--bench N] FILE...
 //!
 //!   --pretty    (default) indented tree, one file per invocation is typical
 //!   --compact   one line per file: `<path>\t<tree or !error …>`
 //!   --hash      one line per file: `<path>\t<ok|err>\t<16 hex digits>\t<error>`
-//!   --bench N   time lexing alone and lexing+parsing, best of N rounds
+//!   --bench N   time lexing alone and lexing+parsing, best of N rounds: with
+//!               a new parser per file, and with one parser reset per file
+//!   --fresh     a new parser per file
+//!   --reuse-check  for each file, what a new parser shows (the strict
+//!               parse's tree or error, its facts, its trivia and node
+//!               count, then with @repair a tolerant parse's output with
+//!               the budget of --tolerant, else 8) against what the one
+//!               reset parser shows: one line per file that differs, then
+//!               `reuse-check: F files, D differ` (exit 1 when D > 0), or
+//!               `reuse-check: no reset` when the lang Parser wrapper has
+//!               none
 //!   --no-spans  never print node spans (differential runs between a parser
 //!               with spans and one without)
 //!   --tolerant N  parse with parseTolerant and a budget of N repairs (a
@@ -43,6 +55,10 @@ const Sexp = parser.Sexp;
 const P = parser.Parser;
 
 const width = 100;
+
+/// Whether a parser can be reset and reused: always the generated one; a
+/// lang Parser wrapper when it declares `reset`.
+const can_reset = @hasDecl(P, "reset");
 
 // Generated API the driver never calls must still compile: make the compiler
 // analyze it.
@@ -263,7 +279,7 @@ const Printer = struct {
 // Main
 // -----------------------------------------------------------------------------
 
-const Mode = enum { pretty, compact, hash, bench };
+const Mode = enum { pretty, compact, hash, bench, check };
 
 fn writeError(out: *std.Io.Writer, p: *P, err: anyerror) !void {
     const b = baseOf(p);
@@ -321,8 +337,75 @@ fn writeTolerant(out: *std.Io.Writer, pr: *Printer, b: *parser.BaseParser, start
     }
 }
 
+/// `p`, reset to parse `src` (only called when `can_reset`).
+fn reset(p: *P, src: []const u8) *P {
+    if (can_reset) p.reset(src) else unreachable;
+    return p;
+}
+
+/// `--reuse-check`: for each file, what a new parser shows against what one
+/// parser, reset before each file, shows.
+fn reuseCheck(io: std.Io, gpa: std.mem.Allocator, paths: []const []const u8, start: []const u8, budget: u32, out: *std.Io.Writer) !void {
+    if (comptime !can_reset) {
+        try out.writeAll("reuse-check: no reset\n");
+        return out.flush();
+    }
+    const cwd = std.Io.Dir.cwd();
+    var want: std.Io.Writer.Allocating = .init(gpa);
+    defer want.deinit();
+    var got: std.Io.Writer.Allocating = .init(gpa);
+    defer got.deinit();
+    var reused = P.init(gpa, "");
+    defer reused.deinit();
+    var differ: usize = 0;
+    for (paths) |path| {
+        const src = try cwd.readFileAlloc(io, path, gpa, .limited(1 << 28));
+        defer gpa.free(src);
+        var p = P.init(gpa, src);
+        defer p.deinit();
+        want.clearRetainingCapacity();
+        try showAll(&want.writer, &p, src, start, budget, gpa);
+        got.clearRetainingCapacity();
+        try showAll(&got.writer, reset(&reused, src), src, start, budget, gpa);
+        if (!std.mem.eql(u8, want.written(), got.written())) {
+            differ += 1;
+            try out.print("{s}\tdiffers\n", .{path});
+        }
+    }
+    try out.print("reuse-check: {d} files, {d} differ\n", .{ paths.len, differ });
+    try out.flush();
+    std.process.exit(if (differ > 0) 1 else 0);
+}
+
+/// Everything `p` shows for `src`: the strict parse's tree (with spans)
+/// and facts, or its error and message; its trivia and node count; then,
+/// with @repair and a generated start rule, a tolerant parse's output.
+fn showAll(w: *std.Io.Writer, p: *P, src: []const u8, start: []const u8, budget: u32, gpa: std.mem.Allocator) !void {
+    const b = baseOf(p);
+    var pr = Printer{ .src = src, .parser = b, .spans = true, .out = w, .gpa = gpa };
+    if (callStart(p, start)) |sexp| {
+        try pr.pretty(sexp);
+        try w.writeByte('\n');
+        if (comptime parser.nodeStore) try b.writeFacts(w, sexp);
+    } else |err| {
+        try writeError(w, p, err);
+        try w.writeByte('\n');
+        if (b.lastError() != null) {
+            try b.writeError(w);
+            try w.writeByte('\n');
+        }
+    }
+    try w.print("!trivia {d} !nodes {d}\n", .{ b.trivia().len, b.nodeCount() });
+    if (comptime parser.hasRepair) {
+        if (startOf(start) != null) {
+            _ = try writeTolerant(w, &pr, b, start, budget);
+            try w.print("!nodes {d}\n", .{b.nodeCount()});
+        }
+    }
+}
+
 fn usage() noreturn {
-    std.debug.print("usage: driver [--start parseX] [--pretty|--compact|--hash] [--no-spans] [--tolerant N] [--list FILE] [--bench N] FILE...\n", .{});
+    std.debug.print("usage: driver [--start parseX] [--pretty|--compact|--hash|--reuse-check] [--no-spans] [--fresh] [--tolerant N] [--list FILE] [--bench N] FILE...\n", .{});
     std.debug.print("start rules:", .{});
     inline for (start_names) |n| std.debug.print(" {s}", .{n});
     std.debug.print("\n", .{});
@@ -341,6 +424,7 @@ pub fn main(init: std.process.Init) !void {
     var start: []const u8 = start_names[0];
     var mode: Mode = .pretty;
     var spans = true;
+    var fresh = false;
     var rounds: usize = 1;
     var tolerant: ?u32 = null;
     var files: std.ArrayList([]const u8) = .empty;
@@ -359,6 +443,10 @@ pub fn main(init: std.process.Init) !void {
             mode = .compact;
         } else if (std.mem.eql(u8, a, "--hash")) {
             mode = .hash;
+        } else if (std.mem.eql(u8, a, "--reuse-check")) {
+            mode = .check;
+        } else if (std.mem.eql(u8, a, "--fresh")) {
+            fresh = true;
         } else if (std.mem.eql(u8, a, "--no-spans")) {
             spans = false;
         } else if (std.mem.eql(u8, a, "--tolerant")) {
@@ -399,9 +487,14 @@ pub fn main(init: std.process.Init) !void {
     const out = &fw.interface;
 
     if (mode == .bench) return bench(io, gpa, arena, files.items, start, rounds, out);
+    if (mode == .check) return reuseCheck(io, gpa, files.items, start, tolerant orelse 8, out);
 
     var render: std.Io.Writer.Allocating = .init(gpa);
     defer render.deinit();
+
+    // One parser for every file, reset before each.
+    var reused: ?P = if (can_reset and !fresh) P.init(gpa, "") else null;
+    defer if (reused) |*r| r.deinit();
 
     var status: u8 = 0;
     for (files.items) |path| {
@@ -413,19 +506,23 @@ pub fn main(init: std.process.Init) !void {
         };
         defer gpa.free(src);
 
-        var p = P.init(gpa, src);
-        defer p.deinit();
+        var own: P = undefined;
+        const p = if (reused) |*r| reset(r, src) else blk: {
+            own = P.init(gpa, src);
+            break :blk &own;
+        };
+        defer if (reused == null) own.deinit();
 
         render.clearRetainingCapacity();
         const w = &render.writer;
-        var pr = Printer{ .src = src, .parser = baseOf(&p), .spans = spans, .out = w, .gpa = gpa };
+        var pr = Printer{ .src = src, .parser = baseOf(p), .spans = spans, .out = w, .gpa = gpa };
         if (tolerant) |budget| {
-            if (!try writeTolerant(w, &pr, baseOf(&p), start, budget)) status = 1;
+            if (!try writeTolerant(w, &pr, baseOf(p), start, budget)) status = 1;
             try out.writeAll(render.written());
             try out.flush();
             continue;
         }
-        const result = callStart(&p, start);
+        const result = callStart(p, start);
         var ok = true;
         if (result) |sexp| {
             switch (mode) {
@@ -435,7 +532,7 @@ pub fn main(init: std.process.Init) !void {
         } else |err| {
             ok = false;
             status = 1;
-            try writeError(w, &p, err);
+            try writeError(w, p, err);
         }
         const text = render.written();
         switch (mode) {
@@ -448,7 +545,7 @@ pub fn main(init: std.process.Init) !void {
                 const h = std.hash.Wyhash.hash(0, text);
                 try out.print("{s}\t{s}\t{x:0>16}\t{s}\n", .{ path, if (ok) "ok" else "err", h, if (ok) "" else text });
             },
-            .bench => unreachable,
+            .bench, .check => unreachable,
         }
         try out.flush();
     }
@@ -478,6 +575,7 @@ fn bench(
 
     var best_lex: i96 = std.math.maxInt(i96);
     var best_parse: i96 = std.math.maxInt(i96);
+    var best_reuse: i96 = std.math.maxInt(i96);
     var tokens: usize = 0;
     var ok: usize = 0;
     var round: usize = 0;
@@ -499,7 +597,7 @@ fn bench(
         best_lex = @min(best_lex, lex_ns);
         tokens = ntok;
 
-        // Lexing + parsing.
+        // Lexing + parsing, a new parser per file.
         t0 = std.Io.Timestamp.now(io, .awake);
         var nok: usize = 0;
         for (srcs.items) |src| {
@@ -510,13 +608,28 @@ fn bench(
         const parse_ns = t0.untilNow(io, .awake).nanoseconds;
         best_parse = @min(best_parse, parse_ns);
         ok = nok;
+
+        // Lexing + parsing, one parser reset per file.
+        if (can_reset) {
+            t0 = std.Io.Timestamp.now(io, .awake);
+            {
+                var r = P.init(gpa, "");
+                defer r.deinit();
+                for (srcs.items) |src| _ = callStart(reset(&r, src), start) catch {};
+            }
+            best_reuse = @min(best_reuse, t0.untilNow(io, .awake).nanoseconds);
+        }
     }
     const mb = @as(f64, @floatFromInt(bytes)) / (1024.0 * 1024.0);
     const lex_s = @as(f64, @floatFromInt(best_lex)) / 1e9;
     const parse_s = @as(f64, @floatFromInt(best_parse)) / 1e9;
     try out.print(
-        "files={d} ok={d} bytes={d} tokens={d} lex_ms={d:.1} lex_mb_s={d:.1} parse_ms={d:.1} parse_mb_s={d:.1} mtok_s={d:.2}\n",
+        "files={d} ok={d} bytes={d} tokens={d} lex_ms={d:.1} lex_mb_s={d:.1} parse_ms={d:.1} parse_mb_s={d:.1} mtok_s={d:.2}",
         .{ srcs.items.len, ok, bytes, tokens, lex_s * 1000, mb / lex_s, parse_s * 1000, mb / parse_s, @as(f64, @floatFromInt(tokens)) / 1e6 / parse_s },
     );
+    if (can_reset) {
+        const reuse_s = @as(f64, @floatFromInt(best_reuse)) / 1e9;
+        try out.print(" reuse_ms={d:.1} reuse_mb_s={d:.1}\n", .{ reuse_s * 1000, mb / reuse_s });
+    } else try out.writeAll(" reuse_ms=- reuse_mb_s=-\n");
     try out.flush();
 }

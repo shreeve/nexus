@@ -4,6 +4,17 @@
 
 ### Added
 
+- A lang `Parser` wrapper may declare `pub fn reset(self: *Parser,
+  source: []const u8) void`, which drops what the wrapper holds and calls
+  `base.reset(source)`, so that generic code reuses the parser
+  ([SEMANTICS.md, "The generated API"](docs/SEMANTICS.md#the-generated-api)).
+  `test/lib/driver.zig` parses the files of a run with one parser, reset
+  before each, when the parser can be reset (`--fresh`: a new parser per
+  file), and `--reuse-check` compares, file by file, what a new parser
+  and the reset one show: the tree with its spans, the facts, the error
+  and its message, the trivia, the node count and a tolerant parse. The
+  suite runs it over each suite's cases in turn (`reuse/<grammar>`), and
+  `test/bench/run` times parsing both ways.
 - `@lsp` (preamble or @parser section), its lexical lines: a language's
   names and scopes in terms of its `@schema`, so that the language
   server `nexus --editor` writes gives the outline, go to definition,
@@ -315,6 +326,21 @@
 
 ### Changed
 
+- `BaseParser.reset(source)` keeps at most `BaseParser.resetKeeps` bytes
+  (16 MiB) of the memory the parser holds and gives the rest back, so a
+  parser reused over many files holds no more than that between them
+  (over Zig's source it kept 136 MB, what its largest file needed); Debug
+  builds overwrite what it keeps. A reset parser gives the trees, spans,
+  node ids, errors, messages and tolerant results of a new parser, file
+  for file, over all of VistA (24,704 routines), Zig's source (2,620
+  files) and Rig's sources (704). Its memory is already touched, so its
+  parses take almost no page faults: one pass over VistA takes 241
+  instead of 486,551, over Rig's sources 351 instead of 7,891, and over
+  Zig's source 37,319 instead of 148,150 (those left come from the files
+  over 16 MiB), and a reset parser parses VistA 37% faster than a new
+  parser per file (1039 ms instead of 1657), Rig's sources 18% faster and
+  Zig's source 20% faster (pup, one P-core;
+  [test/bench/BASELINE.md](test/bench/BASELINE.md#reusing-a-parser)).
 - The extension bundles its client: `package.json`'s
   `vscode:prepublish` script runs esbuild 0.28.2 over `extension.js`
   and `vscode-languageclient` into `dist/extension.js`, which `main`
@@ -533,6 +559,17 @@ Downstream:
   names, set `name`, `publisher`, `displayName` and `settings` in
   `identity.json` (Rig: `"settings": "rig"`); beside an extension that
   already gives the language (Zig's), set `"mode": "companion"`.
+- Rig: optional; to reuse a parser, give `Parser` in `rig.zig` a `reset`
+  (everything it holds lives in `base.allocator()`, and its fields have
+  defaults), and in a loop over many files make one parser and reset it
+  before each file instead of `init` and `deinit` per file:
+  `pub fn reset(self: *Parser, source: []const u8) void {
+  self.base.reset(source); const base = self.base; self.* = .{ .base =
+  base }; }`. Generic code that finds `reset` uses it.
+- em, nexis: optional; a loop that parses many files (em: its routines)
+  makes one parser and calls `reset(source)` before each file instead of
+  `init` and `deinit` per file. A tool that kept one parser with
+  `reset` holds at most 16 MiB between files.
 
 ### Performance
 

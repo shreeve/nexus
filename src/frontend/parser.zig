@@ -1189,15 +1189,37 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
-    /// Start over on `source`, keeping the memory the parser holds for the
-    /// next parses: the trees, node ids and errors of earlier parses, and
-    /// everything from `allocator`, are gone.
+    /// Start over on `source` as a new parser would, in the memory this one
+    /// holds: up to `resetKeeps` bytes of it stay, already touched, for the
+    /// next parses (the stacks, the node store and the trees all live
+    /// there), and the rest goes back to the backing allocator. Everything
+    /// else is gone: the trees, node ids, trivia and errors of earlier
+    /// parses, and everything from `allocator`. Debug builds overwrite the
+    /// memory kept with `undefined` (0xaa bytes), so a tree held across a
+    /// reset reads no value of its parse.
     pub fn reset(self: *BaseParser, source: []const u8) void {
         var arena = self.arena;
-        _ = arena.reset(.retain_capacity);
+        _ = arena.reset(.{ .retain_with_limit = resetKeeps });
+        if (@import("builtin").optimize == .debug) {
+            // Take all the memory kept, overwrite it, and give it back. An
+            // arena that kept more than one buffer (its used and free
+            // lists) serves this from a new one instead, and so keeps
+            // nothing rather than memory not overwritten.
+            const kept = arena.queryCapacity();
+            const covered = if (arena.allocator().alloc(u8, kept)) |bytes| blk: {
+                @memset(bytes, undefined);
+                break :blk arena.queryCapacity() == kept;
+            } else |_| false;
+            _ = arena.reset(if (covered) .{ .retain_with_limit = resetKeeps } else .free_all);
+        }
         self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined, .chainEnds = self.chainEnds };
         self.setCurrent(self.lexer.next());
     }
+
+    /// The most memory `reset` keeps: a parse that needed more gives the
+    /// rest back, so a parser reused over many files holds no more than
+    /// this between them, whatever the largest file needed.
+    pub const resetKeeps = 16 << 20;
 
     /// The parser's allocator, which holds the trees: a bump allocator over
     /// chunks of the arena (single-threaded, so allocation is a bounds check

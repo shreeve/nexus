@@ -728,15 +728,37 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
-    /// Start over on `source`, keeping the memory the parser holds for the
-    /// next parses: the trees, node ids and errors of earlier parses, and
-    /// everything from `allocator`, are gone.
+    /// Start over on `source` as a new parser would, in the memory this one
+    /// holds: up to `resetKeeps` bytes of it stay, already touched, for the
+    /// next parses (the stacks, the node store and the trees all live
+    /// there), and the rest goes back to the backing allocator. Everything
+    /// else is gone: the trees, node ids, trivia and errors of earlier
+    /// parses, and everything from `allocator`. Debug builds overwrite the
+    /// memory kept with `undefined` (0xaa bytes), so a tree held across a
+    /// reset reads no value of its parse.
     pub fn reset(self: *BaseParser, source: []const u8) void {
         var arena = self.arena;
-        _ = arena.reset(.retain_capacity);
+        _ = arena.reset(.{ .retain_with_limit = resetKeeps });
+        if (@import("builtin").optimize == .debug) {
+            // Take all the memory kept, overwrite it, and give it back. An
+            // arena that kept more than one buffer (its used and free
+            // lists) serves this from a new one instead, and so keeps
+            // nothing rather than memory not overwritten.
+            const kept = arena.queryCapacity();
+            const covered = if (arena.allocator().alloc(u8, kept)) |bytes| blk: {
+                @memset(bytes, undefined);
+                break :blk arena.queryCapacity() == kept;
+            } else |_| false;
+            _ = arena.reset(if (covered) .{ .retain_with_limit = resetKeeps } else .free_all);
+        }
         self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined, .chainEnds = self.chainEnds };
         self.setCurrent(self.lexer.next());
     }
+
+    /// The most memory `reset` keeps: a parse that needed more gives the
+    /// rest back, so a parser reused over many files holds no more than
+    /// this between them, whatever the largest file needed.
+    pub const resetKeeps = 16 << 20;
 
     /// The parser's allocator, which holds the trees: a bump allocator over
     /// chunks of the arena (single-threaded, so allocation is a bounds check
@@ -3552,6 +3574,108 @@ test "the ends of pass-through chains are the tables' and outlive reset" {
     const tree = try p.parse(.prog);
     try testing.expectEqual(ends.ptr, p.chainEnds.ptr);
     try testing.expectEqualStrings("(prog (set x y) (add z w))", try render(&p, tree));
+}
+
+/// Everything parsing `p`'s source shows, written to `out`: a strict
+/// parse's tree and facts or its error, its trivia and node count, then a
+/// tolerant parse's tree, pieces and errors.
+fn outcome(p: *BaseParser, out: *std.Io.Writer) !void {
+    if (p.parse(.prog)) |tree| {
+        try tree.write(p.source, out);
+        try out.writeByte('\n');
+        try p.writeFacts(out, tree);
+    } else |err| {
+        if (err != error.ParseError) return err;
+        try p.writeError(out);
+    }
+    try out.print("\ntrivia {d}, nodes {d}\n", .{ p.trivia().len, p.nodeCount() });
+    const r = try p.parseTolerant(.prog, 8);
+    try r.sexp.write(p.source, out);
+    for (r.pieces) |piece| try piece.write(p.source, out);
+    for (r.failures) |f| {
+        try out.writeByte('\n');
+        try p.writeFailure(out, f);
+    }
+    try out.print("\n{d} repairs, complete {}, nodes {d}\n", .{ r.repairs, r.complete, p.nodeCount() });
+}
+
+test "a reset parser shows what a new parser shows, whatever it parsed before" {
+    const sources = [_][]const u8{
+        "a = b + (c + d)\ne # note",
+        "a b",
+        "(a",
+        "a = \nb",
+        "a )+ b",
+        "",
+        "x # one\n# two\ny = z",
+        "a d",
+    };
+    var long: std.ArrayList(u8) = .empty;
+    defer long.deinit(testing.allocator);
+    for (0..300) |_| try long.appendSlice(testing.allocator, "a = b + (c + d)\n");
+    var want: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer want.deinit();
+    var got: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer got.deinit();
+
+    var reused = BaseParser.init(testing.allocator, "");
+    defer reused.deinit();
+    for (sources) |src| {
+        var fresh = BaseParser.init(testing.allocator, src);
+        defer fresh.deinit();
+        want.clearRetainingCapacity();
+        try outcome(&fresh, &want.writer);
+        // After each source, a long one, and itself.
+        var befores: [sources.len + 2][]const u8 = sources ++ .{ "", "" };
+        befores[sources.len] = long.items;
+        befores[sources.len + 1] = src;
+        for (befores) |before| {
+            reused.reset(before);
+            got.clearRetainingCapacity();
+            try outcome(&reused, &got.writer);
+            reused.reset(src);
+            got.clearRetainingCapacity();
+            try outcome(&reused, &got.writer);
+            try testing.expectEqualStrings(want.written(), got.written());
+        }
+        // After a parse that ran out of memory, at its start or midway.
+        for ([_]usize{ 0, 3 }) |index| {
+            var failing: std.testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = index });
+            var p = BaseParser.init(failing.allocator(), long.items);
+            defer p.deinit();
+            try testing.expectError(error.OutOfMemory, outcome(&p, &got.writer));
+            failing.fail_index = std.math.maxInt(usize);
+            p.reset(src);
+            got.clearRetainingCapacity();
+            try outcome(&p, &got.writer);
+            try testing.expectEqualStrings(want.written(), got.written());
+        }
+    }
+}
+
+test "in Debug builds a tree held across a reset reads no value of its parse" {
+    if (@import("builtin").optimize != .debug) return error.SkipZigTest;
+    var p = BaseParser.init(testing.allocator, "a = b");
+    defer p.deinit();
+    const items = (try p.parse(.prog)).items();
+    p.reset("x");
+    for (std.mem.sliceAsBytes(items)) |b| try testing.expectEqual(@as(u8, 0xaa), b);
+}
+
+test "reset keeps at most resetKeeps bytes, whatever a parse needed" {
+    var p = BaseParser.init(testing.allocator, "a = b");
+    defer p.deinit();
+    _ = try p.parse(.prog);
+    // What a huge file's parse takes, beyond what the parser keeps.
+    const huge = try p.allocator().alloc(u8, 3 * BaseParser.resetKeeps);
+    @memset(huge, 1);
+    try testing.expect(p.arena.queryCapacity() > 3 * BaseParser.resetKeeps);
+    p.reset("x = y\nz");
+    try testing.expect(p.arena.queryCapacity() <= BaseParser.resetKeeps);
+    const tree = try p.parse(.prog);
+    try testing.expectEqualStrings("(prog (set x y) z)", try render(&p, tree));
+    p.reset("a");
+    try testing.expect(p.arena.queryCapacity() <= BaseParser.resetKeeps);
 }
 
 test "an allocation failure fails the parse with error.OutOfMemory" {
