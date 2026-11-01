@@ -797,9 +797,33 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`. The
+/// table is a comb (src/codegen/comb.zig): the state's action row, then
+/// its goto row.
 inline fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
+    const action = actionAt(state, sym);
+    return if (action != 0) action else combAt(gotoBase[state], sym);
+}
+
+/// The action for terminal `sym` in `state` (0 for a nonterminal).
+inline fn actionAt(state: u16, sym: u16) i16 {
+    return combAt(actionBase[state], sym);
+}
+
+/// The cell of `sym` in the comb row at `base`: its action when its check
+/// is the base (mod 65536), else 0 (another row's cell, or none).
+inline fn combAt(base: usize, sym: u16) i16 {
+    const cell = combCells[base + sym];
+    return if (cell >> 16 == @as(u16, @truncate(base))) @bitCast(@as(u16, @truncate(cell))) else 0;
+}
+
+/// The goto on `lhs` from `state` after a reduction, which always has one:
+/// the nonterminal's most common target unless `state` is an exception.
+inline fn gotoOn(state: u16, lhs: u16) u16 {
+    const cell = gotoExceptions[@as(usize, gotoExceptionBase[lhs]) + state];
+    const next: u16 = if (cell >> 16 == state) @truncate(cell) else gotoDefault[lhs];
+    std.debug.assert(next == getAction(state, lhs)); // every reduction has a goto
+    return next;
 }
 
 /// Whether rule `r` is a pass-through `A → B`: one element, and its value.
@@ -825,7 +849,7 @@ const ChainEnd = struct {
     state: u16 = 0,
     action: i16 = 0,
 
-    const Key = if (@as(u64, parseTable.len) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
+    const Key = if (@as(u64, numStates) * numSymbols * numSymbols < std.math.maxInt(u32)) u32 else u64;
     const bits = 11;
     const slots = 1 << bits;
 
@@ -881,12 +905,14 @@ fn idCount(comptime Id: type) usize {
 /// The states that take one of an `@as` group's symbols, `toSymbol` and
 /// `fallback` (by a shift, or with any action when `permissive`): the only
 /// states where `tryPromote` looks the token up in the group.
-fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(parseTable.len) {
-    @setEvalBranchQuota(parseTable.len * (toSymbol.len + 1) * 4 + 1000);
-    var takers: std.StaticBitSet(parseTable.len) = .empty;
-    for (parseTable, 0..) |row, state| {
+fn statesTaking(comptime toSymbol: []const u16, comptime fallback: u16, comptime permissive: bool) std.StaticBitSet(numStates) {
+    @setEvalBranchQuota(numStates * (toSymbol.len + 1) * 16 + 1000);
+    var takers: std.StaticBitSet(numStates) = .empty;
+    for (0..numStates) |state| {
         for (toSymbol ++ [_]u16{fallback}) |sym| {
-            if (sym != 0 and (if (permissive) row[sym] != 0 else row[sym] > 0)) takers.set(state);
+            if (sym == 0) continue;
+            const action = actionAt(state, sym);
+            if (if (permissive) action != 0 else action > 0) takers.set(state);
         }
     }
     return takers;
@@ -1329,8 +1355,8 @@ pub const BaseParser = struct {
         var state: u16 = undefined;
         var action: i16 = undefined;
         while (true) {
-            state = @intCast(getAction(below, ruleLhs[rule]));
-            action = getAction(state, sym);
+            state = gotoOn(below, ruleLhs[rule]);
+            action = actionAt(state, sym);
             if (xExcludes.len > 0 and action == hinted) {
                 plain = false;
                 action = self.strictAction(state, sym);
@@ -1563,7 +1589,7 @@ pub const BaseParser = struct {
         const id = self.keywordId(group, text, lookup) orelse return null;
         for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
             if (sym == 0) continue;
-            const action = getAction(state, sym);
+            const action = actionAt(state, sym);
             if (if (permissive) action != 0 else action > 0) {
                 self.lastMatchedId = id;
                 return sym;
@@ -1588,7 +1614,7 @@ pub const BaseParser = struct {
     /// on the hinted token and it touches the previous token, shift
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
-        const action = getAction(state, sym);
+        const action = actionAt(state, sym);
         if (xExcludes.len > 0 and action == hinted)
             return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
         return action;
@@ -1596,7 +1622,7 @@ pub const BaseParser = struct {
 
     /// `actionFor` on a token of the input.
     inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
-        const action = getAction(state, sym);
+        const action = actionAt(state, sym);
         if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
@@ -1667,10 +1693,9 @@ pub const BaseParser = struct {
     inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
         if (isPassThrough(ruleId)) {
             const states = self.stateStack.items;
-            const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
-            std.debug.assert(next > 0); // every reduction has a goto
-            states[states.len - 1] = @intCast(next);
-            return @intCast(next);
+            const next = gotoOn(states[states.len - 2], ruleLhs[ruleId]);
+            states[states.len - 1] = next;
+            return next;
         }
         try self.reduce(ruleId);
         return self.stateStack.items[self.stateStack.items.len - 1];
@@ -1718,20 +1743,19 @@ pub const BaseParser = struct {
             },
         };
         if (self.outOfMemory) return error.OutOfMemory;
-        const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
-        std.debug.assert(next > 0); // every reduction has a goto
+        const next = gotoOn(self.stateStack.items[top - 1], ruleLhs[ruleId]);
 
         if (nodeStore) try self.recordSides(ruleId, result);
         if (len > 0) {
             self.valueStack.items.len = base + 1;
             self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
-            self.stateStack.items[top] = @intCast(next);
+            self.stateStack.items[top] = next;
             // starts[base] already holds the reduction's start (its first
             // element's).
             if (elemEnds) self.ends[base] = self.lastEnd;
         } else {
-            try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
+            try self.pushEntry(next, result, self.reduction.start, self.lastEnd);
         }
     }
 
@@ -3047,63 +3071,54 @@ const ruleLen = [_]u8{ 1, 1, 3, 1, 0, 2, 4, 1, 3, 1, 0, 6, 2, 1, 3, 1, 1, 1, 3, 
 /// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
 const ruleValue = [_]u8{ 0, 0, 0, 2, 1, 0, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 3, 0, 0, 0, 0, 2 };
 
-// Parse table: 53 states x 34 symbols. 0 = error, > 0 = shift or
-// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
-// reduction an `X "c"` hint overrides (`hinted`).
-const parseTable = [_][numSymbols]i16{
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0},
-    .{0,-6,0,2,3,4,5,0,11,-6,6,12,7,0,10,8,15,0,0,0,0,9,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-2,0,0,0,0,0,0,0,17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-3,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0},
-    .{0,-5,0,0,0,0,0,0,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,-5,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,21,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,-15,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,22,23,24},
-    .{0,-31,0,0,0,0,0,0,0,-31,0,0,0,0,0,0,26,-31,0,0,-31,0,0,-31,0,0,25,0,0,0,0,-31,-31,-31},
-    .{0,-17,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,-17,-17,0,0,-17,0,0,-17,0,0,-17,0,0,0,0,-17,-17,-17},
-    .{0,-18,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,-18,-18,0,0,-18,0,0,-18,0,0,-18,0,0,0,0,-18,-18,-18},
-    .{0,-19,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,-19,-19,0,0,-19,0,0,-19,0,0,-19,0,0,0,0,-19,-19,-19},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,27,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-6,0,0,0,28,5,0,11,-6,6,12,7,0,10,8,15,0,0,0,0,9,0,-6,13,14,0,0,0,0,0,0,0,0},
-    .{0,-7,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-14,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,22,23,24},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,31,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,32,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,33,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,37,0,15,0,0,0,-24,0,0,0,13,14,0,36,35,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,0,0,0,0,0,0,0,0,0,0,22,23,24},
-    .{0,-4,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,39,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,42,0,0,0,0,0,0,41,40,-12,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-28,0,0,0,0,0,0,0,-28,0,0,0,0,0,0,0,-28,0,0,-28,0,0,-28,0,0,0,0,0,0,0,-28,-28,24},
-    .{0,-29,0,0,0,0,0,0,0,-29,0,0,0,0,0,0,0,-29,0,0,-29,0,0,-29,0,0,0,0,0,0,0,-29,-29,24},
-    .{0,-30,0,0,0,0,0,0,0,-30,0,0,0,0,0,0,0,-30,0,0,-30,0,0,-30,0,0,0,0,0,0,0,-30,-30,-30},
-    .{0,-20,0,0,0,0,0,0,0,-20,0,0,0,0,0,0,-20,-20,0,0,-20,0,0,-20,0,0,-20,0,0,0,0,-20,-20,-20},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,43,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,44,0,0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,0,0,-21,0,0,0,0,0,0,0,0,0,0,22,23,24},
-    .{0,-26,0,0,0,0,0,0,0,-26,0,0,0,0,0,0,-26,-26,0,0,-26,0,0,-26,0,0,-26,0,0,0,0,-26,-26,-26},
-    .{0,-8,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,22,23,24},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,46,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-25,0,0,0,0,0,0,0,-25,0,0,0,0,0,0,-25,-25,0,0,-25,0,0,-25,0,0,-25,0,0,0,0,-25,-25,-25},
-    .{0,0,0,0,0,0,0,0,11,0,0,12,0,0,47,0,15,0,0,0,0,0,0,0,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,0,0,-22,0,0,0,0,0,0,0,0,0,0,22,23,24},
-    .{0,-13,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,51,4,5,0,11,-6,6,12,7,0,10,8,15,0,0,0,0,9,0,-6,13,14,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,17,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,0,0,0,0,0,0,0},
-    .{0,-16,0,0,0,0,0,0,0,-16,0,0,0,0,0,0,0,0,0,0,0,0,0,-16,0,0,0,0,0,0,0,0,0,0},
+// Parse table: 53 states x 34 symbols, compressed by row displacement
+// (src/codegen/comb.zig). An action: 0 = error, > 0 = shift or goto,
+// -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a reduction an
+// `X "c"` hint overrides (`hinted`). A state's actions and its gotos are
+// rows of `combCells` at its `actionBase` and `gotoBase`: the cell of
+// symbol `sym` is `combCells[base + sym]`, `check << 16 | action`, and
+// belongs to the row when `check` is the base mod 65536.
+const numStates = 53;
+const actionBase = [_]u16{
+    44, 17, 2, 4, 13, 36, 6, 37, 101, 19, 224, 30, 48, 66, 84, 19, 2, 0, 68, 111, 98, 230, 19, 19,
+    19, 115, 226, 266, 86, 19, 121, 176, 180, 197, 102, 110, 38, 252, 120, 235, 118, 139, 140, 138, 19, 126, 133, 256,
+    104, 163, 145, 97, 122,
+};
+const gotoBase = [_]u16{
+    3, 218, 3, 3, 3, 3, 3, 3, 3, 26, 3, 3, 3, 3, 3, 58, 3, 46, 3, 3, 3, 3, 62, 70,
+    80, 3, 251, 3, 3, 82, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 94, 135, 3, 3,
+    3, 286, 3, 3, 3,
+};
+const combCells = [_]u32{
+    0, 65530, 0, 196607, 0, 327678, 0, 0, 0, 65530, 6, 12, 7, 262161, 917501, 8, 15, 393234, 1179642, 65577, 65576, 9, 917501, 65530,
+    13, 14, 1179642, 1114118, 1114124, 1114119, 1245196, 2031585, 1114120, 1114127, 1703947, 1245199, 917501, 2424827, 1114121, 2031585, 1703957, 1114125, 1114126, 1245197, 1245198, 2424827, 1966106, 2031585,
+    2424851, 3211247, 2031585, 3014684, 3014661, 2031585, 3014667, 2490412, 1966105, 3211247, 2555881, 2424827, 3014666, 2031585, 2031585, 2031585, 3211247, 3211247, 3801099, 4390894, 3211247, 4521977, 4063243, 3211247,
+    3801115, 2883585, 3211247, 4390894, 4063263, 4521977, 4587531, 3211247, 3211247, 3211247, 4390894, 4390894, 4587552, 5570541, 4390894, 5701628, 5242891, 4390894, 5373963, 4521977, 4390894, 5570541, 5242913, 5701628,
+    5373991, 4390894, 4390894, 4390894, 5570541, 5570541, 6160395, 6750188, 5570541, 6881267, 6357009, 5570541, 6160431, 5701628, 5570541, 6750188, 6619156, 6881267, 6422558, 5570541, 5570541, 5570541, 6750188, 6750188,
+    6357044, 7929830, 6750188, 8060912, 7274525, 6750188, 7536674, 6881267, 6750188, 7929830, 7209003, 8060912, 7929898, 6750188, 6750188, 6750188, 7929830, 7929830, 7733293, 9109479, 7929830, 7995380, 8847408, 7929830,
+    8716338, 8060912, 7929830, 9109479, 8257585, 0, 0, 7929830, 7929830, 7929830, 9109479, 9109479, 9109550, 9240567, 9109479, 9175029, 9240567, 9109479, 9568246, 0, 9109479, 9568246, 0, 0,
+    0, 9109479, 9109479, 9109479, 10747898, 10682374, 10682380, 10682375, 0, 11599844, 10682376, 10682383, 0, 11861987, 0, 0, 10682377, 11599844, 10747898, 10682381, 10682382, 11861987, 0, 0,
+    0, 11599844, 0, 0, 11599844, 11861987, 12976098, 11599844, 11861987, 0, 0, 11861987, 0, 0, 12976098, 11599844, 11599844, 11534360, 0, 11861987, 11861987, 11796504, 12976098, 0,
+    0, 12976098, 0, 0, 12976098, 14286850, 14286851, 14286852, 14286853, 14745585, 14286859, 0, 12976098, 12976098, 12976098, 15138802, 14286858, 14745585, 0, 0, 15466488, 14811148, 0, 15138802,
+    0, 0, 14811151, 0, 15466488, 0, 14876648, 14745585, 0, 0, 14811149, 14811150, 0, 15138802, 0, 14680086, 14680087, 14680088, 15466488, 16449547, 0, 15073302, 15073303, 15073304,
+    0, 16449573, 15400982, 15400983, 15400984, 16580587, 0, 0, 16580587, 16842730, 0, 0, 16842730, 0, 16449572, 16449571, 0, 0, 0, 16515094, 16515095, 16515096, 17432614, 16777238,
+    16777239, 16777240, 18743347, 18743300, 18743301, 0, 18743307, 0, 0, 17432598, 17432599, 17432600, 18743306, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+};
+// The parse loop's gotos: a nonterminal's most common target, unless
+// `gotoExceptions[gotoExceptionBase[lhs] + state]` is `state << 16 | target`.
+const gotoDefault = [_]u16{
+    0, 0, 0, 2, 3, 4, 5, 48, 11, 0, 0, 0, 0, 0, 10, 0, 0, 0, 41, 40, 0, 0, 0, 0,
+    0, 0, 0, 36, 35, 0, 0, 0, 0, 0,
+};
+const gotoExceptionBase = [_]u16{
+    3, 0, 0, 4, 1, 2, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 9, 0, 0, 0, 0,
+    0, 0, 0, 10, 11, 0, 12, 0, 0, 0,
+};
+const gotoExceptions = [_]u32{
+    4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 589845, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 983067, 4294967295, 4294967295, 4294967295, 1114140, 4294967295, 4294967295, 1441823, 1507360,
+    1572897, 4294967295, 1703973, 4294967295, 4294967295, 1900583, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 2883631, 4294967295, 4294967295, 4294967295,
+    4294967295, 4294967295, 3211315, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295,
 };
 
 // X "c" excludes: shift the hinted token instead of reducing when it
