@@ -81,8 +81,8 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `test/vscode/run` of the LSP plan is to check it.
    - A generated lexer reads a byte order mark as text; the server keeps
      positions right after it, but the parse fails there.
-   - `@lsp` has every line of the approved plan
-     (`.git/lsp/panel/lsp-approved.md`): definition, references, rename
+   - `@lsp` has every line of its plan ([docs/GRAMMAR.md, "Names and scopes"](docs/GRAMMAR.md#names-and-scopes)
+     lists them): definition, references, rename
      and member completion across files, through imports (the client's
      `modules` setting, else `resolveImport`), members, qualified names
      and names of namespaces; binding by assignment (`bind`), semantic
@@ -94,7 +94,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      beyond the approved syntax, for Zig's types (`const S = struct
      {...}`), and `when` on `color`. `color`'s scopes are `@highlight`'s
      19 and the 14 LSP types no scope stands for (`property`,
-     `variable`, `method`, ...; `.git/lsp/panel/color-proposed.md`),
+     `variable`, `method`, ...; [docs/GRAMMAR.md, "Names and scopes"](docs/GRAMMAR.md#names-and-scopes)),
      which colour only through semantic tokens: Zig's struct fields are
      `property` and its `var`s `variable`; Rig's methods and properties
      can leave its `tokens` hook for `color` lines.
@@ -147,6 +147,32 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      document is not tested until it is added.
    - Generating a grammar of 4,000 chained levels peaks at about 1.4 GB;
      the dense `[state][symbol]` arrays of the lookahead stage dominate.
+8. **Not built: grammar features for what lang modules hand-write.** Each
+   is a design to take to the owner before building; the lang modules of
+   `grammars/` hold the code a feature would replace.
+   - Previous-token classes as lexer guards (`'-' @ prev in value`), for
+     the regex-or-divide and unary-or-binary decisions Ruby, Rig and Zig
+     make from the last token.
+   - Layout from the grammar: significant newlines, an offside column
+     stack with INDENT and OUTDENT, newlines as whitespace inside
+     brackets (Rig, Slash, the frontend).
+   - Lexer modes with a stack (`push`, `pop` of state variables) and a
+     guard for the end of input, for string interpolation and MUMPS's
+     pattern mode.
+   - A token queue (`BaseLexer.push`) and `peek(k)` for lexers that emit
+     several tokens or look ahead.
+   - A `post` guard (blank or end of input after a match), symmetric to
+     `pre`, for operator spacing rules.
+   - A lexer action `-> err "message"` whose text `Failure` carries.
+   - Post-parse helpers: a tree-depth guard and per-node flag sets keyed
+     by `NodeId`.
+9. **Not built: speed ideas that change the generated API.** Pools of
+   compact handle sexps in place of the 24-byte `Sexp`; leaves that stay
+   token indices until a rule keeps them; a lexer fused into the parser
+   loop; stores of a `Sexp` as wide as the loads that copy it. Each
+   changes what [SEMANTICS.md, "The generated API"](docs/SEMANTICS.md#the-generated-api)
+   promises; [docs/PERFORMANCE.md](docs/PERFORMANCE.md) says what the
+   current design measured and why.
 
 ## Tips
 
@@ -163,7 +189,11 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
   run it with `-j 2` or `-j 3` while other work is running, and do not run
   benchmarks, fuzzing or several suites at the same time.
 - **Benchmark honestly** ([test/bench/BASELINE.md](test/bench/BASELINE.md),
-  "Reading a difference").
+  "Reading a difference"; [docs/PERFORMANCE.md](docs/PERFORMANCE.md),
+  "Measuring", for counters and the code-layout control).
+- **Working records** (audits, studies, logs, plans) are kept outside the
+  repository, in the owner's private nexus-notes; what lasts is written
+  into the docs here.
 - **The VistA corpus** (`~/Data/Code/em/misc/vista`, 24,704 routines) and
   Rig's sources (`~/Data/Code/rig`) feed `test/bench/run` and `test/diff`;
   without them the benchmark falls back to the committed cases.
