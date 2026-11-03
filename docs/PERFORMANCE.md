@@ -114,7 +114,7 @@ inlined, so that the state lives in the program counter as it does in the
 lexer and in a recursive-descent parser) was built and measured: it retires
 about the same instructions but runs 4% to 18% slower on every grammar,
 because the code it generates (hundreds of kilobytes to megabytes per
-grammar) no longer fits the instruction cache. The table loop is a few
+grammar) does not fit the instruction cache. The table loop is a few
 kilobytes of hot code and one load from a table in L2 per action; the
 instruction-cache miss rate of direct dispatch is 3 to 15 times higher and
 IPC falls with it. A direct-dispatch parser is also much larger, and much
@@ -134,7 +134,7 @@ for Zig; the compressed one is 91 KiB and 475 KiB. Two choices matter:
   lookahead, which saves cells but changes what the parser does at an
   error: it reduces before it notices the token is wrong, and the state it
   fails in, the expected set and the repairs a tolerant parse tries are
-  no longer those of the grammar's table. Every cell keeps its action, so
+  not those of the grammar's table. Every cell keeps its action, so
   the error machinery reads the same table as the loop, and the generator
   decodes every cell against the dense table before it writes the module.
 - **The loop's gotos use a second form**: the most common target of each
@@ -146,7 +146,7 @@ more time than the dense one on the grammars measured, because the dense
 table already lives in L2 (L2 misses are nil) and a lookup that checks a
 cell costs about what the misses it avoids would. It is kept for size: the
 table is the largest part of a generated module, and the MUMPS and Rig
-tables fit the 128 KiB L1 data cache of Apple's M5 performance cores. Other
+tables fit the 128 KiB L1 data cache of Apple's performance cores. Other
 lookup shapes (a split table with dense terminal rows, per-rule goto words,
 an error bitset) were larger or no faster on all grammars ([BASELINE.md, "Compressed table against the
 dense one"](../test/bench/BASELINE.md#compressed-table-against-the-dense-one)).
@@ -184,8 +184,8 @@ group (a switch on the first byte, then a comparison per entry with that
 byte), but only in a state that takes some symbol of the group: the
 generator computes a bitset per group at compile time from the table
 (`statesTaking`), and `tryPromote` returns before the lookup in every other
-state. In MUMPS the lookup was 13% of parsing before the mask and the mask
-cut parsing time by 6%. Since a state change after a reduction can change
+state. In MUMPS the lookup costs 13% of parsing in every state, and the
+mask makes parsing 6% faster. Since a state change after a reduction can change
 the answer, a promotable token is promoted again after each reduction.
 
 ## Shifting and reducing
@@ -200,9 +200,9 @@ an optimized build the tree builders (`buildOf`, `build`, `finishItems`,
 `keepExtended`, ...) are `inline`, so a value is built in registers. The
 reason is the one behind the packed `Token`: a `Sexp` returned through
 memory is written field by field (8, 4, 4 and 1 bytes) and copied out by
-16- and 8-byte loads that cannot be forwarded from those stores, and the
-shared exit of `executeAction` that did the copy held 40% to 60% of its
-cycle samples. Registers make parsing 1% to 5% faster, at the price of a
+16- and 8-byte loads that cannot be forwarded from those stores: returned
+through memory, the copy at the shared exit of `executeAction` takes 40%
+to 60% of its cycle samples. Registers make parsing 1% to 5% faster, at the price of a
 slower optimized build (inline builders unroll every arm; the generator
 sets the eval branch quota to 1000 plus the bytes of the arms). A Debug
 build calls the builders (`builderCall` is `.auto`), because inlining them
