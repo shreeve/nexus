@@ -166,6 +166,8 @@ most three bytes, or, over a class of at most four byte ranges, a test
 of its first byte followed by a SIMD scan 16 bytes at a time; transitions
 into states that cannot
 continue return the token in place.
+[PERFORMANCE.md](PERFORMANCE.md#run-scans) says why the scans take these
+forms and not SWAR words or wider vectors.
 Only a token that ends in a state some DFA cycle reaches can exceed 65535
 bytes (65534 with `@longtokens`), so only those finishes test the length.
 With `@longtokens` such a finish records the token's start and end in the
@@ -338,6 +340,9 @@ build calls them as functions (`builderCall`), which compiles faster.
 
 ### The parse table
 
+Why the table is compressed this way, and why the loop reads it instead of
+being code per state, is in [PERFORMANCE.md](PERFORMANCE.md#the-parsers-loop).
+
 `src/codegen/comb.zig` compresses the table by row displacement, with no
 default reductions: every cell keeps its action, so errors, expected sets
 and tolerant repairs are those of the dense table. A state's cells in
@@ -491,6 +496,10 @@ check them:
 `test/bench/run` measures generation time and lexing and parsing
 throughput; [test/bench/BASELINE.md](../test/bench/BASELINE.md) records the
 current numbers and how to compare two builds.
+[PERFORMANCE.md](PERFORMANCE.md) explains the choices behind the speed and
+size of generated code (the lexer's run scans, table dispatch, the
+compressed table, the chain-end cache, the packed `Token`, action values in
+registers, parser reuse) and how to measure a change.
 
 ## Source map
 

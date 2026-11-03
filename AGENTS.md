@@ -136,6 +136,7 @@ downstream repository are in `CHANGELOG.md`.
 | `test/` | the suite, `test/diff`, `test/bench/`, `test/lexfuzz/` ([test/README.md](test/README.md)) |
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
+| `docs/PERFORMANCE.md` | why generated lexers and parsers are fast and small, what was measured against the alternatives, how to measure |
 | `docs/LSP.md` | `nexus --editor`: the VS Code extension, the language server, the functions of `hooks.zig` |
 | `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
 | `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
