@@ -666,6 +666,11 @@ Whatever the language writes, the server:
 - counts positions in UTF-16 code units, or in bytes when the client
   offers `utf-8`, and keeps them in place across a byte order mark, a
   lone `\r`, a `\r\n` and characters of every length;
+- takes changes incrementally (a range and its new text, or the whole
+  text), keeps the edits since each version it analyzed, and carries the
+  offsets of an analysis of an older text forward over them, so a request
+  made after an edit answers in the current text; an offset inside text
+  an edit replaced, or past the 4,096 edits it keeps, is not mapped;
 - answers a request before `initialize` with `ServerNotInitialized`
   (-32002), a request it does not advertise with `MethodNotFound`
   (-32601), a request on a document that is not open with
