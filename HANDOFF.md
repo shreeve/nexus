@@ -173,6 +173,24 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    changes what [SEMANTICS.md, "The generated API"](docs/SEMANTICS.md#the-generated-api)
    promises; [docs/PERFORMANCE.md](docs/PERFORMANCE.md) says what the
    current design measured and why.
+10. **Not built: suggestions from em's grammar work**, collected to take
+    to the owner together with others downstream grammars bring.
+    - Conflict reports that locate the change. When a declared count no
+      longer matches (`1 declared, 2 now`), print every state of that
+      conflict with its full symbol path from a start symbol, marking
+      the one the manifest's count did not cover. A conflict's local
+      example (`atom exprtail+ • "="`) is the same in every state, so it
+      does not say which rule added a state; in em's grammar the cause
+      was a SET rule far from the expression rules, found only by
+      removing rules one at a time. Declarations stay counts: paths in
+      the manifest would change with every unrelated edit.
+    - Parked: an action that keeps a promoted keyword's leaf without its
+      id (`@as` promotion for parsing only), so promoting a word inside
+      one rule leaves the tree of every input that rule matched as it
+      was. em worked around it by not promoting there.
+    - Parked: `nexus check` noting a syntax-error message that a grammar
+      change altered (a new alternative adds to an expected set). em's
+      tree and bytecode oracle catches it downstream.
 
 ## Tips
 
