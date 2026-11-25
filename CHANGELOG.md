@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Leaf ids: a leaf, `Src`, carries `leaf: LeafId` (`u32`), a number the
+  parser gives each token it shifts, dense from 1 in source order (a
+  token tolerant parsing inserts included), so that a consumer keeps
+  facts about leaves in an array of `BaseParser.leafCount()` entries
+  rather than a map keyed by position. Ids count on across parses and
+  from 1 after `reset`, as node ids do. A `Src` built outside the parser
+  has leaf id 0, the field's default, unless it is made with
+  `BaseParser.newLeaf(pos, len, id)`, which gives it the next id.
+  `Src` grows from 8 to 12 bytes and `Sexp` stays 24 bytes (16 on 32-bit
+  targets), as its comptime check asserts on both
+  ([SEMANTICS.md, "Spans and node ids"](docs/SEMANTICS.md#spans-and-node-ids)).
+
+### Migrating
+
+Regenerate every parser. A `Src` literal compiles as before, with leaf
+id 0. Code that compares whole `Src` values (`expectEqual`, `std.meta.eql`)
+or hashes their bytes sees the leaf id too: compare `pos`, `len` and `id`
+where a leaf the parser shifted meets one built by hand.
+
+- **rig**, **em**, **nexis**: nothing to change; a lang `Parser` wrapper
+  that builds leaves may number them with `base.newLeaf`.
+
 ## 2.3.1 — 2026-11-24
 
 ### Added

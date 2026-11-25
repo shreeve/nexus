@@ -186,6 +186,17 @@ test "spans, rules, side-band roles" {
     try testing.expectEqualStrings("=", source[eq.start..eq.end]);
 }
 
+test "leaf ids" {
+    var p = parser.Parser.init(testing.allocator, "x += 1");
+    defer p.deinit();
+    const tree = try p.parseProgram();
+    const set = ir.Module.stmts(tree)[0];
+    // Each token shifted is numbered from 1 in source order: `x`, `+=`, `1`.
+    try testing.expectEqual(1, ir.Name.id(ir.Set.target(set)).src.leaf);
+    try testing.expectEqual(3, ir.Num.value(ir.Set.value(set)).src.leaf);
+    try testing.expectEqual(3, p.leafCount()); // room for an array by leaf id
+}
+
 test "facts" {
     var p = parser.Parser.init(testing.allocator, "x += 1");
     defer p.deinit();
@@ -290,10 +301,12 @@ The module exports:
 | `longTokens` | whether the grammar has `@longtokens`, so a `len` of 65535 stands for a longer token ([GRAMMAR.md](GRAMMAR.md#long-tokens)); with it, `LongEnds`, the lexer's record of their ends |
 | `BaseLexer` | the generated scanner ([GRAMMAR.md](GRAMMAR.md#the-generated-lexer)) |
 | `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
-| `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes, 16 on 32-bit targets. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)` (both panic on the leaf of a token over 65534 bytes, whose text is `leafText`'s), `listOf(items)` |
+| `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`, `leaf`), `str`, `list` (`items()`, `id`); 24 bytes, 16 on 32-bit targets. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)` (both panic on the leaf of a token over 65534 bytes, whose text is `leafText`'s), `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()`, `text(source)` (the source it covers, clamped to the source, so a span past its end gives what remains of it or the empty string) |
 | `NodeId` | a node's id (`u32`; 0 is none) |
+| `Src` | a leaf: `pos`, `len`, `id` (the token's `@as` keyword ordinal or lexer `aux` value) and `leaf`, its `LeafId` |
+| `LeafId` | a leaf's id (`u32`; 0 is none, the default for a `Src` built outside the parser) |
 | `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, the `state` that rejected it, `at`, where the error is reported, and `expectation`, what `writeFailure` lists (`lastError()`; see [Syntax errors](#syntax-errors)) |
 | `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
@@ -313,6 +326,7 @@ The module exports:
 see below), `allocator()` (the allocator that holds the trees, freed
 by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
+`leafCount()`, `newLeaf(pos, len, id)`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
 `writeFacts(w, root)`, `trivia()`, `tokenEnd(token)`, `tokenText(token)`,
 `leafEnd(src)`, `leafText(sexp)` (the end and text of a token the parser
@@ -329,7 +343,7 @@ are 32-bit), or, with `@longtokens`, `error.TokenEndUnknown` (a token over
 
 A parser parses many inputs one after another with `reset(source)`,
 which starts it over as `init(allocator, source)` would start a new one:
-the same trees, spans, node ids, errors, messages and tolerant results.
+the same trees, spans, node and leaf ids, errors, messages and tolerant results.
 What differs is memory. A new parser's trees, stacks and node store fill
 memory the process has not touched yet, and its page faults are much of
 the cost of parsing a short input; a reset parser keeps the memory it
@@ -735,6 +749,16 @@ which ids count from 1 again).
 
 The store costs one 12-byte entry per node. Grammars without `@schema` get
 it with `nexus --spans`.
+
+Every leaf the parser shifts gets a leaf id, with or without the node
+store: `src.leaf`, dense from 1 in source order, a token that tolerant
+parsing inserts included, so a consumer keeps facts about leaves in an
+array of `leafCount()` entries rather than a map keyed by position. Leaf
+ids count on across parses and from 1 after `reset`, as node ids do. A
+`Src` built outside the parser has leaf id 0 unless it is made with
+`newLeaf(pos, len, id)`, which gives it the next one. The id costs
+nothing in size: a `Src` is 12 bytes, within `Sexp`'s payload on 32-bit
+and 64-bit targets alike.
 
 ### Span marks
 

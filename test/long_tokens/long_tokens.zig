@@ -374,7 +374,8 @@ test "tolerant parsing next to long tokens keeps their spans" {
         const stmts = ir.Program.stmts(r.sexp);
         try testing.expectEqual(parser.Span{ .start = 0, .end = 4 + n }, p.span(stmts[0]));
         const hole = ir.Ref.id(ir.Set.value(stmts[1]));
-        try testing.expectEqual(parser.Src{ .pos = 4 + n + 6, .len = 0, .id = 0 }, hole.src);
+        try testing.expectEqual(parser.Src{ .pos = 4 + n + 6, .len = 0, .id = 0, .leaf = hole.src.leaf }, hole.src);
+        try testing.expect(hole.src.leaf != 0);
         try testing.expectEqual(parser.Span{ .start = 4 + n + 3, .end = 4 + n + 6 }, p.span(stmts[1]));
     }
     // A long string where none fits is deleted; the first error spans it

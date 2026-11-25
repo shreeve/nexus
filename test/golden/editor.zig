@@ -532,6 +532,9 @@ pub const Start = enum(u16) {
 /// Dense per-parse node number; 0 = no node store entry.
 pub const NodeId = u32;
 
+/// Dense per-parse leaf number (see `Src`); 0 = none.
+pub const LeafId = u32;
+
 /// A byte range [start, end) of the source.
 pub const Span = struct {
     start: u32,
@@ -557,9 +560,12 @@ pub const Span = struct {
     }
 };
 
-/// A source leaf: token position and length, plus the token id attribute
-/// (an `@as` keyword ordinal, or the lexer's `aux` value; see `takeLexerId`).
-pub const Src = struct { pos: u32, len: u16, id: u16 };
+/// A source leaf: token position and length, the token id attribute (an
+/// `@as` keyword ordinal, or the lexer's `aux` value; see `takeLexerId`),
+/// and its leaf id: each token the parser shifts is numbered 1, 2, ... in
+/// source order (`BaseParser.leafCount`), and a leaf built outside the
+/// parser has 0 unless it takes one from `BaseParser.newLeaf`.
+pub const Src = struct { pos: u32, len: u16, id: u16, leaf: LeafId = 0 };
 
 /// A list node: its items and its node id (0 when the parse keeps no node
 /// store, or for lists built outside the parser, e.g. by a lang wrapper).
@@ -1097,6 +1103,8 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The leaf ids in use (ids run 1 .. leaves).
+    leaves: LeafId = 0,
     /// The `@as` lookups of `current`, one per group: the keyword ordinal
     /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
     /// depend on the state, so it runs once per token.
@@ -1530,8 +1538,8 @@ pub const BaseParser = struct {
         // Token positions are u32.
         if (self.source.len > std.math.maxInt(u32)) return error.InputTooLarge;
         // Every parse reads the input from the start (a parser may parse
-        // again, e.g. tolerantly after a failed strict parse). Node ids
-        // keep counting, so earlier trees stay valid.
+        // again, e.g. tolerantly after a failed strict parse). Node and
+        // leaf ids keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
             self.setCurrent(self.lexer.next());
@@ -1635,7 +1643,8 @@ pub const BaseParser = struct {
             self.injectedToken = null;
         } else if (self.pendingInsert != null) {
             const pos = self.current.pos;
-            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
+            self.leaves += 1;
+            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0, .leaf = self.leaves } }, pos, pos);
             if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
         } else try self.shiftToken(target);
@@ -1650,7 +1659,8 @@ pub const BaseParser = struct {
         const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
         if (asGroups > 0) self.lastMatchedId = 0;
         const end = self.tokenEnd(tok);
-        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+        self.leaves += 1;
+        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id, .leaf = self.leaves } }, tok.pos, end);
         if (nodeStore) self.lastEnd = end;
         try self.advance();
     }
@@ -2043,6 +2053,19 @@ pub const BaseParser = struct {
     /// Number of node ids in use (ids run 1 .. nodeCount()).
     pub fn nodeCount(self: *const BaseParser) u32 {
         return self.nodes.len -| 1;
+    }
+
+    /// Number of leaf ids in use (ids run 1 .. leafCount()): one per token
+    /// shifted, an inserted one included, and one per `newLeaf`.
+    pub fn leafCount(self: *const BaseParser) u32 {
+        return self.leaves;
+    }
+
+    /// A leaf built outside the parser, e.g. by a lang `Parser` wrapper,
+    /// with the next leaf id.
+    pub fn newLeaf(self: *BaseParser, pos: u32, len: u16, id: u16) Src {
+        self.leaves += 1;
+        return .{ .pos = pos, .len = len, .id = id, .leaf = self.leaves };
     }
 
     /// The side-band roles recorded for node `id`.
