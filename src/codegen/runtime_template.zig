@@ -102,6 +102,9 @@ pub const LongEnds = struct {
 /// Dense per-parse node number; 0 = no node store entry.
 pub const NodeId = u32;
 
+/// Dense per-parse leaf number (see `Src`); 0 = none.
+pub const LeafId = u32;
+
 /// A byte range [start, end) of the source.
 pub const Span = struct {
     start: u32,
@@ -127,9 +130,12 @@ pub const Span = struct {
     }
 };
 
-/// A source leaf: token position and length, plus the token id attribute
-/// (an `@as` keyword ordinal, or the lexer's `aux` value; see `takeLexerId`).
-pub const Src = struct { pos: u32, len: u16, id: u16 };
+/// A source leaf: token position and length, the token id attribute (an
+/// `@as` keyword ordinal, or the lexer's `aux` value; see `takeLexerId`),
+/// and its leaf id: each token the parser shifts is numbered 1, 2, ... in
+/// source order (`BaseParser.leafCount`), and a leaf built outside the
+/// parser has 0 unless it takes one from `BaseParser.newLeaf`.
+pub const Src = struct { pos: u32, len: u16, id: u16, leaf: LeafId = 0 };
 
 /// A list node: its items and its node id (0 when the parse keeps no node
 /// store, or for lists built outside the parser, e.g. by a lang wrapper).
@@ -670,6 +676,8 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The leaf ids in use (ids run 1 .. leaves).
+    leaves: LeafId = 0,
     /// The `@as` lookups of `current`, one per group: the keyword ordinal
     /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
     /// depend on the state, so it runs once per token.
@@ -1100,8 +1108,8 @@ pub const BaseParser = struct {
         // Token positions are u32.
         if (self.source.len > std.math.maxInt(u32)) return error.InputTooLarge;
         // Every parse reads the input from the start (a parser may parse
-        // again, e.g. tolerantly after a failed strict parse). Node ids
-        // keep counting, so earlier trees stay valid.
+        // again, e.g. tolerantly after a failed strict parse). Node and
+        // leaf ids keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
             self.setCurrent(self.lexer.next());
@@ -1205,7 +1213,8 @@ pub const BaseParser = struct {
             self.injectedToken = null;
         } else if (self.pendingInsert != null) {
             const pos = self.current.pos;
-            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
+            self.leaves += 1;
+            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0, .leaf = self.leaves } }, pos, pos);
             if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
         } else try self.shiftToken(target);
@@ -1220,7 +1229,8 @@ pub const BaseParser = struct {
         const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
         if (asGroups > 0) self.lastMatchedId = 0;
         const end = self.tokenEnd(tok);
-        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+        self.leaves += 1;
+        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id, .leaf = self.leaves } }, tok.pos, end);
         if (nodeStore) self.lastEnd = end;
         try self.advance();
     }
@@ -1613,6 +1623,19 @@ pub const BaseParser = struct {
     /// Number of node ids in use (ids run 1 .. nodeCount()).
     pub fn nodeCount(self: *const BaseParser) u32 {
         return self.nodes.len -| 1;
+    }
+
+    /// Number of leaf ids in use (ids run 1 .. leafCount()): one per token
+    /// shifted, an inserted one included, and one per `newLeaf`.
+    pub fn leafCount(self: *const BaseParser) u32 {
+        return self.leaves;
+    }
+
+    /// A leaf built outside the parser, e.g. by a lang `Parser` wrapper,
+    /// with the next leaf id.
+    pub fn newLeaf(self: *BaseParser, pos: u32, len: u16, id: u16) Src {
+        self.leaves += 1;
+        return .{ .pos = pos, .len = len, .id = id, .leaf = self.leaves };
     }
 
     /// The side-band roles recorded for node `id`.
@@ -3076,6 +3099,7 @@ test "without longTokens a token's end is pos + len" {
 
 test "Sexp is 24 bytes (16 on 32-bit targets); list helpers" {
     try testing.expectEqual(if (@sizeOf(usize) == 8) 24 else 16, @sizeOf(Sexp));
+    try testing.expectEqual(12, @sizeOf(Src));
     const kids = [_]Sexp{ .{ .tag = .add }, .nil };
     const s = Sexp{ .list = List.withId(&kids, 5) };
     try testing.expectEqual(@as(usize, 2), s.items().len);
@@ -3084,6 +3108,44 @@ test "Sexp is 24 bytes (16 on 32-bit targets); list helpers" {
     try testing.expect(!s.isKind(.set));
     try testing.expectEqual(@as(?Tag, null), Sexp.listOf(&.{}).kind());
     try testing.expectEqual(@as(usize, 0), (Sexp{ .tag = .set }).items().len);
+}
+
+test "each shifted token gets the next leaf id, in source order" {
+    var p = BaseParser.init(testing.allocator, "a = b + qc # note\nd");
+    defer p.deinit();
+    const tree = try p.parse(.prog);
+    var leaves: std.ArrayList(Src) = .empty;
+    defer leaves.deinit(testing.allocator);
+    var walk: Walk = .{};
+    defer walk.deinit();
+    var x = tree;
+    while (true) {
+        switch (x) {
+            .src => |s| try leaves.append(testing.allocator, s),
+            .list => |l| try walk.push(l.items()),
+            else => {},
+        }
+        x = walk.next() orelse break;
+    }
+    // Tokens in the tree are `a b qc d`; `=`, `+` and the newline are
+    // shifted too, and the comment is trivia.
+    try testing.expectEqual(@as(u32, 7), p.leafCount());
+    try testing.expectEqual(@as(usize, 4), leaves.items.len);
+    std.mem.sort(Src, leaves.items, {}, struct {
+        fn lt(_: void, a: Src, b: Src) bool {
+            return a.pos < b.pos;
+        }
+    }.lt);
+    const want = [_]LeafId{ 1, 3, 5, 7 };
+    for (leaves.items, want) |s, id| try testing.expectEqual(id, s.leaf);
+    // A leaf built outside the parser has none, unless it asks for one.
+    try testing.expectEqual(@as(LeafId, 0), (Src{ .pos = 0, .len = 1, .id = 0 }).leaf);
+    try testing.expectEqual(Src{ .pos = 0, .len = 1, .id = 2, .leaf = 8 }, p.newLeaf(0, 1, 2));
+    try testing.expectEqual(@as(u32, 8), p.leafCount());
+    // A reset starts the count over, as a new parser would.
+    p.reset("x");
+    _ = try p.parse(.prog);
+    try testing.expectEqual(@as(u32, 1), p.leafCount());
 }
 
 test "a span's text is clamped to the source" {
@@ -3394,6 +3456,10 @@ test "the tolerant driver inserts holes and deletes stray tokens" {
     const hole = ir.get(r.sexp.items()[1], .value);
     try testing.expectEqual(@as(u16, 0), hole.src.len);
     try testing.expectEqual(@as(u32, 4), hole.src.pos);
+    // The hole is a leaf of the tree, numbered in its place: `a = hole
+    // NEWLINE b`.
+    try testing.expectEqual(@as(LeafId, 3), hole.src.leaf);
+    try testing.expectEqual(@as(u32, 5), p.leafCount());
 
     // `a b`: a terminator is inserted in front of the real token `b`.
     var q = BaseParser.init(testing.allocator, "a b");
@@ -3410,6 +3476,8 @@ test "the tolerant driver inserts holes and deletes stray tokens" {
     try testing.expectEqualStrings("(prog (add a b))", try render(&t, u.sexp));
     try testing.expectEqual(@as(u32, 1), u.repairs);
     try testing.expectEqual(@as(u32, 1), u.deletions);
+    // A deleted token takes no leaf id: `a + b`.
+    try testing.expectEqual(@as(u32, 3), t.leafCount());
 
     // Valid input: no failure, no repairs.
     var y = BaseParser.init(testing.allocator, "a");
