@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "nexus": "2.3.0",
+  "nexus": "2.3.1",
   "grammar": "lists.grammar",
   "lang": "lists",
   "tokens": [
