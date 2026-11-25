@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "nexus": "2.3.1",
+  "nexus": "2.4.0",
   "grammar": "word_chars.grammar",
   "lang": null,
   "tokens": [
