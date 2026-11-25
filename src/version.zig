@@ -1,3 +1,3 @@
 //! The Nexus version, stamped into every generated file header.
 
-pub const version = "2.3.1";
+pub const version = "2.4.0";
